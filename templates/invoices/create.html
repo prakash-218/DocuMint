@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block title %}Create Invoice - Invoice System{% endblock %}
+{% block page_title %}Create Invoice{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('invoices_bp.create_invoice') }}">
+            <div class="form-group">
+                <label for="customer_id" class="form-label">Customer *</label>
+                <select id="customer_id" name="customer_id" class="form-select" required>
+                    <option value="">Select a customer</option>
+                    {% for customer in customers %}
+                    <option value="{{ customer.customer_id }}">{{ customer.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="template_id" class="form-label">Template *</label>
+                <select id="template_id" name="template_id" class="form-select" required onchange="loadTemplateFields(this.value)">
+                    <option value="">Select a template</option>
+                    {% for template in templates %}
+                    <option value="{{ template.template_id }}" {% if template.template_id == selected_template_id %}selected{% endif %}>
+                        {{ template.name }} (v{{ template.latest_version }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <script>
+            function loadTemplateFields(templateId) {
+                if (templateId) {
+                    window.location.href = '{{ url_for("invoices_bp.create_invoice") }}?template_id=' + templateId;
+                }
+            }
+            </script>
+            
+            <div class="form-group">
+                <label for="issue_date" class="form-label">Issue Date</label>
+                <input type="date" id="issue_date" name="issue_date" class="form-input">
+            </div>
+            
+            <div class="form-group">
+                <label for="due_date" class="form-label">Due Date</label>
+                <input type="date" id="due_date" name="due_date" class="form-input">
+            </div>
+            
+            {% if not selected_template_id %}
+            <div class="alert alert-info card-nested" style="margin-top: var(--spacing-lg); padding: var(--spacing-md); border-radius: var(--border-radius-lg); border-left: 4px solid var(--color-info);">
+                <p><strong>Please select a template</strong> above to see invoice fields.</p>
+            </div>
+            {% elif sections_data and sections_data|length > 0 %}
+            <hr style="margin: var(--spacing-xl) 0; border: none; border-top: 1px solid var(--border-color);">
+            <h3 style="margin-bottom: var(--spacing-lg);">Invoice Fields</h3>
+            {% elif fields and fields|length > 0 %}
+            <hr style="margin: var(--spacing-xl) 0; border: none; border-top: 1px solid var(--border-color);">
+            <h3 style="margin-bottom: var(--spacing-lg);">Invoice Fields</h3>
+            <div class="alert alert-info card-nested" style="padding: var(--spacing-md); border-radius: var(--border-radius-lg); border-left: 4px solid var(--color-info); margin-bottom: var(--spacing-lg);">
+                <p>Found {{ fields|length }} field(s) but sections not properly grouped. Displaying all fields:</p>
+            </div>
+            {% for field in fields %}
+                <div class="form-group">
+                    <label for="field_{{ field.field_id }}" class="form-label">
+                        {{ field.label or field.get('label', 'Field') }}
+                        {% if field.is_required or field.get('is_required') %}<span style="color: var(--color-error);">*</span>{% endif %}
+                    </label>
+                    
+                    {% set data_type = field.data_type or field.get('data_type', 'string') %}
+                    {% if data_type == 'string' %}
+                        <input type="text" 
+                               id="field_{{ field.field_id }}" 
+                               name="field_{{ field.field_id }}" 
+                               class="form-input"
+                               placeholder="Enter {{ field.label or field.get('label', '') }}"
+                               {% if field.is_required or field.get('is_required') %}required{% endif %}>
+                    {% elif data_type == 'number' %}
+                        <input type="number" 
+                               step="0.01"
+                               id="field_{{ field.field_id }}" 
+                               name="field_{{ field.field_id }}" 
+                               class="form-input"
+                               placeholder="0.00"
+                               {% if field.is_required or field.get('is_required') %}required{% endif %}>
+                    {% elif data_type == 'date' %}
+                        <input type="date" 
+                               id="field_{{ field.field_id }}" 
+                               name="field_{{ field.field_id }}" 
+                               class="form-input"
+                               {% if field.is_required or field.get('is_required') %}required{% endif %}>
+                    {% elif data_type == 'boolean' %}
+                        <label style="display: flex; align-items: center; gap: var(--spacing-sm);">
+                            <input type="checkbox" 
+                                   id="field_{{ field.field_id }}" 
+                                   name="field_{{ field.field_id }}" 
+                                   class="form-checkbox"
+                                   value="true">
+                            <span>{{ field.label or field.get('label', '') }}</span>
+                        </label>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            {% else %}
+            <div class="alert alert-warning card-nested" style="margin-top: var(--spacing-lg); padding: var(--spacing-md); border-radius: var(--border-radius-lg); border-left: 4px solid var(--color-warning);">
+                <p><strong>No fields found for this template.</strong> Please make sure the template has sections and fields defined.</p>
+                <p><a href="{{ url_for('templates_bp.view_template', template_id=selected_template_id) }}" class="btn btn-sm btn-secondary">View Template</a></p>
+            </div>
+            {% endif %}
+            
+            {% if sections_data and sections_data|length > 0 %}
+            
+            {# Render each section #}
+            {% for section_id, section_data in sections_data.items() %}
+                <div class="form-group card-nested" style="margin-top: var(--spacing-xl); padding: var(--spacing-lg); border-radius: var(--border-radius-lg); border: 1px solid var(--border-color);">
+                    <h4 style="margin-bottom: var(--spacing-md); color: var(--color-primary);">
+                        {{ section_data.title }}
+                        {% if section_data.type == 'line_item' %}
+                            <span class="badge badge-info">Line Item</span>
+                        {% endif %}
+                    </h4>
+                    
+                    {% if section_data.type == 'line_item' %}
+                        {# Line Item Section - Display as Table #}
+                        <div id="line_item_{{ section_id }}">
+                            <table class="table line-item-table" id="line_item_table_{{ section_id }}">
+                                <thead>
+                                    <tr>
+                                        {% for f in section_data.fields %}
+                                            <th>{{ f.label }}{% if f.is_required %} *{% endif %}</th>
+                                        {% endfor %}
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="line_item_tbody_{{ section_id }}">
+                                    <tr class="line-item-row" data-section="{{ section_id }}" data-row="0">
+                                        {% for f in section_data.fields %}
+                                            <td>
+                                                {% if f.calculation_formula %}
+                                                    <input type="text" 
+                                                           name="line_item_{{ section_id }}_0_field_{{ f.field_id }}" 
+                                                           class="form-input"
+                                                           placeholder="Auto-calculated"
+                                                           readonly
+                                                           style="background: var(--bg-secondary); cursor: not-allowed;"
+                                                           title="This field is calculated: {{ f.calculation_formula }}">
+                                                {% elif f.data_type == 'string' %}
+                                                    <input type="text" 
+                                                           name="line_item_{{ section_id }}_0_field_{{ f.field_id }}" 
+                                                           class="form-input"
+                                                           placeholder="{{ f.label }}"
+                                                           {% if f.is_required %}required{% endif %}>
+                                                {% elif f.data_type == 'number' %}
+                                                    <input type="number" 
+                                                           step="0.01"
+                                                           name="line_item_{{ section_id }}_0_field_{{ f.field_id }}" 
+                                                           class="form-input"
+                                                           placeholder="{{ f.label }}"
+                                                           {% if f.is_required %}required{% endif %}>
+                                                {% elif f.data_type == 'date' %}
+                                                    <input type="date" 
+                                                           name="line_item_{{ section_id }}_0_field_{{ f.field_id }}" 
+                                                           class="form-input"
+                                                           {% if f.is_required %}required{% endif %}>
+                                                {% elif f.data_type == 'boolean' %}
+                                                    <input type="checkbox" 
+                                                           name="line_item_{{ section_id }}_0_field_{{ f.field_id }}" 
+                                                           class="form-checkbox"
+                                                           value="true">
+                                                {% endif %}
+                                            </td>
+                                        {% endfor %}
+                                        <td>
+                                            <button type="button" class="btn btn-sm btn-secondary" onclick="removeLineItemRow(this)">Remove</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="addLineItemRow('{{ section_id }}')" style="margin-top: var(--spacing-md);">+ Add Row</button>
+                        </div>
+                    {% else %}
+                        {# Normal Section - Display as Form Fields #}
+                        {% for field in section_data.fields %}
+                            <div class="form-group">
+                                <label for="field_{{ field.field_id }}" class="form-label">
+                                    {{ field.label }}
+                                    {% if field.calculation_formula %}
+                                        <span class="badge badge-info" style="margin-left: var(--spacing-xs);">Calculated</span>
+                                    {% endif %}
+                                    {% if field.is_required %}<span style="color: var(--color-error);">*</span>{% endif %}
+                                </label>
+                                
+                                {% if field.calculation_formula %}
+                                    <input type="text" 
+                                           id="field_{{ field.field_id }}" 
+                                           name="field_{{ field.field_id }}" 
+                                           class="form-input"
+                                           placeholder="Auto-calculated: {{ field.calculation_formula }}"
+                                           readonly
+                                           style="background: var(--bg-secondary); cursor: not-allowed;"
+                                           title="This field is calculated: {{ field.calculation_formula }}">
+                                    <small class="form-text" style="display: block; margin-top: var(--spacing-xs); color: var(--color-text-secondary);">
+                                        Formula: <code>{{ field.calculation_formula }}</code>
+                                    </small>
+                                {% elif field.data_type == 'string' %}
+                                    <input type="text" 
+                                           id="field_{{ field.field_id }}" 
+                                           name="field_{{ field.field_id }}" 
+                                           class="form-input"
+                                           placeholder="Enter {{ field.label }}"
+                                           {% if field.is_required %}required{% endif %}>
+                                {% elif field.data_type == 'number' %}
+                                    <input type="number" 
+                                           step="0.01"
+                                           id="field_{{ field.field_id }}" 
+                                           name="field_{{ field.field_id }}" 
+                                           class="form-input"
+                                           placeholder="0.00"
+                                           {% if field.is_required %}required{% endif %}>
+                                {% elif field.data_type == 'date' %}
+                                    <input type="date" 
+                                           id="field_{{ field.field_id }}" 
+                                           name="field_{{ field.field_id }}" 
+                                           class="form-input"
+                                           {% if field.is_required %}required{% endif %}>
+                                {% elif field.data_type == 'boolean' %}
+                                    <label style="display: flex; align-items: center; gap: var(--spacing-sm);">
+                                        <input type="checkbox" 
+                                               id="field_{{ field.field_id }}" 
+                                               name="field_{{ field.field_id }}" 
+                                               class="form-checkbox"
+                                               value="true">
+                                        <span>{{ field.label }}</span>
+                                    </label>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            {% endfor %}
+            {% endif %}
+            
+            <script>
+            // Store section field info for line items
+            const lineItemFields = {};
+            {% if sections_data %}
+                {% for section_id, section_data in sections_data.items() %}
+                    {% if section_data.type == 'line_item' %}
+                        lineItemFields['{{ section_id }}'] = [
+                            {% for field in section_data.fields %}
+                            {
+                                field_id: '{{ field.field_id }}',
+                                label: '{{ field.label }}',
+                                data_type: '{{ field.data_type }}',
+                                is_required: {{ 1 if field.is_required else 0 }}
+                            }{% if not loop.last %},{% endif %}
+                            {% endfor %}
+                        ];
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+            
+            let lineItemRowCounts = {};
+            
+            function addLineItemRow(sectionId) {
+                if (!lineItemRowCounts[sectionId]) {
+                    lineItemRowCounts[sectionId] = 0;
+                }
+                lineItemRowCounts[sectionId]++;
+                const rowNum = lineItemRowCounts[sectionId];
+                
+                const tbody = document.getElementById(`line_item_tbody_${sectionId}`);
+                const fields = lineItemFields[sectionId];
+                
+                if (!fields || fields.length === 0) {
+                    alert('No fields defined for this line item section');
+                    return;
+                }
+                
+                const row = document.createElement('tr');
+                row.className = 'line-item-row';
+                row.setAttribute('data-section', sectionId);
+                row.setAttribute('data-row', rowNum);
+                
+                let cells = '';
+                fields.forEach(field => {
+                    cells += '<td>';
+                    if (field.data_type === 'string') {
+                        cells += `<input type="text" name="line_item_${sectionId}_${rowNum}_field_${field.field_id}" class="form-input" placeholder="${field.label}" ${field.is_required ? 'required' : ''}>`;
+                    } else if (field.data_type === 'number') {
+                        cells += `<input type="number" step="0.01" name="line_item_${sectionId}_${rowNum}_field_${field.field_id}" class="form-input" placeholder="0.00" ${field.is_required ? 'required' : ''}>`;
+                    } else if (field.data_type === 'date') {
+                        cells += `<input type="date" name="line_item_${sectionId}_${rowNum}_field_${field.field_id}" class="form-input" ${field.is_required ? 'required' : ''}>`;
+                    } else if (field.data_type === 'boolean') {
+                        cells += `<input type="checkbox" name="line_item_${sectionId}_${rowNum}_field_${field.field_id}" class="form-checkbox" value="true">`;
+                    }
+                    cells += '</td>';
+                });
+                cells += '<td><button type="button" class="btn btn-sm btn-secondary" onclick="removeLineItemRow(this)">Remove</button></td>';
+                
+                row.innerHTML = cells;
+                tbody.appendChild(row);
+            }
+            
+            function removeLineItemRow(button) {
+                const row = button.closest('tr');
+                const tbody = row.parentElement;
+                if (tbody && tbody.children.length > 1) {
+                    row.remove();
+                } else {
+                    alert('At least one row is required');
+                }
+            }
+            </script>
+            
+            <div class="form-group" style="margin-top: var(--spacing-xl);">
+                <button type="submit" class="btn btn-primary">Create Invoice</button>
+                <a href="{{ url_for('invoices_bp.list_invoices') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+

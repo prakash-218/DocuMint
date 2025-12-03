@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Create Customer - Invoice System{% endblock %}
+{% block page_title %}Create Customer{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('customers_bp.create_customer') }}">
+            <div class="form-group">
+                <label for="name" class="form-label">Customer Name *</label>
+                <input type="text" id="name" name="name" class="form-input" required autofocus>
+            </div>
+            
+            <div class="form-group">
+                <label for="tax_id" class="form-label">Tax ID</label>
+                <input type="text" id="tax_id" name="tax_id" class="form-input" placeholder="Optional">
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary">Create Customer</button>
+                <a href="{{ url_for('customers_bp.list_customers') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+

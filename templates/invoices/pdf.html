@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice {{ invoice.invoice_id[:8] }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .header {
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 24pt;
+            color: #333;
+        }
+        
+        .invoice-info {
+            width: 100%;
+            margin: 20px 0;
+        }
+        
+        .invoice-info-row {
+            margin-bottom: 8px;
+        }
+        
+        .invoice-info-label {
+            font-weight: bold;
+            display: inline-block;
+            width: 150px;
+            vertical-align: top;
+        }
+        
+        .invoice-info-value {
+            display: inline-block;
+        }
+        
+        .section {
+            margin: 30px 0;
+        }
+        
+        .section-title {
+            font-size: 16pt;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+        }
+        
+        .field-group {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-left: 3px solid #007bff;
+        }
+        
+        .field-label {
+            font-weight: bold;
+            display: inline-block;
+            width: 150px;
+        }
+        
+        .field-value {
+            display: inline-block;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        
+        table thead {
+            background-color: #333;
+            color: white;
+        }
+        
+        table th {
+            padding: 10px;
+            text-align: left;
+            font-weight: bold;
+            border: 1px solid #ddd;
+        }
+        
+        table td {
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            font-size: 10pt;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-paid {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .status-pending {
+            background-color: #ffc107;
+            color: #333;
+        }
+        
+        .status-draft {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ccc;
+            font-size: 10pt;
+            color: #666;
+            text-align: center;
+        }
+        
+        .currency {
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>INVOICE</h1>
+        <div class="invoice-info">
+            <div class="invoice-info-row">
+                <div class="invoice-info-label">Invoice ID:</div>
+                <div class="invoice-info-value">{{ invoice.invoice_id }}</div>
+            </div>
+            <div class="invoice-info-row">
+                <div class="invoice-info-label">Status:</div>
+                <div class="invoice-info-value">
+                    <span class="status-badge status-{{ invoice.status or 'draft' }}">
+                        {{ invoice.status or 'draft' }}
+                    </span>
+                </div>
+            </div>
+            <div class="invoice-info-row">
+                <div class="invoice-info-label">Customer:</div>
+                <div class="invoice-info-value">{{ invoice.customer_name }}</div>
+            </div>
+            <div class="invoice-info-row">
+                <div class="invoice-info-label">Issue Date:</div>
+                <div class="invoice-info-value">{{ invoice.issue_date or 'N/A' }}</div>
+            </div>
+            <div class="invoice-info-row">
+                <div class="invoice-info-label">Due Date:</div>
+                <div class="invoice-info-value">{{ invoice.due_date or 'N/A' }}</div>
+            </div>
+            <div class="invoice-info-row">
+                <div class="invoice-info-label">Currency:</div>
+                <div class="invoice-info-value">{{ invoice.currency_code }}</div>
+            </div>
+        </div>
+    </div>
+
+    {% if sections_data %}
+        {% for section_title, section_info in sections_data.items() %}
+            <div class="section">
+                <div class="section-title">{{ section_title }}</div>
+                
+                {% if section_info.type == 'line_item' %}
+                    {# Display as table for line items #}
+                    {% if section_info.line_item_headers and section_info.line_item_rows %}
+                    <table>
+                        <thead>
+                            <tr>
+                                {% for header in section_info.line_item_headers %}
+                                    <th>{{ header }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in section_info.line_item_rows %}
+                                <tr>
+                                    {% for value in row %}
+                                        <td>
+                                            {% if value %}
+                                                {% if value.data_type == 'number' %}
+                                                    <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
+                                                {% elif value.data_type == 'date' %}
+                                                    {{ value.val_date or 'N/A' }}
+                                                {% elif value.data_type == 'boolean' %}
+                                                    {{ 'Yes' if value.val_boolean else 'No' }}
+                                                {% else %}
+                                                    {{ value.val_string or 'N/A' }}
+                                                {% endif %}
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% endif %}
+                {% else %}
+                    {# Display as fields for normal sections #}
+                    {% for value in section_info.fields %}
+                        <div class="field-group">
+                            <span class="field-label">{{ value.field_label }}:</span>
+                            <span class="field-value">
+                                {% if value.data_type == 'number' %}
+                                    <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
+                                {% elif value.data_type == 'date' %}
+                                    {{ value.val_date or 'N/A' }}
+                                {% elif value.data_type == 'boolean' %}
+                                    {{ 'Yes' if value.val_boolean else 'No' }}
+                                {% else %}
+                                    {{ value.val_string or 'N/A' }}
+                                {% endif %}
+                            </span>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if payments %}
+    <div class="section">
+        <div class="section-title">Payments</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th class="text-right">Amount</th>
+                    <th>Method</th>
+                    <th>Reference</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for payment in payments %}
+                <tr>
+                    <td>{{ payment.payment_date }}</td>
+                    <td class="text-right currency">{% if payment.amount %}{{ payment.amount | currency }}{% else %}N/A{% endif %}</td>
+                    <td>{{ payment.method or 'N/A' }}</td>
+                    <td>{{ payment.reference_number or 'N/A' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <p>Generated on {{ current_date }}</p>
+        <p>This is a computer-generated invoice. No signature required.</p>
+    </div>
+</body>
+</html>
+

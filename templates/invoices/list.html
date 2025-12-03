@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Invoices - Invoice System{% endblock %}
+{% block page_title %}Invoices{% endblock %}
+
+{% block content %}
+<div class="list-header">
+    <div class="list-header-left">
+        <h2 class="list-title">Invoices <span class="list-count">{{ invoices|length if invoices else 0 }}</span></h2>
+        <div class="list-filters">
+            <a href="{{ url_for('invoices_bp.list_invoices') }}" class="filter-btn {% if not request.args.get('status') %}active{% endif %}">All</a>
+            <a href="{{ url_for('invoices_bp.list_invoices', status='draft') }}" class="filter-btn {% if request.args.get('status') == 'draft' %}active{% endif %}">Draft</a>
+            <a href="{{ url_for('invoices_bp.list_invoices', status='pending') }}" class="filter-btn {% if request.args.get('status') == 'pending' %}active{% endif %}">Pending</a>
+            <a href="{{ url_for('invoices_bp.list_invoices', status='paid') }}" class="filter-btn {% if request.args.get('status') == 'paid' %}active{% endif %}">Paid</a>
+        </div>
+    </div>
+    <div class="list-header-right">
+        <a href="{{ url_for('invoices_bp.create_invoice') }}" class="btn btn-primary">
+            <i data-lucide="plus" class="nav-icon"></i>
+            Create Invoice
+        </a>
+    </div>
+</div>
+
+{% if invoices %}
+<div class="table-container">
+    <table class="table list-table">
+        <thead>
+            <tr>
+                <th>Items</th>
+                <th>Customer</th>
+                <th>Status</th>
+                <th>Total</th>
+                <th>Due Date</th>
+                <th style="width: 100px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for invoice in invoices %}
+            <tr class="list-row">
+                <td>
+                    <div class="list-item-content">
+                        <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="item-id">
+                            INV-{{ invoice.invoice_id[:8] }}
+                        </a>
+                        <span class="item-description">{{ invoice.template_name or 'Invoice' }}</span>
+                    </div>
+                </td>
+                <td>{{ invoice.customer_name }}</td>
+                <td>
+                    <span class="badge badge-{{ 'success' if invoice.status == 'paid' else 'warning' if invoice.status == 'pending' else 'info' }}">
+                        {{ invoice.status or 'draft' }}
+                    </span>
+                </td>
+                <td>{{ invoice.total_amount or 0 | currency }}</td>
+                <td>{{ invoice.due_date or 'N/A' }}</td>
+                <td>
+                    <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-secondary">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No invoices found. <a href="{{ url_for('invoices_bp.create_invoice') }}">Create your first invoice</a></p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}
+
