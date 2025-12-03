@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Invoice System{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if current_user %}
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="{{ url_for('dashboard_bp.index') }}" class="sidebar-logo">
+                    <span class="logo-icon">IG</span>
+                    <span class="logo-text">InvoiceGen</span>
+                </a>
+            </div>
+            <nav>
+                <div class="nav-section">
+                    <div class="nav-section-title">Work</div>
+                    <ul class="sidebar-nav">
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('dashboard_bp.index') }}" class="sidebar-nav-link {% if request.endpoint == 'dashboard_bp.index' %}active{% endif %}">
+                                <i data-lucide="layout-dashboard" class="nav-icon"></i>
+                                <span>Dashboard</span>
+                            </a>
+                        </li>
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('invoices_bp.list_invoices') }}" class="sidebar-nav-link {% if request.endpoint and 'invoices' in request.endpoint %}active{% endif %}">
+                                <i data-lucide="file-text" class="nav-icon"></i>
+                                <span>Invoices</span>
+                            </a>
+                        </li>
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('customers_bp.list_customers') }}" class="sidebar-nav-link {% if request.endpoint and 'customers' in request.endpoint %}active{% endif %}">
+                                <i data-lucide="users" class="nav-icon"></i>
+                                <span>Customers</span>
+                            </a>
+                        </li>
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('templates_bp.list_templates') }}" class="sidebar-nav-link {% if request.endpoint and 'templates' in request.endpoint %}active{% endif %}">
+                                <i data-lucide="file-code" class="nav-icon"></i>
+                                <span>Templates</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="header">
+                <div class="header-content">
+                    <div class="header-title-section">
+                        <h1 class="header-title">{% block page_title %}Dashboard{% endblock %}</h1>
+                        {% block page_description %}{% endblock %}
+                    </div>
+                    <div class="header-actions">
+                        <div class="user-info">
+                            <span class="user-email">{{ current_user.email }}</span>
+                            {% if current_org_id %}
+                            <span class="org-name">{{ session.get('org_name', 'Organization') }}</span>
+                            {% endif %}
+                        </div>
+                        <a href="{{ url_for('auth_bp.logout') }}" class="btn btn-secondary btn-sm">Logout</a>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    {% else %}
+        {% block auth_content %}{% endblock %}
+    {% endif %}
+
+    {% block extra_js %}{% endblock %}
+    <script>
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    </script>
+</body>
+</html>
+

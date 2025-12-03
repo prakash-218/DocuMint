@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Template - Invoice System{% endblock %}
+{% block page_title %}Template Details{% endblock %}
+
+{% block content %}
+<div class="card mb-lg">
+    <div class="card-header">
+        <div class="flex-between">
+            <div>
+                <h2 class="card-title">
+                    {% if template_info %}
+                        {{ template_info.name }} - v{{ template_info.version }}
+                        {% if template_info.version == template_info.latest_version %}
+                            <span class="badge badge-success" style="margin-left: var(--spacing-sm);">Latest</span>
+                        {% else %}
+                            <span class="badge badge-warning" style="margin-left: var(--spacing-sm);">v{{ template_info.latest_version }} available</span>
+                        {% endif %}
+                    {% else %}
+                        Template Details
+                    {% endif %}
+                </h2>
+            </div>
+            <div>
+                {% if template_info and template_info.version == template_info.latest_version %}
+                <form method="POST" action="{{ url_for('templates_bp.create_template_version', template_id=template_id) }}" style="display: inline;">
+                    <button type="submit" class="btn btn-primary" onclick="return confirm('This will create a new version of this template. Continue?')">
+                        <i data-lucide="copy" class="nav-icon"></i>
+                        Create New Version
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if sections %}
+            {% for section in sections %}
+            <div style="margin-bottom: var(--spacing-xl);">
+                <h3 style="margin-bottom: var(--spacing-md); color: var(--color-primary); border-bottom: 2px solid var(--border-color); padding-bottom: var(--spacing-sm);">
+                    {{ section.title }}
+                    <span class="badge badge-info" style="margin-left: var(--spacing-sm);">
+                        {{ section.section_type or 'normal' }}
+                    </span>
+                </h3>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--spacing-md);">
+                    {% for field in section.fields %}
+                    <div class="card-nested" style="padding: var(--spacing-md); border-radius: var(--border-radius-lg); border: 1px solid var(--border-color);">
+                        <strong>{{ field.label }}</strong>
+                        <div style="margin-top: var(--spacing-xs);">
+                            <span class="badge badge-info">{{ field.data_type }}</span>
+                            {% if field.is_required %}
+                            <span class="badge badge-warning">Required</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+        <p>No fields defined for this template.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}
+

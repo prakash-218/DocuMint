@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Customer Portal - Invoice System{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if current_customer %}
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="{{ url_for('customer_portal_bp.dashboard') }}" class="sidebar-logo">Invoice Portal</a>
+            </div>
+            <nav>
+                <ul class="sidebar-nav">
+                    <li class="sidebar-nav-item">
+                        <a href="{{ url_for('customer_portal_bp.dashboard') }}" class="sidebar-nav-link {% if request.endpoint == 'customer_portal_bp.dashboard' %}active{% endif %}">
+                            My Invoices
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="header">
+                <h1 class="header-title">{% block page_title %}My Invoices{% endblock %}</h1>
+                <div class="header-actions">
+                    <div>
+                        <span>{{ current_customer.email }}</span>
+                        <a href="{{ url_for('customer_portal_bp.logout') }}" class="btn btn-secondary btn-sm">Logout</a>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    {% else %}
+        {% block auth_content %}{% endblock %}
+    {% endif %}
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+

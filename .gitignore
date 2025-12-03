@@ -1,0 +1,11 @@
+# Python
+.venv/
+.env
+__pycache__/
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+

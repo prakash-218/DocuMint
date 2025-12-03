@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Templates - Invoice System{% endblock %}
+{% block page_title %}Templates{% endblock %}
+
+{% block content %}
+<div class="list-header">
+    <div class="list-header-left">
+        <h2 class="list-title">Templates <span class="list-count">{{ templates|length if templates else 0 }}</span></h2>
+    </div>
+    <div class="list-header-right">
+        <a href="{{ url_for('templates_bp.create_template') }}" class="btn btn-primary">
+            <i data-lucide="plus" class="nav-icon"></i>
+            Create Template
+        </a>
+    </div>
+</div>
+
+{% if templates %}
+<div class="table-container">
+    <table class="table list-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Currency</th>
+                <th>Version</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th style="width: 100px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for template in templates %}
+            <tr class="list-row">
+                <td>
+                    <div class="list-item-content">
+                        <a href="{{ url_for('templates_bp.view_template', template_id=template.template_id) }}" class="item-id">
+                            {{ template.name }}
+                        </a>
+                    </div>
+                </td>
+                <td>{{ template.currency_code }}</td>
+                <td>v{{ template.version }}</td>
+                <td>
+                    {% if template.version == template.latest_version %}
+                        <span class="badge badge-success">Latest</span>
+                    {% else %}
+                        <span class="badge badge-warning">v{{ template.latest_version }} available</span>
+                    {% endif %}
+                </td>
+                <td>{{ template.created_at.strftime('%Y-%m-%d') if template.created_at else 'N/A' }}</td>
+                <td>
+                    <a href="{{ url_for('templates_bp.view_template', template_id=template.template_id) }}" class="btn btn-sm btn-secondary">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No templates yet. <a href="{{ url_for('templates_bp.create_template') }}">Create your first template</a></p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}
+

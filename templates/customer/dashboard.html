@@ -1,0 +1,52 @@
+{% extends "customer/base.html" %}
+
+{% block title %}My Invoices - Customer Portal{% endblock %}
+{% block page_title %}My Invoices{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        {% if invoices %}
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Invoice ID</th>
+                        <th>Template</th>
+                        <th>Issue Date</th>
+                        <th>Due Date</th>
+                        <th>Status</th>
+                        <th>Total</th>
+                        <th>Paid</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for invoice in invoices %}
+                    <tr>
+                        <td>{{ invoice.invoice_id[:8] }}...</td>
+                        <td>{{ invoice.template_name or 'N/A' }}</td>
+                        <td>{{ invoice.issue_date or 'N/A' }}</td>
+                        <td>{{ invoice.due_date or 'N/A' }}</td>
+                        <td>
+                            <span class="badge badge-{{ 'success' if invoice.status == 'paid' else 'warning' if invoice.status == 'pending' else 'info' }}">
+                                {{ invoice.status or 'draft' }}
+                            </span>
+                        </td>
+                        <td>{{ invoice.total_amount or 0 | currency }}</td>
+                        <td>{{ invoice.paid_amount or 0 | currency }}</td>
+                        <td>
+                            <a href="{{ url_for('customer_portal_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-secondary">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p>No invoices found.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
