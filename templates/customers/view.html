@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Customer {{ customer.name }} - Invoice System{% endblock %}
+{% block page_title %}Customer Details{% endblock %}
+
+{% block content %}
+<div class="card mb-lg">
+    <div class="card-header">
+        <div class="flex-between">
+            <h2 class="card-title">{{ customer.name }}</h2>
+            <div style="display: flex; gap: var(--spacing-sm);">
+                <a href="{{ url_for('customers_bp.edit_customer', customer_id=customer.customer_id) }}" class="btn btn-primary btn-sm">
+                    Edit
+                </a>
+                <form method="POST" action="{{ url_for('customers_bp.delete_customer', customer_id=customer.customer_id) }}" 
+                      style="display: inline;" 
+                      onsubmit="return confirm('Are you sure you want to delete this customer? This action cannot be undone. Note: Customers with existing invoices cannot be deleted.');">
+                    <button type="submit" class="btn btn-danger btn-sm">
+                        Delete
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-lg);">
+            <div>
+                <strong>Customer ID:</strong><br>
+                <code>{{ customer.customer_id }}</code>
+            </div>
+            <div>
+                <strong>Tax ID:</strong><br>
+                {{ customer.tax_id or 'N/A' }}
+            </div>
+            <div>
+                <strong>Created:</strong><br>
+                {{ customer.created_at.strftime('%Y-%m-%d') if customer.created_at else 'N/A' }}
+            </div>
+        </div>
+        
+        {% if customer.street_address or customer.city or customer.state or customer.zip_code or customer.country %}
+        <div style="margin-top: var(--spacing-lg); padding-top: var(--spacing-lg); border-top: 1px solid var(--border-color);">
+            <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: var(--spacing-md); color: var(--text-primary);">Address</h3>
+            <div style="color: var(--text-secondary); line-height: 1.6;">
+                {% if customer.street_address %}{{ customer.street_address }}<br>{% endif %}
+                {% if customer.city or customer.state or customer.zip_code %}
+                    {% if customer.city %}{{ customer.city }}{% endif %}{% if customer.city and customer.state %}, {% endif %}{% if customer.state %}{{ customer.state }}{% endif %} {% if customer.zip_code %}{{ customer.zip_code }}{% endif %}<br>
+                {% endif %}
+                {% if customer.country %}{{ customer.country }}{% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if contacts %}
+<div class="card mb-lg">
+    <div class="card-header">
+        <h2 class="card-title">Contacts</h2>
+    </div>
+    <div class="card-body">
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for contact in contacts %}
+                    <tr>
+                        <td>{{ contact.full_name or 'N/A' }}</td>
+                        <td>{{ contact.email }}</td>
+                        <td>{{ contact.role or 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Customer Portal Access</h2>
+    </div>
+    <div class="card-body">
+        {% if customer_user %}
+        <div class="alert alert-success">
+            <p><strong>Portal account exists:</strong> {{ customer_user.email }}</p>
+            <p>Customer can login at <a href="{{ url_for('customer_portal_bp.login') }}" target="_blank">/customer/login</a></p>
+        </div>
+        {% else %}
+        <p style="margin-bottom: var(--spacing-md);">
+            Create a portal account to allow this customer to view their invoices online.
+        </p>
+        <form method="POST" action="{{ url_for('customers_bp.create_portal_account', customer_id=customer.customer_id) }}">
+            <div class="form-group">
+                <label for="email" class="form-label">Email Address *</label>
+                <input type="email" id="email" name="email" class="form-input" required 
+                       placeholder="customer@example.com">
+                <small class="form-text">This will be the customer's login email</small>
+            </div>
+            <div class="form-group">
+                <label for="password" class="form-label">Initial Password *</label>
+                <input type="password" id="password" name="password" class="form-input" required 
+                       minlength="8" placeholder="At least 8 characters">
+                <small class="form-text">Customer can change this after first login</small>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="send_invitation" class="form-checkbox">
+                    Send invitation email (requires email configuration)
+                </label>
+                <small class="form-text" style="display: block; margin-top: var(--spacing-xs);">
+                    If checked, an invitation email will be sent. Currently, this feature requires email service setup.
+                </small>
+            </div>
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary">Create Portal Account</button>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

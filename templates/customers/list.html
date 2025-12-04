@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Customers - Invoice System{% endblock %}
+{% block page_title %}Customers{% endblock %}
+
+{% block content %}
+<div class="list-header">
+    <div class="list-header-left">
+        <h2 class="list-title">Customers <span class="list-count">{{ customers|length if customers else 0 }}</span></h2>
+    </div>
+    <div class="list-header-right">
+        <a href="{{ url_for('customers_bp.create_customer') }}" class="btn btn-primary">
+            <i data-lucide="plus" class="nav-icon"></i>
+            Create Customer
+        </a>
+    </div>
+</div>
+
+{% if customers %}
+<div class="table-container">
+    <table class="table list-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Tax ID</th>
+                <th>Invoices</th>
+                <th>Created</th>
+                <th style="width: 100px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in customers %}
+            <tr class="list-row">
+                <td>
+                    <div class="list-item-content">
+                        <a href="{{ url_for('customers_bp.view_customer', customer_id=customer.customer_id) }}" class="item-id">
+                            {{ customer.name }}
+                        </a>
+                    </div>
+                </td>
+                <td>{{ customer.tax_id or 'N/A' }}</td>
+                <td>{{ customer.invoice_count or 0 }}</td>
+                <td>{{ customer.created_at.strftime('%Y-%m-%d') if customer.created_at else 'N/A' }}</td>
+                <td>
+                    <a href="{{ url_for('customers_bp.view_customer', customer_id=customer.customer_id) }}" class="btn btn-sm btn-secondary">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No customers yet. <a href="{{ url_for('customers_bp.create_customer') }}">Create your first customer</a></p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}
+

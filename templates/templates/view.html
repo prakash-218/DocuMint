@@ -6,7 +6,7 @@
 {% block content %}
 <div class="card mb-lg">
     <div class="card-header">
-        <div class="flex-between">
+        <div class="flex-between flex flex-grow">
             <div>
                 <h2 class="card-title">
                     {% if template_info %}
@@ -21,14 +21,13 @@
                     {% endif %}
                 </h2>
             </div>
-            <div>
+            <div class="card-title card-actions">
                 {% if template_info and template_info.version == template_info.latest_version %}
-                <form method="POST" action="{{ url_for('templates_bp.create_template_version', template_id=template_id) }}" style="display: inline;">
-                    <button type="submit" class="btn btn-primary" onclick="return confirm('This will create a new version of this template. Continue?')">
-                        <i data-lucide="copy" class="nav-icon"></i>
-                        Create New Version
-                    </button>
-                </form>
+                <a href="{{ url_for('templates_bp.edit_template', template_id=template_id) }}" class="btn btn-primary left-space">
+                    <i data-lucide="edit" class="nav-icon"></i>
+                    Edit Template
+                </a>
+                
                 {% endif %}
             </div>
         </div>

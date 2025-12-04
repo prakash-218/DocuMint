@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Create Organization - Invoice System{% endblock %}
+{% block page_title %}Create Organization{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 600px;">
+    <div class="card-header">
+        <h2 class="card-title">Create New Organization</h2>
+        <p style="color: var(--text-secondary); font-size: 14px; margin-top: 8px;">
+            Create a new organization to manage invoices, templates, and customers.
+        </p>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('settings_bp.create_organization') }}">
+            <div class="form-group">
+                <label for="org_name" class="form-label">Organization Name *</label>
+                <input type="text" id="org_name" name="org_name" class="form-input" required 
+                       placeholder="Acme Corporation" autofocus>
+                <small style="color: var(--text-tertiary); font-size: var(--font-size-sm); margin-top: 4px; display: block;">
+                    The display name for your organization
+                </small>
+            </div>
+            
+            <div class="form-group">
+                <label for="org_domain" class="form-label">Domain *</label>
+                <input type="text" id="org_domain" name="org_domain" class="form-input" required 
+                       placeholder="acme.com">
+                <small style="color: var(--text-tertiary); font-size: var(--font-size-sm); margin-top: 4px; display: block;">
+                    Users with emails from this domain can discover and join your organization
+                </small>
+            </div>
+            
+            <div class="form-group" style="margin-top: var(--spacing-xl);">
+                <button type="submit" class="btn btn-primary">Create Organization</button>
+                <a href="{{ url_for('settings_bp.index') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+

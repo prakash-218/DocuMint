@@ -1,4 +1,4 @@
--- 1. GLOBAL ENTITIES
+
 CREATE TABLE users (
     user_id CHAR(36) PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -13,15 +13,17 @@ CREATE TABLE person (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. TENANT ROOT
+
 CREATE TABLE organization (
     org_id CHAR(36) PRIMARY KEY,
-    domain VARCHAR(100) UNIQUE NOT NULL,
+    domain VARCHAR(100) NOT NULL,
     name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    UNIQUE KEY unique_name_domain (name, domain)
 );
 
--- User-Organization relationship for multi-tenancy
+
 CREATE TABLE user_organization (
     user_id CHAR(36) NOT NULL,
     org_id CHAR(36) NOT NULL,
@@ -32,7 +34,7 @@ CREATE TABLE user_organization (
     FOREIGN KEY (org_id) REFERENCES organization(org_id) ON DELETE CASCADE
 );
 
--- 3. CORE BUSINESS ENTITIES
+
 CREATE TABLE customer (
     customer_id CHAR(36) PRIMARY KEY,
     org_id CHAR(36) NOT NULL,
@@ -51,7 +53,7 @@ CREATE TABLE customer_contact_assignment (
     FOREIGN KEY (person_id) REFERENCES person(person_id) ON DELETE RESTRICT
 );
 
--- Customer portal authentication
+
 CREATE TABLE customer_user (
     customer_user_id CHAR(36) PRIMARY KEY,
     customer_id CHAR(36) NOT NULL,
@@ -63,7 +65,7 @@ CREATE TABLE customer_user (
 CREATE INDEX idx_customer_user_customer ON customer_user(customer_id);
 CREATE INDEX idx_customer_user_email ON customer_user(email);
 
--- 4. THE TEMPLATE ENGINE
+
 CREATE TABLE template (
     template_id CHAR(36) NOT NULL,
     version INT NOT NULL,
@@ -94,13 +96,13 @@ CREATE TABLE field (
     section_id CHAR(36) NOT NULL,
     label VARCHAR(100),
     data_type VARCHAR(20) NOT NULL, 
-    is_required TINYINT(1) DEFAULT 0, -- MySQL uses TINYINT for Boolean
+    is_required TINYINT(1) DEFAULT 0, 
     ordinal INT,
-    calculation_formula TEXT, -- Formula for calculated fields (e.g., "sum(line_items.amount)", "this.price * this.qty")
+    calculation_formula TEXT, 
     FOREIGN KEY (section_id) REFERENCES section(section_id) ON DELETE CASCADE
 );
 
--- 5. INVOICING & DATA
+
 CREATE TABLE invoice (
     invoice_id CHAR(36) PRIMARY KEY,
     org_id CHAR(36) NOT NULL,
@@ -110,7 +112,7 @@ CREATE TABLE invoice (
     issue_date DATE,
     due_date DATE,
     status VARCHAR(20),
-    total_amount DECIMAL(15, 4) DEFAULT 0, -- Auto-calculated total amount for fast queries
+    total_amount DECIMAL(15, 4) DEFAULT 0, 
     
     FOREIGN KEY (org_id) REFERENCES organization(org_id) ON DELETE CASCADE,
     FOREIGN KEY (customer_id) REFERENCES customer(customer_id) ON DELETE RESTRICT,
@@ -143,7 +145,7 @@ CREATE TABLE payment (
     FOREIGN KEY (invoice_id) REFERENCES invoice(invoice_id) ON DELETE RESTRICT
 );
 
--- Performance indexes
+
 CREATE INDEX idx_customer_org_id ON customer(org_id);
 CREATE INDEX idx_invoice_org_id ON invoice(org_id);
 CREATE INDEX idx_invoice_customer_id ON invoice(customer_id);

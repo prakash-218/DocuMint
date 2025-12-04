@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Template - Invoice System{% endblock %}
+{% block page_title %}Edit Template{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('templates_bp.edit_template', template_id=template_id) }}">
+            <div class="form-group">
+                <label class="form-label">Template Name</label>
+                <div class="form-input" style="background: var(--bg-secondary); cursor: not-allowed;">
+                    {{ template_info.name }} (v{{ template_info.version }})
+                </div>
+                <small class="form-text">Template name and version cannot be changed. Create a new version to change the name.</small>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Currency Code</label>
+                <div class="form-input" style="background: var(--bg-secondary); cursor: not-allowed;">
+                    {{ template_info.currency_code }}
+                </div>
+                <small class="form-text">Currency cannot be changed. Create a new version to change currency.</small>
+            </div>
+            
+            <hr style="margin: var(--spacing-xl) 0;">
+            <h3>Edit Sections & Fields</h3>
+            <p style="color: var(--text-secondary); margin-bottom: var(--spacing-lg);">
+                Edit existing sections and fields, or add new ones below.
+            </p>
+            
+            {% if sections %}
+            {% for section in sections %}
+            <div class="card-nested" style="margin-bottom: var(--spacing-lg); padding: var(--spacing-lg); border: 1px solid var(--border-color); border-radius: var(--border-radius-lg);">
+                <div class="flex-between mb-md">
+                    <h4>Section: {{ section.title }}</h4>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="deleteSection('{{ template_id }}', '{{ section.section_id }}')">Delete Section</button>
+                </div>
+                
+                <input type="hidden" name="section_id" value="{{ section.section_id }}">
+                
+                <div class="form-group">
+                    <label class="form-label">Section Title *</label>
+                    <input type="text" name="section_{{ section.section_id }}_title" class="form-input" value="{{ section.title }}" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Section Type *</label>
+                    <select name="section_{{ section.section_id }}_type" class="form-select" required>
+                        <option value="normal" {% if section.section_type == 'normal' %}selected{% endif %}>Normal</option>
+                        <option value="line_item" {% if section.section_type == 'line_item' %}selected{% endif %}>Line Item</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Order</label>
+                    <input type="number" name="section_{{ section.section_id }}_ordinal" class="form-input" value="{{ section.ordinal }}">
+                </div>
+                
+                <hr style="margin: var(--spacing-md) 0;">
+                <h5>Fields</h5>
+                
+                {% for field in section.fields %}
+                <div class="card-nested" style="margin-top: var(--spacing-md); padding: var(--spacing-md); background: var(--bg-secondary); border-radius: var(--border-radius);">
+                    <div class="flex-between mb-sm">
+                        <strong>Field: {{ field.label }}</strong>
+                        <button type="button" class="btn btn-sm btn-danger" onclick="deleteField('{{ template_id }}', '{{ field.field_id }}')">Delete</button>
+                    </div>
+                    
+                    <input type="hidden" name="field_id" value="{{ field.field_id }}">
+                    
+                    <div class="form-group">
+                        <label class="form-label">Field Label *</label>
+                        <input type="text" name="field_{{ field.field_id }}_label" class="form-input" value="{{ field.label }}" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Data Type *</label>
+                        <select name="field_{{ field.field_id }}_type" class="form-select" required>
+                            <option value="string" {% if field.data_type == 'string' %}selected{% endif %}>String (Text)</option>
+                            <option value="number" {% if field.data_type == 'number' %}selected{% endif %}>Number</option>
+                            <option value="date" {% if field.data_type == 'date' %}selected{% endif %}>Date</option>
+                            <option value="boolean" {% if field.data_type == 'boolean' %}selected{% endif %}>Boolean (Yes/No)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" name="field_{{ field.field_id }}_required" class="form-checkbox" {% if field.is_required %}checked{% endif %}>
+                            Required
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Order</label>
+                        <input type="number" name="field_{{ field.field_id }}_ordinal" class="form-input" value="{{ field.field_ordinal }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Calculation Formula (optional)</label>
+                        <input type="text" name="field_{{ field.field_id }}_calculation" class="form-input" value="{{ field.calculation_formula or '' }}" placeholder="e.g., sum(line_items.amount)">
+                        <small class="form-text">Leave empty for manual input. Use formulas like sum(), avg(), etc.</small>
+                    </div>
+                </div>
+                {% endfor %}
+                
+                <div class="form-group" style="margin-top: var(--spacing-md);">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="addFieldToSection('{{ section.section_id }}', {{ section.fields|length }})">+ Add Field to This Section</button>
+                </div>
+                
+                <div id="new_fields_{{ section.section_id }}"></div>
+            </div>
+            {% endfor %}
+            {% endif %}
+            
+            <hr style="margin: var(--spacing-xl) 0;">
+            <h3>Add New Section</h3>
+            <div class="form-group">
+                <button type="button" class="btn btn-secondary" onclick="addNewSection()">+ Add New Section</button>
+            </div>
+            <div id="new_sections"></div>
+            <input type="hidden" id="new_section_count" name="new_section_count" value="0">
+            
+            <hr style="margin: var(--spacing-xl) 0;">
+            <h3>Invoice Total Field</h3>
+            <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                Select which field should be used to calculate the invoice total amount. This field will be used for dashboard statistics and invoice summaries.
+            </p>
+            <div class="form-group">
+                <label for="total_field" class="form-label">Total Field</label>
+                <select id="total_field" name="total_field" class="form-select">
+                    <option value="">Auto-detect (use field labeled 'Total' or 'Grand Total')</option>
+                    
+                </select>
+                <small class="form-text" style="display: block; margin-top: var(--spacing-xs); color: var(--color-text-secondary);">
+                    Only number fields from normal sections are shown. If not specified, the system will auto-detect the total field.
+                </small>
+            </div>
+            
+            <div class="form-group" style="margin-top: var(--spacing-xl);">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <a href="{{ url_for('templates_bp.view_template', template_id=template_id) }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+let newSectionCount = 0;
+let fieldCounts = {};
+let currentTotalFieldId = '{{ template_info.total_field_id or "" }}';
+
+function updateTotalFieldDropdown() {
+    const totalFieldSelect = document.getElementById('total_field');
+    if (!totalFieldSelect) return;
+    
+    // Clear existing options except the first one
+    while (totalFieldSelect.options.length > 1) {
+        totalFieldSelect.remove(1);
+    }
+    
+    // Get all number fields from normal sections (existing and new)
+    const normalSectionFields = [];
+    
+    // Process existing sections
+    {% if sections %}
+    {% for section in sections %}
+    {% if section.section_type == 'normal' %}
+    {% for field in section.fields %}
+    {% if field.data_type == 'number' %}
+    normalSectionFields.push({
+        id: '{{ field.field_id }}',
+        label: '{{ field.label }}',
+        sectionTitle: '{{ section.title }}',
+        isExisting: true
+    });
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+    
+    // Process new sections (from DOM)
+    const newSections = document.querySelectorAll('#new_sections .card-nested');
+    newSections.forEach((sectionDiv, sectionIndex) => {
+        const sectionNum = sectionIndex + 1;
+        const sectionTypeSelect = sectionDiv.querySelector(`select[name="new_section_${sectionNum}_type"]`);
+        const sectionType = sectionTypeSelect ? sectionTypeSelect.value : 'normal';
+        
+        if (sectionType === 'normal') {
+            const sectionTitleInput = sectionDiv.querySelector(`input[name="new_section_${sectionNum}_title"]`);
+            const sectionTitle = sectionTitleInput ? sectionTitleInput.value : `New Section ${sectionNum}`;
+            
+            const fieldsContainer = sectionDiv.querySelector(`#new_section_${sectionNum}_fields`);
+            if (fieldsContainer) {
+                const fieldInputs = fieldsContainer.querySelectorAll('.form-group');
+                fieldInputs.forEach((fieldDiv, fieldIndex) => {
+                    const fieldNum = fieldIndex + 1;
+                    const labelInput = fieldDiv.querySelector(`input[name="new_section_${sectionNum}_field_${fieldNum}_label"]`);
+                    const typeSelect = fieldDiv.querySelector(`select[name="new_section_${sectionNum}_field_${fieldNum}_type"]`);
+                    
+                    if (labelInput && typeSelect && typeSelect.value === 'number' && labelInput.value) {
+                        normalSectionFields.push({
+                            id: `new_section_${sectionNum}_field_${fieldNum}`,
+                            label: labelInput.value,
+                            sectionTitle: sectionTitle,
+                            isExisting: false
+                        });
+                    }
+                });
+            }
+        }
+    });
+    
+    // Process new fields added to existing sections
+    {% if sections %}
+    {% for section in sections %}
+    {% if section.section_type == 'normal' %}
+    const newFieldsContainer = document.getElementById('new_fields_{{ section.section_id }}');
+    if (newFieldsContainer) {
+        const newFieldInputs = newFieldsContainer.querySelectorAll('.card-nested');
+        newFieldInputs.forEach((fieldDiv, fieldIndex) => {
+            const fieldNum = fieldIndex + 1;
+            const labelInput = fieldDiv.querySelector(`input[name="new_field_{{ section.section_id }}_${fieldNum}_label"]`);
+            const typeSelect = fieldDiv.querySelector(`select[name="new_field_{{ section.section_id }}_${fieldNum}_type"]`);
+            
+            if (labelInput && typeSelect && typeSelect.value === 'number' && labelInput.value) {
+                normalSectionFields.push({
+                    id: `new_field_{{ section.section_id }}_${fieldNum}`,
+                    label: labelInput.value,
+                    sectionTitle: '{{ section.title }}',
+                    isExisting: false
+                });
+            }
+        });
+    }
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+    
+    // Add options to dropdown
+    normalSectionFields.forEach(field => {
+        const option = document.createElement('option');
+        option.value = field.id;
+        option.textContent = `${field.sectionTitle} → ${field.label}`;
+        if (field.id === currentTotalFieldId) {
+            option.selected = true;
+        }
+        totalFieldSelect.appendChild(option);
+    });
+}
+
+// Update dropdown when page loads and when fields change
+document.addEventListener('DOMContentLoaded', function() {
+    updateTotalFieldDropdown();
+});
+
+// Update dropdown when field inputs change
+document.addEventListener('input', function(e) {
+    if (e.target.matches('input[name*="_label"], select[name*="_type"]')) {
+        updateTotalFieldDropdown();
+    }
+});
+
+function addNewSection() {
+    newSectionCount++;
+    document.getElementById('new_section_count').value = newSectionCount;
+    
+    const container = document.getElementById('new_sections');
+    const sectionDiv = document.createElement('div');
+    sectionDiv.className = 'card-nested';
+    sectionDiv.style.marginBottom = 'var(--spacing-lg)';
+    sectionDiv.style.padding = 'var(--spacing-lg)';
+    sectionDiv.style.border = '1px solid var(--border-color)';
+    sectionDiv.style.borderRadius = 'var(--border-radius-lg)';
+    sectionDiv.innerHTML = `
+        <div class="flex-between mb-md">
+            <h4>New Section ${newSectionCount}</h4>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="this.closest('.card-nested').remove(); updateNewSectionCount();">Remove</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Section Title *</label>
+            <input type="text" name="new_section_${newSectionCount}_title" class="form-input" required>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Section Type *</label>
+            <select name="new_section_${newSectionCount}_type" class="form-select" required>
+                <option value="normal">Normal</option>
+                <option value="line_item">Line Item</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Order</label>
+            <input type="number" name="new_section_${newSectionCount}_ordinal" class="form-input" value="${newSectionCount}">
+        </div>
+        <div id="new_section_${newSectionCount}_fields"></div>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="addFieldToNewSection(${newSectionCount})">+ Add Field</button>
+        <input type="hidden" id="new_section_${newSectionCount}_field_count" name="new_section_${newSectionCount}_field_count" value="0">
+    `;
+    container.appendChild(sectionDiv);
+    updateTotalFieldDropdown();
+}
+
+function addFieldToSection(sectionId, currentFieldCount) {
+    if (!fieldCounts[sectionId]) {
+        fieldCounts[sectionId] = currentFieldCount;
+    }
+    fieldCounts[sectionId]++;
+    
+    const container = document.getElementById(`new_fields_${sectionId}`);
+    const fieldDiv = document.createElement('div');
+    fieldDiv.className = 'card-nested';
+    fieldDiv.style.marginTop = 'var(--spacing-md)';
+    fieldDiv.style.padding = 'var(--spacing-md)';
+    fieldDiv.style.background = 'var(--bg-secondary)';
+    fieldDiv.style.borderRadius = 'var(--border-radius)';
+    fieldDiv.innerHTML = `
+        <div class="flex-between mb-sm">
+            <strong>New Field</strong>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="this.closest('.card-nested').remove();">Remove</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Field Label *</label>
+            <input type="text" name="new_field_${sectionId}_${fieldCounts[sectionId]}_label" class="form-input" required>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Data Type *</label>
+            <select name="new_field_${sectionId}_${fieldCounts[sectionId]}_type" class="form-select" required>
+                <option value="string">String (Text)</option>
+                <option value="number">Number</option>
+                <option value="date">Date</option>
+                <option value="boolean">Boolean (Yes/No)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="new_field_${sectionId}_${fieldCounts[sectionId]}_required" class="form-checkbox">
+                Required
+            </label>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Order</label>
+            <input type="number" name="new_field_${sectionId}_${fieldCounts[sectionId]}_ordinal" class="form-input" value="${fieldCounts[sectionId]}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Calculation Formula (optional)</label>
+            <input type="text" name="new_field_${sectionId}_${fieldCounts[sectionId]}_calculation" class="form-input" placeholder="e.g., sum(line_items.amount)">
+        </div>
+    `;
+    container.appendChild(fieldDiv);
+}
+
+function addFieldToNewSection(sectionNum) {
+    if (!fieldCounts[`new_${sectionNum}`]) {
+        fieldCounts[`new_${sectionNum}`] = 0;
+    }
+    fieldCounts[`new_${sectionNum}`]++;
+    
+    const fieldCountInput = document.getElementById(`new_section_${sectionNum}_field_count`);
+    fieldCountInput.value = fieldCounts[`new_${sectionNum}`];
+    
+    const container = document.getElementById(`new_section_${sectionNum}_fields`);
+    const fieldDiv = document.createElement('div');
+    fieldDiv.className = 'form-group';
+    fieldDiv.style.marginTop = 'var(--spacing-md)';
+    fieldDiv.style.padding = 'var(--spacing-md)';
+    fieldDiv.style.background = 'var(--bg-secondary)';
+    fieldDiv.style.borderRadius = 'var(--border-radius)';
+    fieldDiv.innerHTML = `
+        <div class="flex-between mb-sm">
+            <strong>Field ${fieldCounts[`new_${sectionNum}`]}</strong>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="this.closest('.form-group').remove();">Remove</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Field Label *</label>
+            <input type="text" name="new_section_${sectionNum}_field_${fieldCounts[`new_${sectionNum}`]}_label" class="form-input" required>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Data Type *</label>
+            <select name="new_section_${sectionNum}_field_${fieldCounts[`new_${sectionNum}`]}_type" class="form-select" required>
+                <option value="string">String (Text)</option>
+                <option value="number">Number</option>
+                <option value="date">Date</option>
+                <option value="boolean">Boolean (Yes/No)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="new_section_${sectionNum}_field_${fieldCounts[`new_${sectionNum}`]}_required" class="form-checkbox">
+                Required
+            </label>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Order</label>
+            <input type="number" name="new_section_${sectionNum}_field_${fieldCounts[`new_${sectionNum}`]}_ordinal" class="form-input" value="${fieldCounts[`new_${sectionNum}`]}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Calculation Formula (optional)</label>
+            <input type="text" name="new_section_${sectionNum}_field_${fieldCounts[`new_${sectionNum}`]}_calculation" class="form-input" placeholder="e.g., sum(line_items.amount)">
+        </div>
+    `;
+    container.appendChild(fieldDiv);
+}
+
+function updateNewSectionCount() {
+    const sections = document.querySelectorAll('#new_sections .card-nested');
+    document.getElementById('new_section_count').value = sections.length;
+    updateTotalFieldDropdown();
+}
+
+function deleteSection(templateId, sectionId) {
+    if (confirm('Are you sure you want to delete this section? All fields in this section will also be deleted.')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/templates/${templateId}/section/${sectionId}/delete`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function deleteField(templateId, fieldId) {
+    if (confirm('Are you sure you want to delete this field?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/templates/${templateId}/field/${fieldId}/delete`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}
+

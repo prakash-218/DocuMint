@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Invoice System{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<div class="card mb-lg">
+    <div class="card-header">
+        <h2 class="card-title">Organizations</h2>
+    </div>
+    <div class="card-body">
+        <p style="color: var(--text-secondary); margin-bottom: var(--spacing-lg);">
+            Manage your organizations. You can create new organizations or join existing ones by domain.
+        </p>
+        
+        <div style="display: flex; gap: var(--spacing-md); margin-bottom: var(--spacing-xl);">
+            <a href="{{ url_for('settings_bp.create_organization') }}" class="btn btn-primary">
+                <i data-lucide="plus" class="nav-icon" style="width: 16px; height: 16px; margin-right: 8px;"></i>
+                Create New Organization
+            </a>
+            <a href="{{ url_for('settings_bp.join_organization') }}" class="btn btn-secondary">
+                <i data-lucide="user-plus" class="nav-icon" style="width: 16px; height: 16px; margin-right: 8px;"></i>
+                Join Organization
+            </a>
+        </div>
+        
+        {% if user_organizations and user_organizations|length > 0 %}
+        <div>
+            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: var(--spacing-md); color: var(--text-primary);">
+                Your Organizations ({{ user_organizations|length }})
+            </h3>
+            <div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
+                {% for org in user_organizations %}
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--spacing-md); border: 1px solid var(--border-color); border-radius: var(--border-radius); background: var(--bg-secondary);">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
+                            {{ org.get('name') or org.name }}
+                            {% if (org.get('org_id') or org.org_id) == current_org_id %}
+                            <span class="badge badge-info" style="margin-left: var(--spacing-xs); font-size: 11px;">Current</span>
+                            {% endif %}
+                        </div>
+                        <div style="font-size: 13px; color: var(--text-secondary);">
+                            {{ org.get('domain') or org.domain }} • 
+                            Role: <strong>{{ org.get('role') or org.role }}</strong>
+                        </div>
+                    </div>
+                    {% if (org.get('org_id') or org.org_id) != current_org_id %}
+                    <form method="POST" action="{{ url_for('settings_bp.select_org') }}" style="margin: 0;">
+                        <input type="hidden" name="org_id" value="{{ org.get('org_id') or org.org_id }}">
+                        <button type="submit" class="btn btn-sm btn-secondary">Switch To</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <p style="color: var(--text-secondary);">
+            You are not a member of any organizations yet. Create or join one to get started.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-lg">
+    <div class="card-header">
+        <h2 class="card-title">Application Settings</h2>
+    </div>
+    <div class="card-body">
+        <p style="color: var(--text-secondary);">
+            The application uses the One Dark theme. All theme switching functionality has been removed.
+        </p>
+    </div>
+</div>
+{% endblock %}
