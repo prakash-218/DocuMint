@@ -16,8 +16,9 @@ def list_templates():
     org_id = g.current_org_id
 
     try:
-        templates = db.execute_proc('sp_list_templates', (org_id,))
-        return render_template('templates/list.html', templates=templates or [])
+        include_archived = request.args.get('include_archived', 'false').lower() == 'true'
+        templates = db.execute_proc('sp_list_templates', (org_id, include_archived))
+        return render_template('templates/list.html', templates=templates or [], include_archived=include_archived)
     except DatabaseError as e:
         flash('Error loading templates', 'error')
         return render_template('templates/list.html', templates=[])
@@ -134,10 +135,11 @@ def create_template():
                                     field_label = request.form.get(f'section_{i}_field_{j}_label')
                                     field_type = request.form.get(f'section_{i}_field_{j}_type')
                                     field_required = 1 if request.form.get(f'section_{i}_field_{j}_required') == 'on' else 0
+                                    field_currency = 1 if request.form.get(f'section_{i}_field_{j}_currency') == 'on' else 0
                                     field_ordinal_str = request.form.get(f'section_{i}_field_{j}_ordinal', str(j))
                                     field_calculation = request.form.get(f'section_{i}_field_{j}_calculation', '').strip() or None
 
-                                    print(f"    Field {j}: label={field_label}, type={field_type}, required={field_required}, ordinal={field_ordinal_str}, calculation={field_calculation}")
+                                    print(f"    Field {j}: label={field_label}, type={field_type}, required={field_required}, currency={field_currency}, ordinal={field_ordinal_str}, calculation={field_calculation}")
 
                                     try:
                                         field_ordinal = int(field_ordinal_str) if field_ordinal_str else j
@@ -152,11 +154,14 @@ def create_template():
                                             print(f"    WARNING: Invalid field_type '{field_type}', defaulting to 'string'")
                                             field_type_lower = 'string'
 
-                                        print(f"    Calling sp_add_template_field with: section_id={section_id}, label={field_label}, type={field_type_lower}, required={field_required}, ordinal={field_ordinal}, calculation={field_calculation}")
+                                        if field_type_lower != 'number':
+                                            field_currency = 0
+
+                                        print(f"    Calling sp_add_template_field with: section_id={section_id}, label={field_label}, type={field_type_lower}, required={field_required}, currency={field_currency}, ordinal={field_ordinal}, calculation={field_calculation}")
                                         try:
 
                                             field_result = db.execute_proc('sp_add_template_field',
-                                                          (section_id, field_label, field_type_lower, field_required, field_ordinal, field_calculation, None))
+                                                          (section_id, field_label, field_type_lower, field_required, field_currency, field_ordinal, field_calculation, None))
                                             if field_result and len(field_result) > 0:
                                                 field_id = field_result[0].get('field_id')
                                                 field_id_map[(i, j)] = field_id
@@ -254,7 +259,7 @@ def view_template(template_id):
         fields = db.execute_proc('sp_get_template_fields', (template_id,))
 
 
-        templates = db.execute_proc('sp_list_templates', (org_id,))
+        templates = db.execute_proc('sp_list_templates', (org_id, True))
         template_info = None
         for t in templates or []:
             if t.get('template_id') == template_id:
@@ -269,7 +274,7 @@ def view_template(template_id):
                 if section_id not in sections:
                     sections[section_id] = {
                         'section_id': section_id,
-                        'title': field['section_title'],
+                        'title': field.get('section_title') or field.get('section_display_name') or 'Untitled Section',
                         'ordinal': field['section_ordinal'],
                         'section_type': field.get('section_type', 'normal'),
                         'fields': []
@@ -321,7 +326,7 @@ def edit_template(template_id):
     if request.method == 'POST':
         try:
 
-            templates = db.execute_proc('sp_list_templates', (org_id,))
+            templates = db.execute_proc('sp_list_templates', (org_id, True))
             template_info = None
             latest_version = None
             for t in templates or []:
@@ -356,14 +361,17 @@ def edit_template(template_id):
                 label = request.form.get(f'field_{field_id}_label')
                 data_type = request.form.get(f'field_{field_id}_type')
                 is_required = 1 if request.form.get(f'field_{field_id}_required') == 'on' else 0
+                is_currency = 1 if request.form.get(f'field_{field_id}_currency') == 'on' else 0
                 ordinal = request.form.get(f'field_{field_id}_ordinal')
                 calculation = request.form.get(f'field_{field_id}_calculation', '').strip() or None
 
                 if label and data_type:
+                    if data_type != 'number':
+                        is_currency = 0
                     try:
                         ordinal_int = int(ordinal) if ordinal else None
                         db.execute_proc('sp_update_field',
-                                       (field_id, label, data_type, is_required, ordinal_int, calculation),
+                                       (field_id, label, data_type, is_required, is_currency, ordinal_int, calculation),
                                        fetch=False)
                     except (ValueError, DatabaseError) as e:
                         flash(f'Error updating field: {str(e)}', 'error')
@@ -387,14 +395,17 @@ def edit_template(template_id):
                         field_label = request.form.get(f'new_field_{section_id}_{field_num}_label')
                         field_type = request.form.get(f'new_field_{section_id}_{field_num}_type')
                         field_required = 1 if request.form.get(f'new_field_{section_id}_{field_num}_required') == 'on' else 0
+                        field_currency = 1 if request.form.get(f'new_field_{section_id}_{field_num}_currency') == 'on' else 0
                         field_ordinal = request.form.get(f'new_field_{section_id}_{field_num}_ordinal', str(field_num))
                         field_calculation = request.form.get(f'new_field_{section_id}_{field_num}_calculation', '').strip() or None
 
                         if field_label and field_type:
+                            if field_type != 'number':
+                                field_currency = 0
                             try:
                                 field_ordinal_int = int(field_ordinal) if field_ordinal else field_num
                                 db.execute_proc('sp_add_template_field',
-                                               (section_id, field_label, field_type, field_required, field_ordinal_int, field_calculation, None),
+                                               (section_id, field_label, field_type, field_required, field_currency, field_ordinal_int, field_calculation, None),
                                                fetch=False)
                             except DatabaseError as e:
                                 flash(f'Error adding field: {str(e)}', 'error')
@@ -509,7 +520,7 @@ def edit_template(template_id):
                     new_version = result[0].get('new_version')
                     flash(f'A new version (v{new_version}) was created automatically to preserve existing invoices. You are now editing the new version.', 'info')
 
-                    templates = db.execute_proc('sp_list_templates', (org_id,))
+                    templates = db.execute_proc('sp_list_templates', (org_id, True))
                     for t in templates or []:
                         if t.get('template_id') == template_id and t.get('version') == new_version:
                             template_info = t
@@ -556,7 +567,7 @@ def edit_template(template_id):
                 if section_id not in sections:
                     sections[section_id] = {
                         'section_id': section_id,
-                        'title': field['section_title'],
+                        'title': field.get('section_title') or field.get('section_display_name') or 'Untitled Section',
                         'ordinal': field['section_ordinal'],
                         'section_type': field.get('section_type', 'normal'),
                         'fields': []
@@ -601,4 +612,34 @@ def delete_field(template_id, field_id):
         flash(f'Error deleting field: {str(e)}', 'error')
 
     return redirect(url_for('templates_bp.edit_template', template_id=template_id))
+
+
+@templates_bp.route('/<template_id>/archive', methods=['POST'])
+@require_org
+def archive_template(template_id):
+    """Archive a template"""
+    org_id = g.current_org_id
+    
+    try:
+        db.execute_proc('sp_archive_template', (template_id, org_id), fetch=False)
+        flash('Template archived successfully', 'success')
+    except DatabaseError as e:
+        flash(f'Error archiving template: {str(e)}', 'error')
+    
+    return redirect(url_for('templates_bp.view_template', template_id=template_id))
+
+
+@templates_bp.route('/<template_id>/unarchive', methods=['POST'])
+@require_org
+def unarchive_template(template_id):
+    """Unarchive a template"""
+    org_id = g.current_org_id
+    
+    try:
+        db.execute_proc('sp_unarchive_template', (template_id, org_id), fetch=False)
+        flash('Template unarchived successfully', 'success')
+    except DatabaseError as e:
+        flash(f'Error unarchiving template: {str(e)}', 'error')
+    
+    return redirect(url_for('templates_bp.view_template', template_id=template_id))
 

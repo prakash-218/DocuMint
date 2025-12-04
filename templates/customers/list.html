@@ -8,7 +8,11 @@
     <div class="list-header-left">
         <h2 class="list-title">Customers <span class="list-count">{{ customers|length if customers else 0 }}</span></h2>
     </div>
-    <div class="list-header-right">
+    <div class="list-header-right" style="display: flex; gap: var(--spacing-md); align-items: center;">
+        <a href="{{ url_for('customers_bp.list_customers', include_archived='true' if not include_archived else 'false') }}" 
+           class="btn btn-secondary btn-sm">
+            {% if include_archived %}Hide Archived{% else %}Show Archived{% endif %}
+        </a>
         <a href="{{ url_for('customers_bp.create_customer') }}" class="btn btn-primary">
             <i data-lucide="plus" class="nav-icon"></i>
             Create Customer
@@ -30,12 +34,15 @@
         </thead>
         <tbody>
             {% for customer in customers %}
-            <tr class="list-row">
+            <tr class="list-row" {% if customer.is_archived %}style="opacity: 0.6;"{% endif %}>
                 <td>
                     <div class="list-item-content">
                         <a href="{{ url_for('customers_bp.view_customer', customer_id=customer.customer_id) }}" class="item-id">
                             {{ customer.name }}
                         </a>
+                        {% if customer.is_archived %}
+                        <span class="badge badge-warning" style="margin-left: var(--spacing-xs);">Archived</span>
+                        {% endif %}
                     </div>
                 </td>
                 <td>{{ customer.tax_id or 'N/A' }}</td>

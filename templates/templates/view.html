@@ -11,7 +11,9 @@
                 <h2 class="card-title">
                     {% if template_info %}
                         {{ template_info.name }} - v{{ template_info.version }}
-                        {% if template_info.version == template_info.latest_version %}
+                        {% if template_info.is_archived %}
+                            <span class="badge badge-warning" style="margin-left: var(--spacing-sm);">Archived</span>
+                        {% elif template_info.version == template_info.latest_version %}
                             <span class="badge badge-success" style="margin-left: var(--spacing-sm);">Latest</span>
                         {% else %}
                             <span class="badge badge-warning" style="margin-left: var(--spacing-sm);">v{{ template_info.latest_version }} available</span>
@@ -22,12 +24,30 @@
                 </h2>
             </div>
             <div class="card-title card-actions">
-                {% if template_info and template_info.version == template_info.latest_version %}
+                {% if template_info and not template_info.is_archived and template_info.version == template_info.latest_version %}
                 <a href="{{ url_for('templates_bp.edit_template', template_id=template_id) }}" class="btn btn-primary left-space">
-                    <i data-lucide="edit" class="nav-icon"></i>
+                    
                     Edit Template
                 </a>
-                
+                {% endif %}
+                {% if template_info %}
+                    {% if template_info.is_archived %}
+                    <form method="POST" action="{{ url_for('templates_bp.unarchive_template', template_id=template_id) }}" 
+                          style="display: inline;" class="left-space">
+                        <button type="submit" class="btn btn-success">
+                            Unarchive
+                        </button>
+                    </form>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('templates_bp.archive_template', template_id=template_id) }}" 
+                          style="display: inline;" 
+                          class="left-space"
+                          onsubmit="return confirm('Are you sure you want to archive this template? Archived templates cannot be used for new invoices, but existing invoices will remain accessible.');">
+                        <button type="submit" class="btn btn-warning">
+                            Archive
+                        </button>
+                    </form>
+                    {% endif %}
                 {% endif %}
             </div>
         </div>

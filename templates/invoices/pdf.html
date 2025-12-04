@@ -371,6 +371,19 @@
         <div class="info-section">
             <div class="info-left">
                 <div class="info-box">
+                    <div class="info-box-title">From</div>
+                    <div class="info-box-content">
+                        <strong>{{ invoice.organization_name or 'Organization' }}</strong><br>
+                        {% if invoice.organization_street_address %}{{ invoice.organization_street_address }}<br>{% endif %}
+                        {% if invoice.organization_city or invoice.organization_state or invoice.organization_zip_code %}
+                            {% if invoice.organization_city %}{{ invoice.organization_city }}{% endif %}{% if invoice.organization_city and invoice.organization_state %}, {% endif %}{% if invoice.organization_state %}{{ invoice.organization_state }}{% endif %} {% if invoice.organization_zip_code %}{{ invoice.organization_zip_code }}{% endif %}<br>
+                        {% endif %}
+                        {% if invoice.organization_country %}{{ invoice.organization_country }}{% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="info-right">
+                <div class="info-box">
                     <div class="info-box-title">Bill To</div>
                     <div class="info-box-content">
                         <strong>{{ invoice.customer_name }}</strong><br>
@@ -382,7 +395,10 @@
                     </div>
                 </div>
             </div>
-            <div class="info-right">
+        </div>
+        
+        <div class="info-section">
+            <div class="info-right" style="width: 100%;">
                 <div class="info-box">
                     <div class="info-box-title">Invoice Details</div>
                     <div class="info-box-content">
@@ -418,7 +434,11 @@
                                             <td{% if loop.last %} class="text-right"{% endif %}>
                                                 {% if value %}
                                                     {% if value.data_type == 'number' %}
-                                                        <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
+                                                        {% if value.is_currency %}
+                                                            <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
+                                                        {% else %}
+                                                            <span>{% if value.val_number %}{{ value.val_number | number }}{% else %}N/A{% endif %}</span>
+                                                        {% endif %}
                                                     {% elif value.data_type == 'date' %}
                                                         {{ value.val_date or 'N/A' }}
                                                     {% elif value.data_type == 'boolean' %}
@@ -443,7 +463,11 @@
                                 <span class="field-label">{{ value.field_label }}:</span>
                                 <span class="field-value">
                                     {% if value.data_type == 'number' %}
-                                        <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
+                                        {% if value.is_currency %}
+                                            <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
+                                        {% else %}
+                                            <span>{% if value.val_number %}{{ value.val_number | number }}{% else %}N/A{% endif %}</span>
+                                        {% endif %}
                                     {% elif value.data_type == 'date' %}
                                         {{ value.val_date or 'N/A' }}
                                     {% elif value.data_type == 'boolean' %}

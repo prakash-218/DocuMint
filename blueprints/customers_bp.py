@@ -16,8 +16,9 @@ def list_customers():
     org_id = g.current_org_id
 
     try:
-        customers = db.execute_proc('sp_list_customers', (org_id,))
-        return render_template('customers/list.html', customers=customers or [])
+        include_archived = request.args.get('include_archived', 'false').lower() == 'true'
+        customers = db.execute_proc('sp_list_customers', (org_id, include_archived))
+        return render_template('customers/list.html', customers=customers or [], include_archived=include_archived)
     except DatabaseError as e:
         flash('Error loading customers', 'error')
         return render_template('customers/list.html', customers=[])
@@ -280,4 +281,34 @@ def delete_customer(customer_id):
             flash(f'Error deleting customer: {str(e)}', 'error')
 
     return redirect(url_for('customers_bp.list_customers'))
+
+
+@customers_bp.route('/<customer_id>/archive', methods=['POST'])
+@require_org
+def archive_customer(customer_id):
+    """Archive a customer"""
+    org_id = g.current_org_id
+    
+    try:
+        db.execute_proc('sp_archive_customer', (customer_id, org_id), fetch=False)
+        flash('Customer archived successfully', 'success')
+    except DatabaseError as e:
+        flash(f'Error archiving customer: {str(e)}', 'error')
+    
+    return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+
+
+@customers_bp.route('/<customer_id>/unarchive', methods=['POST'])
+@require_org
+def unarchive_customer(customer_id):
+    """Unarchive a customer"""
+    org_id = g.current_org_id
+    
+    try:
+        db.execute_proc('sp_unarchive_customer', (customer_id, org_id), fetch=False)
+        flash('Customer unarchived successfully', 'success')
+    except DatabaseError as e:
+        flash(f'Error unarchiving customer: {str(e)}', 'error')
+    
+    return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
 

@@ -44,25 +44,33 @@ def evaluate_calculation(formula: str, context: Dict[str, Any]) -> Optional[floa
             func_name = aggregation_match.group(1).lower()
             field_ref = aggregation_match.group(2).strip()
 
-
-
             field_label = None
             section_name = None
 
+            quoted_section_quoted_field = re.match(r'^["\']([^"\']+)["\']\.["\']([^"\']+)["\']$|^\[([^\]]+)\]\.\[([^\]]+)\]$|^["\']([^"\']+)["\']\.\[([^\]]+)\]$|^\[([^\]]+)\]\.["\']([^"\']+)["\']$', field_ref)
+            if quoted_section_quoted_field:
+                if quoted_section_quoted_field.group(1) and quoted_section_quoted_field.group(2):
+                    section_name = quoted_section_quoted_field.group(1).strip()
+                    field_label = quoted_section_quoted_field.group(2).strip()
+                elif quoted_section_quoted_field.group(3) and quoted_section_quoted_field.group(4):
+                    section_name = quoted_section_quoted_field.group(3).strip()
+                    field_label = quoted_section_quoted_field.group(4).strip()
+                elif quoted_section_quoted_field.group(5) and quoted_section_quoted_field.group(6):
+                    section_name = quoted_section_quoted_field.group(5).strip()
+                    field_label = quoted_section_quoted_field.group(6).strip()
+                elif quoted_section_quoted_field.group(7) and quoted_section_quoted_field.group(8):
+                    section_name = quoted_section_quoted_field.group(7).strip()
+                    field_label = quoted_section_quoted_field.group(8).strip()
 
-
-            quoted_section_match = re.match(r'^["\']([^"\']+)["\']\.([^.]+)$|^\[([^\]]+)\]\.([^.]+)$', field_ref)
-            if quoted_section_match:
-                if quoted_section_match.group(1) and quoted_section_match.group(2):
-
-                    section_name = quoted_section_match.group(1).strip()
-                    field_label = quoted_section_match.group(2).strip()
-                elif quoted_section_match.group(3) and quoted_section_match.group(4):
-
-                    section_name = quoted_section_match.group(3).strip()
-                    field_label = quoted_section_match.group(4).strip()
-
-
+            if field_label is None:
+                quoted_section_match = re.match(r'^["\']([^"\']+)["\']\.([^.]+)$|^\[([^\]]+)\]\.([^.]+)$', field_ref)
+                if quoted_section_match:
+                    if quoted_section_match.group(1) and quoted_section_match.group(2):
+                        section_name = quoted_section_match.group(1).strip()
+                        field_label = quoted_section_match.group(2).strip()
+                    elif quoted_section_match.group(3) and quoted_section_match.group(4):
+                        section_name = quoted_section_match.group(3).strip()
+                        field_label = quoted_section_match.group(4).strip()
 
             if field_label is None:
                 quoted_field_match = re.match(r'^([^."\'\[\]]+)\.?["\']([^"\']+)["\']|^([^."\'\[\]]+)\.?\[([^\]]+)\]', field_ref)
@@ -74,7 +82,6 @@ def evaluate_calculation(formula: str, context: Dict[str, Any]) -> Optional[floa
                         section_name = quoted_field_match.group(3).strip()
                         field_label = quoted_field_match.group(4).strip()
 
-
             if field_label is None:
                 quoted_only_match = re.match(r'^["\']([^"\']+)["\']$|^\[([^\]]+)\]$', field_ref)
                 if quoted_only_match:
@@ -82,14 +89,12 @@ def evaluate_calculation(formula: str, context: Dict[str, Any]) -> Optional[floa
                     if field_label:
                         field_label = field_label.strip()
 
-
             if field_label is None:
                 if '.' in field_ref:
                     section_name, field_label = field_ref.split('.', 1)
                     section_name = section_name.strip()
                     field_label = field_label.strip()
                 else:
-
                     section_name = 'line_items'
                     field_label = field_ref.strip()
 
@@ -224,6 +229,7 @@ def _evaluate_aggregation(func_name: str, section_name: str, field_label: str, c
                         search_label_lower = field_label.lower()
                         print(f"DEBUG CALC: Comparing field '{field_label_lower}' with search '{search_label_lower}'")
                         if field_label_lower == search_label_lower:
+                            print(f"DEBUG CALC: Field match! Value structure: data_type={value.get('data_type')}, val_number={value.get('val_number')}, val_string={value.get('val_string')}, has_field_id={bool(value.get('field_id'))}, formula={value.get('calculation_formula')}")
 
                             field_id = value.get('field_id')
                             if field_id:
@@ -233,11 +239,40 @@ def _evaluate_aggregation(func_name: str, section_name: str, field_label: str, c
                                     print(f"DEBUG CALC: Found calculated value for '{field_label}': {calc_val}")
                                     values.append(calc_val)
                                     continue
+                                
+                                formula = value.get('calculation_formula')
+                                if formula:
+                                    print(f"DEBUG CALC: Field '{field_label}' has formula '{formula}' but not in calculated_values yet. Attempting to calculate...")
+                                    try:
+                                        context = {
+                                            'sections_data': sections_data,
+                                            'invoice_values': invoice_values,
+                                            'calculated_values': calculated_values.copy(),
+                                            'current_section': section_name,
+                                            'current_row': row,
+                                            'current_row_index': ordinal
+                                        }
+                                        calc_val = evaluate_calculation(formula, context)
+                                        if calc_val is not None:
+                                            print(f"DEBUG CALC: Calculated value on-the-fly for '{field_label}': {calc_val}")
+                                            values.append(float(calc_val))
+                                            continue
+                                    except Exception as e:
+                                        print(f"DEBUG CALC: Error calculating field on-the-fly: {e}")
 
-                            if value.get('data_type') == 'number' and value.get('val_number') is not None:
-                                stored_val = float(value.get('val_number'))
-                                print(f"DEBUG CALC: Found stored value for '{field_label}': {stored_val}")
-                                values.append(stored_val)
+                            data_type = value.get('data_type')
+                            val_number = value.get('val_number')
+                            print(f"DEBUG CALC: Checking value - data_type='{data_type}', val_number={val_number}, type(val_number)={type(val_number)}")
+                            
+                            if data_type == 'number' and val_number is not None:
+                                try:
+                                    stored_val = float(val_number)
+                                    print(f"DEBUG CALC: Found stored value for '{field_label}': {stored_val}")
+                                    values.append(stored_val)
+                                except (ValueError, TypeError) as e:
+                                    print(f"DEBUG CALC: Error converting val_number to float: {e}, val_number={val_number}")
+                            else:
+                                print(f"DEBUG CALC: Value not added - data_type='{data_type}' (expected 'number'), val_number={val_number} (expected not None)")
     elif isinstance(line_item_rows, list):
 
         for row_idx, row in enumerate(line_item_rows):
@@ -248,9 +283,11 @@ def _evaluate_aggregation(func_name: str, section_name: str, field_label: str, c
                         search_label_lower = field_label.lower()
                         print(f"DEBUG CALC: Comparing field '{field_label_lower}' with search '{search_label_lower}'")
                         if field_label_lower == search_label_lower:
+                            print(f"DEBUG CALC: Field match! Value structure: data_type={value.get('data_type')}, val_number={value.get('val_number')}, val_string={value.get('val_string')}, has_field_id={bool(value.get('field_id'))}, formula={value.get('calculation_formula')}")
 
                             field_id = value.get('field_id')
                             ordinal = value.get('value_ordinal', 0) or 0
+                            
                             if field_id:
                                 calc_key = (field_id, ordinal)
                                 if calc_key in calculated_values:
@@ -258,11 +295,40 @@ def _evaluate_aggregation(func_name: str, section_name: str, field_label: str, c
                                     print(f"DEBUG CALC: Found calculated value for '{field_label}': {calc_val}")
                                     values.append(calc_val)
                                     continue
+                                
+                                formula = value.get('calculation_formula')
+                                if formula:
+                                    print(f"DEBUG CALC: Field '{field_label}' has formula '{formula}' but not in calculated_values yet. Attempting to calculate...")
+                                    try:
+                                        context = {
+                                            'sections_data': sections_data,
+                                            'invoice_values': invoice_values,
+                                            'calculated_values': calculated_values.copy(),
+                                            'current_section': section_name,
+                                            'current_row': row,
+                                            'current_row_index': row_idx
+                                        }
+                                        calc_val = evaluate_calculation(formula, context)
+                                        if calc_val is not None:
+                                            print(f"DEBUG CALC: Calculated value on-the-fly for '{field_label}': {calc_val}")
+                                            values.append(float(calc_val))
+                                            continue
+                                    except Exception as e:
+                                        print(f"DEBUG CALC: Error calculating field on-the-fly: {e}")
 
-                            if value.get('data_type') == 'number' and value.get('val_number') is not None:
-                                stored_val = float(value.get('val_number'))
-                                print(f"DEBUG CALC: Found stored value for '{field_label}': {stored_val}")
-                                values.append(stored_val)
+                            data_type = value.get('data_type')
+                            val_number = value.get('val_number')
+                            print(f"DEBUG CALC: Checking value - data_type='{data_type}', val_number={val_number}, type(val_number)={type(val_number)}")
+                            
+                            if data_type == 'number' and val_number is not None:
+                                try:
+                                    stored_val = float(val_number)
+                                    print(f"DEBUG CALC: Found stored value for '{field_label}': {stored_val}")
+                                    values.append(stored_val)
+                                except (ValueError, TypeError) as e:
+                                    print(f"DEBUG CALC: Error converting val_number to float: {e}, val_number={val_number}")
+                            else:
+                                print(f"DEBUG CALC: Value not added - data_type='{data_type}' (expected 'number'), val_number={val_number} (expected not None)")
 
     print(f"DEBUG CALC: Collected {len(values)} values: {values}")
 

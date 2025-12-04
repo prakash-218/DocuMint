@@ -389,7 +389,22 @@ def register_org():
 
 
                 try:
-                    org_result = db.execute_proc('sp_create_organization', (org_name, org_domain, None))
+                    street_address = request.form.get('street_address')
+                    city = request.form.get('city')
+                    state = request.form.get('state')
+                    zip_code = request.form.get('zip_code')
+                    country = request.form.get('country')
+                    
+                    org_result = db.execute_proc('sp_create_organization', (
+                        org_name, 
+                        org_domain, 
+                        street_address or None,
+                        city or None,
+                        state or None,
+                        zip_code or None,
+                        country or None,
+                        None
+                    ))
                     if not org_result or len(org_result) == 0:
                         flash('Failed to create organization', 'error')
                         return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=None, existing_user=existing_user)

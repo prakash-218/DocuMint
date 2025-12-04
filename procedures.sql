@@ -13,6 +13,11 @@ DELIMITER //
 CREATE PROCEDURE sp_create_organization(
     IN p_name VARCHAR(100),
     IN p_domain VARCHAR(100),
+    IN p_street_address VARCHAR(255),
+    IN p_city VARCHAR(100),
+    IN p_state VARCHAR(100),
+    IN p_zip_code VARCHAR(20),
+    IN p_country VARCHAR(100),
     OUT p_org_id CHAR(36)
 )
 BEGIN
@@ -24,8 +29,8 @@ BEGIN
     
     SET p_org_id = UUID();
     
-    INSERT INTO organization (org_id, domain, name)
-    VALUES (p_org_id, p_domain, p_name);
+    INSERT INTO organization (org_id, domain, name, street_address, city, state, zip_code, country)
+    VALUES (p_org_id, p_domain, p_name, p_street_address, p_city, p_state, p_zip_code, p_country);
     
     
     SELECT p_org_id AS org_id;
@@ -175,6 +180,61 @@ BEGIN
 END //
 
 
+DROP PROCEDURE IF EXISTS sp_get_organization_details //
+CREATE PROCEDURE sp_get_organization_details(
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    SELECT 
+        org_id,
+        name,
+        domain,
+        street_address,
+        city,
+        state,
+        zip_code,
+        country,
+        created_at
+    FROM organization
+    WHERE org_id = p_org_id;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_update_organization //
+CREATE PROCEDURE sp_update_organization(
+    IN p_org_id CHAR(36),
+    IN p_name VARCHAR(100),
+    IN p_street_address VARCHAR(255),
+    IN p_city VARCHAR(100),
+    IN p_state VARCHAR(100),
+    IN p_zip_code VARCHAR(20),
+    IN p_country VARCHAR(100)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM organization WHERE org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Organization does not exist';
+    END IF;
+    
+    UPDATE organization
+    SET 
+        name = IFNULL(p_name, name),
+        street_address = p_street_address,
+        city = p_city,
+        state = p_state,
+        zip_code = p_zip_code,
+        country = p_country
+    WHERE org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
+END //
+
+
 
 
 
@@ -216,7 +276,7 @@ CREATE PROCEDURE sp_check_template_version_has_invoices(
 )
 BEGIN
     DECLARE v_count INT DEFAULT 0;
-    DECLARE v_has_invoices TINYINT(1) DEFAULT 0;
+    DECLARE v_has_invoices BOOLEAN DEFAULT FALSE;
     
     SELECT COUNT(*) INTO v_count
     FROM invoice
@@ -224,7 +284,7 @@ BEGIN
       AND template_version = p_template_version
       AND org_id = p_org_id;
     
-    SET v_has_invoices = IF(v_count > 0, 1, 0);
+    SET v_has_invoices = IF(v_count > 0, TRUE, FALSE);
     
     
     SELECT v_has_invoices AS has_invoices, v_count AS invoice_count;
@@ -280,21 +340,23 @@ BEGIN
     VALUES (p_template_id, p_new_version, p_org_id, v_template_name, v_currency_code, NULL);
     
     
-    INSERT INTO section (section_id, template_id, template_version, title, ordinal, section_type)
-    SELECT UUID(), p_template_id, p_new_version, title, ordinal, section_type
+    INSERT INTO section (section_id, template_id, template_version, name, display_name, ordinal, section_type)
+    SELECT UUID(), p_template_id, p_new_version, name, display_name, ordinal, section_type
     FROM section
     WHERE template_id = p_template_id
       AND template_version = v_latest_version
     ORDER BY ordinal;
     
     
-    INSERT INTO field (field_id, section_id, label, data_type, is_required, ordinal, calculation_formula)
+    INSERT INTO field (field_id, section_id, name, display_name, data_type, is_required, is_currency, ordinal, calculation_formula)
     SELECT 
         UUID(),
         new_s.section_id,
-        f.label,
+        f.name,
+        f.display_name,
         f.data_type,
         f.is_required,
+        f.is_currency,
         f.ordinal,
         f.calculation_formula
     FROM field f
@@ -302,7 +364,7 @@ BEGIN
     JOIN section new_s ON new_s.template_id = p_template_id
                       AND new_s.template_version = p_new_version
                       AND new_s.ordinal = old_s.ordinal
-                      AND new_s.title = old_s.title
+                      AND new_s.name = old_s.name
     WHERE old_s.template_id = p_template_id
       AND old_s.template_version = v_latest_version
     ORDER BY old_s.ordinal, f.ordinal;
@@ -338,7 +400,8 @@ END //
 CREATE PROCEDURE sp_create_section(
     IN p_template_id CHAR(36),
     IN p_template_version INT,
-    IN p_title VARCHAR(100),
+    IN p_name VARCHAR(100),
+    IN p_display_name VARCHAR(100),
     IN p_ordinal INT,
     IN p_section_type VARCHAR(20),
     OUT p_section_id CHAR(36)
@@ -358,10 +421,18 @@ BEGIN
         SET p_section_type = 'normal';
     END IF;
     
+    IF p_name IS NULL OR p_name = '' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Section name is required and cannot contain spaces';
+    END IF;
+    
+    IF p_name LIKE '% %' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Section name cannot contain spaces';
+    END IF;
+    
     SET p_section_id = UUID();
     
-    INSERT INTO section (section_id, template_id, template_version, title, ordinal, section_type)
-    VALUES (p_section_id, p_template_id, p_template_version, p_title, IFNULL(p_ordinal, 0), IFNULL(p_section_type, 'normal'));
+    INSERT INTO section (section_id, template_id, template_version, name, display_name, ordinal, section_type)
+    VALUES (p_section_id, p_template_id, p_template_version, p_name, p_display_name, IFNULL(p_ordinal, 0), IFNULL(p_section_type, 'normal'));
     
     
     SELECT p_section_id AS section_id;
@@ -370,9 +441,11 @@ END //
 
 CREATE PROCEDURE sp_add_template_field(
     IN p_section_id CHAR(36),
-    IN p_label VARCHAR(100),
+    IN p_name VARCHAR(100),
+    IN p_display_name VARCHAR(100),
     IN p_data_type VARCHAR(20),
-    IN p_is_required TINYINT(1),
+    IN p_is_required BOOLEAN,
+    IN p_is_currency BOOLEAN,
     IN p_ordinal INT,
     IN p_calculation_formula TEXT,
     OUT p_field_id CHAR(36)
@@ -392,10 +465,18 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid data type. Must be: string, number, date, or boolean';
     END IF;
     
+    IF p_name IS NULL OR p_name = '' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Field name is required and cannot contain spaces';
+    END IF;
+    
+    IF p_name LIKE '% %' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Field name cannot contain spaces';
+    END IF;
+    
     SET p_field_id = UUID();
     
-    INSERT INTO field (field_id, section_id, label, data_type, is_required, ordinal, calculation_formula)
-    VALUES (p_field_id, p_section_id, p_label, p_data_type, IFNULL(p_is_required, 0), IFNULL(p_ordinal, 0), p_calculation_formula);
+    INSERT INTO field (field_id, section_id, name, display_name, data_type, is_required, is_currency, ordinal, calculation_formula)
+    VALUES (p_field_id, p_section_id, p_name, p_display_name, p_data_type, IFNULL(p_is_required, FALSE), IFNULL(p_is_currency, FALSE), IFNULL(p_ordinal, 0), p_calculation_formula);
     
     
     SELECT p_field_id AS field_id;
@@ -456,13 +537,17 @@ BEGIN
     
     SELECT 
         s.section_id,
-        s.title AS section_title,
+        s.name AS section_name,
+        s.display_name AS section_display_name,
+        s.display_name AS section_title,
         s.ordinal AS section_ordinal,
         s.section_type,
         f.field_id,
-        f.label,
+        f.name AS field_name,
+        f.display_name AS field_display_name,
         f.data_type,
         f.is_required,
+        f.is_currency,
         f.ordinal AS field_ordinal,
         f.calculation_formula
     FROM section s
@@ -474,7 +559,8 @@ END //
 
 
 CREATE PROCEDURE sp_list_templates(
-    IN p_org_id CHAR(36)
+    IN p_org_id CHAR(36),
+    IN p_include_archived BOOLEAN
 )
 BEGIN
     SELECT 
@@ -482,19 +568,22 @@ BEGIN
         t.version,
         t.name,
         t.currency_code,
+        t.is_archived,
         t.created_at,
         (SELECT MAX(version) FROM template WHERE template_id = t.template_id) AS latest_version
     FROM template t
     WHERE t.org_id = p_org_id
-    GROUP BY t.template_id, t.version, t.name, t.currency_code, t.created_at
-    ORDER BY t.created_at DESC;
+      AND (p_include_archived = TRUE OR t.is_archived = FALSE)
+    GROUP BY t.template_id, t.version, t.name, t.currency_code, t.is_archived, t.created_at
+    ORDER BY t.is_archived ASC, t.created_at DESC;
 END //
 
 
 DROP PROCEDURE IF EXISTS sp_update_section //
 CREATE PROCEDURE sp_update_section(
     IN p_section_id CHAR(36),
-    IN p_title VARCHAR(100),
+    IN p_name VARCHAR(100),
+    IN p_display_name VARCHAR(100),
     IN p_ordinal INT,
     IN p_section_type VARCHAR(20)
 )
@@ -513,9 +602,14 @@ BEGIN
         SET p_section_type = 'normal';
     END IF;
     
+    IF p_name IS NOT NULL AND p_name LIKE '% %' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Section name cannot contain spaces';
+    END IF;
+    
     UPDATE section
     SET 
-        title = IFNULL(p_title, title),
+        name = IFNULL(p_name, name),
+        display_name = p_display_name,
         ordinal = IFNULL(p_ordinal, ordinal),
         section_type = IFNULL(p_section_type, section_type)
     WHERE section_id = p_section_id;
@@ -548,9 +642,11 @@ END //
 DROP PROCEDURE IF EXISTS sp_update_field //
 CREATE PROCEDURE sp_update_field(
     IN p_field_id CHAR(36),
-    IN p_label VARCHAR(100),
+    IN p_name VARCHAR(100),
+    IN p_display_name VARCHAR(100),
     IN p_data_type VARCHAR(20),
-    IN p_is_required TINYINT(1),
+    IN p_is_required BOOLEAN,
+    IN p_is_currency BOOLEAN,
     IN p_ordinal INT,
     IN p_calculation_formula TEXT
 )
@@ -569,11 +665,17 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid data type. Must be: string, number, date, or boolean';
     END IF;
     
+    IF p_name IS NOT NULL AND p_name LIKE '% %' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Field name cannot contain spaces';
+    END IF;
+    
     UPDATE field
     SET 
-        label = IFNULL(p_label, label),
+        name = IFNULL(p_name, name),
+        display_name = p_display_name,
         data_type = IFNULL(p_data_type, data_type),
         is_required = IFNULL(p_is_required, is_required),
+        is_currency = IFNULL(p_is_currency, is_currency),
         ordinal = IFNULL(p_ordinal, ordinal),
         calculation_formula = p_calculation_formula
     WHERE field_id = p_field_id;
@@ -639,7 +741,8 @@ END //
 
 DROP PROCEDURE IF EXISTS sp_list_customers //
 CREATE PROCEDURE sp_list_customers(
-    IN p_org_id CHAR(36)
+    IN p_org_id CHAR(36),
+    IN p_include_archived BOOLEAN
 )
 BEGIN
     SELECT 
@@ -651,12 +754,14 @@ BEGIN
         c.state,
         c.zip_code,
         c.country,
+        c.is_archived,
         c.created_at,
         COUNT(DISTINCT i.invoice_id) AS invoice_count
     FROM customer c
     LEFT JOIN invoice i ON c.customer_id = i.customer_id
     WHERE c.org_id = p_org_id
-    GROUP BY c.customer_id, c.name, c.tax_id, c.street_address, c.city, c.state, c.zip_code, c.country, c.created_at
+      AND (p_include_archived = TRUE OR c.is_archived = FALSE)
+    GROUP BY c.customer_id, c.name, c.tax_id, c.street_address, c.city, c.state, c.zip_code, c.country, c.is_archived, c.created_at
     ORDER BY c.name;
 END //
 
@@ -757,14 +862,19 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer does not exist or does not belong to organization';
     END IF;
     
+    IF EXISTS (SELECT 1 FROM customer WHERE customer_id = p_customer_id AND org_id = p_org_id AND is_archived = TRUE) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot create invoice for archived customer';
+    END IF;
+    
     
     SELECT MAX(version) INTO v_latest_version
     FROM template
     WHERE template_id = p_template_id
-      AND org_id = p_org_id;
+      AND org_id = p_org_id
+      AND is_archived = FALSE;
     
     IF v_latest_version IS NULL THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist or does not belong to organization';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist, does not belong to organization, or is archived';
     END IF;
     
     SET p_invoice_id = UUID();
@@ -934,6 +1044,12 @@ BEGIN
     SELECT 
         i.invoice_id,
         i.org_id,
+        o.name AS organization_name,
+        o.street_address AS organization_street_address,
+        o.city AS organization_city,
+        o.state AS organization_state,
+        o.zip_code AS organization_zip_code,
+        o.country AS organization_country,
         i.customer_id,
         c.name AS customer_name,
         c.street_address AS customer_street_address,
@@ -949,6 +1065,7 @@ BEGIN
         i.due_date,
         i.status
     FROM invoice i
+    JOIN organization o ON i.org_id = o.org_id
     JOIN customer c ON i.customer_id = c.customer_id
     LEFT JOIN template t ON i.template_id = t.template_id AND i.template_version = t.version
     WHERE i.invoice_id = p_invoice_id;
@@ -957,10 +1074,15 @@ BEGIN
     SELECT 
         iv.value_id,
         iv.field_id,
-        f.label AS field_label,
+        f.name AS field_name,
+        f.display_name AS field_display_name,
+        f.display_name AS field_label,
         f.data_type,
         f.calculation_formula,
-        s.title AS section_title,
+        f.is_currency,
+        s.name AS section_name,
+        s.display_name AS section_display_name,
+        s.display_name AS section_title,
         s.ordinal AS section_ordinal,
         s.section_type,
         f.ordinal AS field_ordinal,
@@ -1429,6 +1551,102 @@ BEGIN
       AND i.status IS NOT NULL
       AND i.status != 'draft'
     ORDER BY i.issue_date DESC, i.invoice_id DESC;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_archive_customer //
+CREATE PROCEDURE sp_archive_customer(
+    IN p_customer_id CHAR(36),
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM customer WHERE customer_id = p_customer_id AND org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer does not exist or does not belong to organization';
+    END IF;
+    
+    UPDATE customer
+    SET is_archived = TRUE
+    WHERE customer_id = p_customer_id AND org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_unarchive_customer //
+CREATE PROCEDURE sp_unarchive_customer(
+    IN p_customer_id CHAR(36),
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM customer WHERE customer_id = p_customer_id AND org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer does not exist or does not belong to organization';
+    END IF;
+    
+    UPDATE customer
+    SET is_archived = FALSE
+    WHERE customer_id = p_customer_id AND org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_archive_template //
+CREATE PROCEDURE sp_archive_template(
+    IN p_template_id CHAR(36),
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM template WHERE template_id = p_template_id AND org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist or does not belong to organization';
+    END IF;
+    
+    UPDATE template
+    SET is_archived = TRUE
+    WHERE template_id = p_template_id AND org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_unarchive_template //
+CREATE PROCEDURE sp_unarchive_template(
+    IN p_template_id CHAR(36),
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM template WHERE template_id = p_template_id AND org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist or does not belong to organization';
+    END IF;
+    
+    UPDATE template
+    SET is_archived = FALSE
+    WHERE template_id = p_template_id AND org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
 END //
 
 DELIMITER ;

@@ -504,6 +504,17 @@ html {
     border-color: var(--border-color-hover);
 }
 
+.btn-warning {
+    background-color: var(--color-button-danger);
+    color: var(--text-inverse);
+    border: 1px solid transparent;
+    transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-warning:hover {
+    background-color: var(--color-button-danger-hover);
+    transform: translateY(-1px);
+}
 
 .btn-tertiary,
 .btn-ghost {

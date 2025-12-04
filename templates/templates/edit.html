@@ -90,6 +90,14 @@
                             Required
                         </label>
                     </div>
+                    {% if field.data_type == 'number' %}
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" name="field_{{ field.field_id }}_currency" class="form-checkbox" {% if field.is_currency %}checked{% endif %}>
+                            Format as Currency
+                        </label>
+                    </div>
+                    {% endif %}
                     
                     <div class="form-group">
                         <label class="form-label">Order</label>
@@ -390,6 +398,18 @@ function addFieldToNewSection(sectionNum) {
                 Required
             </label>
         </div>
+        <div class="form-group" id="currency_checkbox_new_${sectionNum}_${fieldCounts[`new_${sectionNum}`]}" style="display: none;">
+            <label>
+                <input type="checkbox" name="new_section_${sectionNum}_field_${fieldCounts[`new_${sectionNum}`]}_currency" class="form-checkbox">
+                Format as Currency
+            </label>
+        </div>
+        <div class="form-group" id="currency_checkbox_new_${sectionNum}_${fieldCounts[`new_${sectionNum}`]}" style="display: none;">
+            <label>
+                <input type="checkbox" name="new_section_${sectionNum}_field_${fieldCounts[`new_${sectionNum}`]}_currency" class="form-checkbox">
+                Format as Currency
+            </label>
+        </div>
         <div class="form-group">
             <label class="form-label">Order</label>
             <input type="number" name="new_section_${sectionNum}_field_${fieldCounts[`new_${sectionNum}`]}_ordinal" class="form-input" value="${fieldCounts[`new_${sectionNum}`]}">
@@ -427,6 +447,43 @@ function deleteField(templateId, fieldId) {
         form.submit();
     }
 }
+
+function toggleCurrencyCheckbox(selectElement) {
+    const name = selectElement.name;
+    let currencyCheckbox;
+    
+    if (name.includes('new_section_')) {
+        const parts = name.split('_');
+        const sectionNum = parts[2];
+        const fieldCount = parts[4];
+        currencyCheckbox = document.getElementById(`currency_checkbox_new_${sectionNum}_${fieldCount}`);
+    } else if (name.includes('section_') && name.includes('_field_')) {
+        const parts = name.split('_');
+        const sectionNum = parts[1];
+        const fieldCount = parts[3];
+        currencyCheckbox = document.getElementById(`currency_checkbox_${sectionNum}_${fieldCount}`);
+    }
+    
+    if (selectElement.value === 'number') {
+        if (currencyCheckbox) {
+            currencyCheckbox.style.display = 'block';
+        }
+    } else {
+        if (currencyCheckbox) {
+            currencyCheckbox.style.display = 'none';
+            const checkbox = currencyCheckbox.querySelector('input[type="checkbox"]');
+            if (checkbox) {
+                checkbox.checked = false;
+            }
+        }
+    }
+}
+
+document.addEventListener('change', function(e) {
+    if (e.target.matches('select[name*="_type"]')) {
+        toggleCurrencyCheckbox(e.target);
+    }
+});
 </script>
 {% endblock %}
 

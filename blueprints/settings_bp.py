@@ -17,9 +17,11 @@ def index():
 
     try:
         user_orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
-        return render_template('settings/index.html', user_organizations=user_orgs or [])
+        current_org_id = g.current_org_id if hasattr(g, 'current_org_id') else None
+        return render_template('settings/index.html', user_organizations=user_orgs or [], current_org_id=current_org_id)
     except DatabaseError:
-        return render_template('settings/index.html', user_organizations=[])
+        current_org_id = g.current_org_id if hasattr(g, 'current_org_id') else None
+        return render_template('settings/index.html', user_organizations=[], current_org_id=current_org_id)
 
 
 @settings_bp.route('/select-org', methods=['GET', 'POST'])
@@ -65,6 +67,11 @@ def create_organization():
     if request.method == 'POST':
         org_name = request.form.get('org_name')
         org_domain = request.form.get('org_domain')
+        street_address = request.form.get('street_address')
+        city = request.form.get('city')
+        state = request.form.get('state')
+        zip_code = request.form.get('zip_code')
+        country = request.form.get('country')
 
         if not org_name:
             flash('Organization name is required', 'error')
@@ -87,7 +94,16 @@ def create_organization():
 
 
         try:
-            org_result = db.execute_proc('sp_create_organization', (org_name, org_domain.lower(), None))
+            org_result = db.execute_proc('sp_create_organization', (
+                org_name, 
+                org_domain.lower(), 
+                street_address or None,
+                city or None,
+                state or None,
+                zip_code or None,
+                country or None,
+                None
+            ))
             if not org_result or len(org_result) == 0:
                 flash('Failed to create organization', 'error')
                 return render_template('settings/create_org.html')
@@ -202,4 +218,69 @@ def join_organization():
                 pass
 
     return render_template('settings/join_org.html', existing_orgs=existing_orgs, domain=domain, user_domain=user_domain)
+
+
+@settings_bp.route('/organizations/<org_id>/edit', methods=['GET', 'POST'])
+@require_org
+def edit_organization(org_id):
+    """Edit organization details (only for owners)"""
+    user = g.current_user
+    current_org_id = g.current_org_id
+    
+    if org_id != current_org_id:
+        flash('You can only edit the current organization', 'error')
+        return redirect(url_for('settings_bp.index'))
+    
+    try:
+        user_orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
+        current_org = next((o for o in (user_orgs or []) if o.get('org_id') == org_id or o['org_id'] == org_id), None)
+        
+        if not current_org:
+            flash('Organization not found', 'error')
+            return redirect(url_for('settings_bp.index'))
+        
+        if current_org.get('role') != 'owner' and current_org['role'] != 'owner':
+            flash('Only organization owners can edit organization details', 'error')
+            return redirect(url_for('settings_bp.index'))
+        
+        if request.method == 'POST':
+            name = request.form.get('name')
+            street_address = request.form.get('street_address')
+            city = request.form.get('city')
+            state = request.form.get('state')
+            zip_code = request.form.get('zip_code')
+            country = request.form.get('country')
+            
+            if not name:
+                flash('Organization name is required', 'error')
+                org_details = db.execute_proc('sp_get_organization_details', (org_id,))
+                org = org_details[0] if org_details and len(org_details) > 0 else None
+                return render_template('settings/edit_org.html', organization=org)
+            
+            try:
+                db.execute_proc('sp_update_organization', (
+                    org_id,
+                    name,
+                    street_address or None,
+                    city or None,
+                    state or None,
+                    zip_code or None,
+                    country or None
+                ), fetch=False)
+                flash('Organization updated successfully', 'success')
+                return redirect(url_for('settings_bp.index'))
+            except DatabaseError as e:
+                flash(f'Error updating organization: {str(e)}', 'error')
+        
+        org_details = db.execute_proc('sp_get_organization_details', (org_id,))
+        org = org_details[0] if org_details and len(org_details) > 0 else None
+        
+        if not org:
+            flash('Organization not found', 'error')
+            return redirect(url_for('settings_bp.index'))
+        
+        return render_template('settings/edit_org.html', organization=org)
+    except DatabaseError as e:
+        flash(f'Error loading organization: {str(e)}', 'error')
+        return redirect(url_for('settings_bp.index'))
 

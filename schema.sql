@@ -18,6 +18,11 @@ CREATE TABLE organization (
     org_id CHAR(36) PRIMARY KEY,
     domain VARCHAR(100) NOT NULL,
     name VARCHAR(100) NOT NULL,
+    street_address VARCHAR(255),
+    city VARCHAR(100),
+    state VARCHAR(100),
+    zip_code VARCHAR(20),
+    country VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     UNIQUE KEY unique_name_domain (name, domain)
@@ -84,7 +89,8 @@ CREATE TABLE section (
     section_id CHAR(36) PRIMARY KEY,
     template_id CHAR(36) NOT NULL,
     template_version INT NOT NULL,
-    title VARCHAR(100),
+    name VARCHAR(100) NOT NULL,
+    display_name VARCHAR(100),
     ordinal INT,
     section_type ENUM('normal', 'line_item') DEFAULT 'normal',
     FOREIGN KEY (template_id, template_version) 
@@ -94,9 +100,11 @@ CREATE TABLE section (
 CREATE TABLE field (
     field_id CHAR(36) PRIMARY KEY,
     section_id CHAR(36) NOT NULL,
-    label VARCHAR(100),
+    name VARCHAR(100) NOT NULL,
+    display_name VARCHAR(100),
     data_type VARCHAR(20) NOT NULL, 
-    is_required TINYINT(1) DEFAULT 0, 
+    is_required BOOLEAN DEFAULT FALSE, 
+    is_currency BOOLEAN DEFAULT FALSE,
     ordinal INT,
     calculation_formula TEXT, 
     FOREIGN KEY (section_id) REFERENCES section(section_id) ON DELETE CASCADE

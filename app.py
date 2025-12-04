@@ -66,6 +66,28 @@ def create_app(config_name=None):
         except (ValueError, TypeError):
             return '$0.00'
 
+    @app.template_filter('number')
+    def number_filter(value):
+        """Format number with commas and decimals"""
+        if value is None:
+            return '0'
+        try:
+            num = float(value)
+            if num == int(num):
+                return f'{int(num):,}'
+            return f'{num:,.2f}'
+        except (ValueError, TypeError):
+            return '0'
+
+    @app.template_filter('is_currency_field')
+    def is_currency_field_filter(field_label):
+        """Check if field label suggests it's a currency field"""
+        if not field_label:
+            return False
+        currency_keywords = ['amount', 'price', 'total', 'cost', 'fee', 'charge', 'payment', 'paid', 'due', 'balance', 'revenue', 'income', 'expense', 'discount', 'tax', 'subtotal']
+        label_lower = field_label.lower()
+        return any(keyword in label_lower for keyword in currency_keywords)
+
 
     @app.errorhandler(404)
     def not_found(error):

@@ -124,7 +124,7 @@ TEMPLATES = {
             'currency_code': 'USD',
             'sections': [
                 {
-                    'title': 'Invoice Details',
+                    'title': 'Invoice_Details',
                     'ordinal': 1,
                     'section_type': 'normal',
                     'fields': [
@@ -134,14 +134,14 @@ TEMPLATES = {
                     ]
                 },
                 {
-                    'title': 'Line Items',
+                    'title': 'Line_Items',
                     'ordinal': 2,
                     'section_type': 'line_item',
                     'fields': [
                         {'label': 'Description', 'data_type': 'string', 'is_required': 1, 'ordinal': 1},
-                        {'label': 'Quantity', 'data_type': 'number', 'is_required': 1, 'ordinal': 2},
-                        {'label': 'Unit Price', 'data_type': 'number', 'is_required': 1, 'ordinal': 3},
-                        {'label': 'Amount', 'data_type': 'number', 'is_required': 0, 'ordinal': 4, 'calculation_formula': 'this.Quantity * this.Unit Price'},
+                        {'label': 'Quantity', 'data_type': 'number', 'is_required': 1, 'is_currency': False, 'ordinal': 2},
+                        {'label': 'Unit Price', 'data_type': 'number', 'is_required': 1, 'is_currency': True, 'ordinal': 3},
+                        {'label': 'Amount', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 4, 'calculation_formula': 'this.Quantity * this."Unit Price"'},
                     ]
                 },
                 {
@@ -149,10 +149,10 @@ TEMPLATES = {
                     'ordinal': 3,
                     'section_type': 'normal',
                     'fields': [
-                        {'label': 'Subtotal', 'data_type': 'number', 'is_required': 0, 'ordinal': 1, 'calculation_formula': 'sum("Line Items".Amount)'},
-                        {'label': 'Tax Rate', 'data_type': 'number', 'is_required': 0, 'ordinal': 2},
-                        {'label': 'Tax Amount', 'data_type': 'number', 'is_required': 0, 'ordinal': 3, 'calculation_formula': 'this.Subtotal * this."Tax Rate" / 100'},
-                        {'label': 'Total', 'data_type': 'number', 'is_required': 0, 'ordinal': 4, 'calculation_formula': 'this.Subtotal + this."Tax Amount"'},
+                        {'label': 'Subtotal', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 1, 'calculation_formula': 'sum("Line_Items".Amount)'},
+                        {'label': 'Tax Rate', 'data_type': 'number', 'is_required': 0, 'is_currency': False, 'ordinal': 2},
+                        {'label': 'Tax Amount', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 3, 'calculation_formula': 'this.Subtotal * this."Tax Rate" / 100'},
+                        {'label': 'Total', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 4, 'calculation_formula': 'this.Subtotal + this."Tax Amount"'},
                     ]
                 }
             ]
@@ -162,7 +162,7 @@ TEMPLATES = {
             'currency_code': 'USD',
             'sections': [
                 {
-                    'title': 'Service Details',
+                    'title': 'Service_Details',
                     'ordinal': 1,
                     'section_type': 'normal',
                     'fields': [
@@ -176,9 +176,9 @@ TEMPLATES = {
                     'section_type': 'line_item',
                     'fields': [
                         {'label': 'Service Name', 'data_type': 'string', 'is_required': 1, 'ordinal': 1},
-                        {'label': 'Hours', 'data_type': 'number', 'is_required': 1, 'ordinal': 2},
-                        {'label': 'Rate', 'data_type': 'number', 'is_required': 1, 'ordinal': 3},
-                        {'label': 'Total', 'data_type': 'number', 'is_required': 0, 'ordinal': 4, 'calculation_formula': 'this.Hours * this.Rate'},
+                        {'label': 'Hours', 'data_type': 'number', 'is_required': 1, 'is_currency': False, 'ordinal': 2},
+                        {'label': 'Rate', 'data_type': 'number', 'is_required': 1, 'is_currency': True, 'ordinal': 3},
+                        {'label': 'Total', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 4, 'calculation_formula': 'this.Hours * this.Rate'},
                     ]
                 },
                 {
@@ -186,8 +186,8 @@ TEMPLATES = {
                     'ordinal': 3,
                     'section_type': 'normal',
                     'fields': [
-                        {'label': 'Total Hours', 'data_type': 'number', 'is_required': 0, 'ordinal': 1, 'calculation_formula': 'sum("Services".Hours)'},
-                        {'label': 'Total Amount', 'data_type': 'number', 'is_required': 0, 'ordinal': 2, 'calculation_formula': 'sum("Services".Total)'},
+                        {'label': 'Total Hours', 'data_type': 'number', 'is_required': 0, 'is_currency': False, 'ordinal': 1, 'calculation_formula': 'sum("Services".Hours)'},
+                        {'label': 'Total Amount', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 2, 'calculation_formula': 'sum("Services".Total)'},
                     ]
                 }
             ]
@@ -199,7 +199,7 @@ TEMPLATES = {
             'currency_code': 'USD',
             'sections': [
                 {
-                    'title': 'Project Information',
+                    'title': 'Project_Information',
                     'ordinal': 1,
                     'section_type': 'normal',
                     'fields': [
@@ -208,26 +208,26 @@ TEMPLATES = {
                     ]
                 },
                 {
-                    'title': 'Time Entries',
+                    'title': 'Time_Entries',
                     'ordinal': 2,
                     'section_type': 'line_item',
                     'fields': [
                         {'label': 'Date', 'data_type': 'date', 'is_required': 1, 'ordinal': 1},
                         {'label': 'Description', 'data_type': 'string', 'is_required': 1, 'ordinal': 2},
-                        {'label': 'Hours', 'data_type': 'number', 'is_required': 1, 'ordinal': 3},
-                        {'label': 'Rate', 'data_type': 'number', 'is_required': 1, 'ordinal': 4},
-                        {'label': 'Amount', 'data_type': 'number', 'is_required': 0, 'ordinal': 5, 'calculation_formula': 'this.Hours * this.Rate'},
+                        {'label': 'Hours', 'data_type': 'number', 'is_required': 1, 'is_currency': False, 'ordinal': 3},
+                        {'label': 'Rate', 'data_type': 'number', 'is_required': 1, 'is_currency': True, 'ordinal': 4},
+                        {'label': 'Amount', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 5, 'calculation_formula': 'this.Hours * this.Rate'},
                     ]
                 },
                 {
-                    'title': 'Billing Summary',
+                    'title': 'Billing_Summary',
                     'ordinal': 3,
                     'section_type': 'normal',
                     'fields': [
-                        {'label': 'Total Hours', 'data_type': 'number', 'is_required': 0, 'ordinal': 1, 'calculation_formula': 'sum("Time Entries".Hours)'},
-                        {'label': 'Subtotal', 'data_type': 'number', 'is_required': 0, 'ordinal': 2, 'calculation_formula': 'sum("Time Entries".Amount)'},
-                        {'label': 'Discount', 'data_type': 'number', 'is_required': 0, 'ordinal': 3},
-                        {'label': 'Final Total', 'data_type': 'number', 'is_required': 0, 'ordinal': 4, 'calculation_formula': 'Subtotal - Discount'},
+                        {'label': 'Total Hours', 'data_type': 'number', 'is_required': 0, 'is_currency': False, 'ordinal': 1, 'calculation_formula': 'sum("Time_Entries".Hours)'},
+                        {'label': 'Subtotal', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 2, 'calculation_formula': 'sum("Time_Entries".Amount)'},
+                        {'label': 'Discount', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 3},
+                        {'label': 'Final Total', 'data_type': 'number', 'is_required': 0, 'is_currency': True, 'ordinal': 4, 'calculation_formula': 'Subtotal - Discount'},
                     ]
                 }
             ]
@@ -443,11 +443,15 @@ def create_templates(org_ids):
                     total_field_id = None
                     total_field_label = None
                     for field_def in section_def['fields']:
+                        is_currency = field_def.get('is_currency', False)
+                        if field_def['data_type'] != 'number':
+                            is_currency = False
                         field_result = db.execute_proc('sp_add_template_field', (
                             section_id,
                             field_def['label'],
                             field_def['data_type'],
                             field_def.get('is_required', 0),
+                            is_currency,
                             field_def['ordinal'],
                             field_def.get('calculation_formula'),
                             None
@@ -696,199 +700,199 @@ def create_one_test_invoice(template_data, customer_data, org_ids):
         return None
 
 def generate_invoice_data(template_data, customer_data, org_ids):
-    """Generate invoices from July 2025 to December 2025"""
+    """Generate exactly 50 invoices from July 2025 to December 2025"""
     print("\nCreating invoices...")
 
-
+    total_invoices = 50
     start_date = datetime(2025, 7, 1)
     end_date = datetime(2025, 12, 31)
-    current_date = start_date
-
+    
+    months = []
+    current = start_date
+    while current <= end_date:
+        months.append(current)
+        if current.month == 12:
+            current = current.replace(year=current.year + 1, month=1)
+        else:
+            current = current.replace(month=current.month + 1)
+    
+    invoices_per_month = total_invoices // len(months)
+    extra_invoices = total_invoices % len(months)
+    
     invoice_count = 0
-
-    while current_date <= end_date:
-
-        invoices_this_month = random.randint(2, 4)
-
-        for _ in range(invoices_this_month):
-
-            org_idx = random.randint(0, len(ORGANIZATIONS) - 1)
-            org = ORGANIZATIONS[org_idx]
-            org_id = org_ids[org_idx]
-            domain = org['domain']
-
-
-            templates = template_data.get(domain, [])
-            customers = customer_data.get(domain, [])
-
-            if not templates or not customers:
-                continue
-
-            template_id = random.choice(templates)
-            customer_id = random.choice(customers)
-
-
-            days_in_month = (current_date.replace(month=current_date.month % 12 + 1, day=1) - timedelta(days=1)).day if current_date.month < 12 else 31
+    invoice_dates = []
+    
+    for i, month_start in enumerate(months):
+        num_invoices = invoices_per_month + (1 if i < extra_invoices else 0)
+        
+        days_in_month = (month_start.replace(month=month_start.month % 12 + 1, day=1) - timedelta(days=1)).day if month_start.month < 12 else 31
+        
+        for _ in range(num_invoices):
             issue_day = random.randint(1, min(days_in_month, 28))
-            issue_date = current_date.replace(day=issue_day)
-            due_date = issue_date + timedelta(days=random.randint(15, 45))
+            issue_date = month_start.replace(day=issue_day)
+            invoice_dates.append(issue_date)
+    
+    random.shuffle(invoice_dates)
+    
+    for issue_date in invoice_dates:
+        org_idx = random.randint(0, len(ORGANIZATIONS) - 1)
+        org = ORGANIZATIONS[org_idx]
+        org_id = org_ids[org_idx]
+        domain = org['domain']
 
-            try:
+        templates = template_data.get(domain, [])
+        customers = customer_data.get(domain, [])
 
-                result = db.execute_proc('sp_create_invoice', (
-                    org_id,
-                    customer_id,
-                    template_id,
-                    None,
-                    None
-                ))
+        if not templates or not customers:
+            continue
 
-                if not result or len(result) > 0:
-                    invoice_id = result[0].get('invoice_id')
-                    template_version = result[0].get('template_version')
+        template_id = random.choice(templates)
+        customer_id = random.choice(customers)
 
+        due_date = issue_date + timedelta(days=random.randint(15, 45))
 
-                    db.execute_proc('sp_update_invoice_dates', (
-                        invoice_id,
-                        issue_date.date(),
-                        due_date.date()
-                    ), fetch=False)
+        try:
+            result = db.execute_proc('sp_create_invoice', (
+                org_id,
+                customer_id,
+                template_id,
+                None,
+                None
+            ))
 
+            if not result or len(result) > 0:
+                invoice_id = result[0].get('invoice_id')
+                template_version = result[0].get('template_version')
 
-                    fields_result = db.execute_proc('sp_get_template_fields', (template_id,))
-                    if not fields_result:
-                        continue
+                db.execute_proc('sp_update_invoice_dates', (
+                    invoice_id,
+                    issue_date.date(),
+                    due_date.date()
+                ), fetch=False)
 
+                fields_result = db.execute_proc('sp_get_template_fields', (template_id,))
+                if not fields_result:
+                    continue
 
-                    sections = {}
-                    for field in fields_result:
-                        section_id = field['section_id']
-                        if section_id not in sections:
-                            sections[section_id] = {
-                                'type': field.get('section_type', 'normal'),
-                                'fields': []
-                            }
-                        sections[section_id]['fields'].append(field)
+                sections = {}
+                for field in fields_result:
+                    section_id = field['section_id']
+                    if section_id not in sections:
+                        sections[section_id] = {
+                            'type': field.get('section_type', 'normal'),
+                            'fields': []
+                        }
+                    sections[section_id]['fields'].append(field)
 
-
-                    for section_id, section_info in sections.items():
-                        if section_info['type'] == 'line_item':
-
-                            num_items = random.randint(2, 5)
-                            for row in range(1, num_items + 1):
-                                for field in section_info['fields']:
-                                    field_id = field['field_id']
-                                    label = field.get('label', '')
-                                    data_type = field.get('data_type', 'string')
-
-                                    if 'description' in label.lower() or 'name' in label.lower():
-                                        val_string = random.choice(LINE_ITEM_DESCRIPTIONS)
-                                        db.execute_proc('sp_save_invoice_value', (
-                                            invoice_id, field_id, val_string, None, None, None, row
-                                        ), fetch=False)
-                                    elif 'quantity' in label.lower() or 'hours' in label.lower():
-                                        val_number = Decimal(str(random.randint(1, 40)))
-                                        db.execute_proc('sp_save_invoice_value', (
-                                            invoice_id, field_id, None, val_number, None, None, row
-                                        ), fetch=False)
-                                    elif 'rate' in label.lower() or 'price' in label.lower():
-                                        val_number = Decimal(str(random.randint(50, 200)))
-                                        db.execute_proc('sp_save_invoice_value', (
-                                            invoice_id, field_id, None, val_number, None, None, row
-                                        ), fetch=False)
-                                    elif 'date' in label.lower():
-                                        val_date = (issue_date - timedelta(days=random.randint(0, 30))).date()
-                                        db.execute_proc('sp_save_invoice_value', (
-                                            invoice_id, field_id, None, None, val_date, None, row
-                                        ), fetch=False)
-                        else:
-
+                for section_id, section_info in sections.items():
+                    if section_info['type'] == 'line_item':
+                        num_items = random.randint(2, 5)
+                        for row in range(1, num_items + 1):
                             for field in section_info['fields']:
                                 field_id = field['field_id']
                                 label = field.get('label', '')
                                 data_type = field.get('data_type', 'string')
 
-                                if 'invoice number' in label.lower():
-                                    val_string = f"INV-{issue_date.strftime('%Y%m%d')}-{random.randint(100, 999)}"
+                                if 'description' in label.lower() or 'name' in label.lower():
+                                    val_string = random.choice(LINE_ITEM_DESCRIPTIONS)
+                                    db.execute_proc('sp_save_invoice_value', (
+                                        invoice_id, field_id, val_string, None, None, None, row
+                                    ), fetch=False)
+                                elif 'quantity' in label.lower() or 'hours' in label.lower():
+                                    val_number = Decimal(str(random.randint(1, 40)))
+                                    db.execute_proc('sp_save_invoice_value', (
+                                        invoice_id, field_id, None, val_number, None, None, row
+                                    ), fetch=False)
+                                elif 'rate' in label.lower() or 'price' in label.lower():
+                                    val_number = Decimal(str(random.randint(50, 200)))
+                                    db.execute_proc('sp_save_invoice_value', (
+                                        invoice_id, field_id, None, val_number, None, None, row
+                                    ), fetch=False)
+                                elif 'date' in label.lower():
+                                    val_date = (issue_date - timedelta(days=random.randint(0, 30))).date()
+                                    db.execute_proc('sp_save_invoice_value', (
+                                        invoice_id, field_id, None, None, val_date, None, row
+                                    ), fetch=False)
+                    else:
+                        for field in section_info['fields']:
+                            field_id = field['field_id']
+                            label = field.get('label', '')
+                            data_type = field.get('data_type', 'string')
+
+                            if 'invoice number' in label.lower():
+                                val_string = f"INV-{issue_date.strftime('%Y%m%d')}-{random.randint(100, 999)}"
+                                db.execute_proc('sp_save_invoice_value', (
+                                    invoice_id, field_id, val_string, None, None, None, 0
+                                ), fetch=False)
+                            elif 'po number' in label.lower():
+                                if random.random() > 0.3:
+                                    val_string = f"PO-{random.randint(10000, 99999)}"
                                     db.execute_proc('sp_save_invoice_value', (
                                         invoice_id, field_id, val_string, None, None, None, 0
                                     ), fetch=False)
-                                elif 'po number' in label.lower():
-                                    if random.random() > 0.3:
-                                        val_string = f"PO-{random.randint(10000, 99999)}"
-                                        db.execute_proc('sp_save_invoice_value', (
-                                            invoice_id, field_id, val_string, None, None, None, 0
-                                        ), fetch=False)
-                                elif 'description' in label.lower() or 'project' in label.lower():
-                                    val_string = random.choice(INVOICE_DESCRIPTIONS)
-                                    db.execute_proc('sp_save_invoice_value', (
-                                        invoice_id, field_id, val_string, None, None, None, 0
-                                    ), fetch=False)
-                                elif 'tax rate' in label.lower():
-                                    val_number = Decimal('8.5')
+                            elif 'description' in label.lower() or 'project' in label.lower():
+                                val_string = random.choice(INVOICE_DESCRIPTIONS)
+                                db.execute_proc('sp_save_invoice_value', (
+                                    invoice_id, field_id, val_string, None, None, None, 0
+                                ), fetch=False)
+                            elif 'tax rate' in label.lower():
+                                val_number = Decimal('8.5')
+                                db.execute_proc('sp_save_invoice_value', (
+                                    invoice_id, field_id, None, val_number, None, None, 0
+                                ), fetch=False)
+                            elif 'discount' in label.lower():
+                                if random.random() > 0.7:
+                                    val_number = Decimal(str(random.randint(50, 500)))
                                     db.execute_proc('sp_save_invoice_value', (
                                         invoice_id, field_id, None, val_number, None, None, 0
                                     ), fetch=False)
-                                elif 'discount' in label.lower():
-                                    if random.random() > 0.7:
-                                        val_number = Decimal(str(random.randint(50, 500)))
-                                        db.execute_proc('sp_save_invoice_value', (
-                                            invoice_id, field_id, None, val_number, None, None, 0
-                                        ), fetch=False)
 
+                invoice_values_result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
+                current_invoice_values = []
+                if invoice_values_result and isinstance(invoice_values_result, list):
+                    if len(invoice_values_result) >= 2:
+                        if isinstance(invoice_values_result[1], list):
+                            current_invoice_values = invoice_values_result[1]
+                        else:
+                            current_invoice_values = invoice_values_result[1:]
 
+                sections_for_calc = {}
+                field_map = {}
+                for field in fields_result:
+                    field_id = field.get('field_id')
+                    if field_id:
+                        field_map[field_id] = field
+                    section_title = field.get('section_title', '')
+                    section_type = field.get('section_type', 'normal')
+                    if section_title not in sections_for_calc:
+                        sections_for_calc[section_title] = {
+                            'type': section_type,
+                            'fields': [],
+                            'line_item_rows': {} if section_type == 'line_item' else None,
+                            'field_metadata': []
+                        }
+                    sections_for_calc[section_title]['fields'].append(field)
+                    if section_type == 'normal':
+                        sections_for_calc[section_title]['field_metadata'].append(field)
 
-                    invoice_values_result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-                    current_invoice_values = []
-                    if invoice_values_result and isinstance(invoice_values_result, list):
-                        if len(invoice_values_result) >= 2:
-                            if isinstance(invoice_values_result[1], list):
-                                current_invoice_values = invoice_values_result[1]
-                            else:
-                                current_invoice_values = invoice_values_result[1:]
+                for section_title, section_info in sections_for_calc.items():
+                    if section_info['type'] != 'line_item':
+                        section_info['fields'] = []
 
+                line_item_ordinals = set()
+                for value in current_invoice_values:
+                    if value.get('section_title') in sections_for_calc:
+                        section_info = sections_for_calc[value.get('section_title')]
+                        if section_info.get('type') == 'line_item':
+                            ordinal = value.get('value_ordinal', 0) or 0
+                            if ordinal > 0:
+                                line_item_ordinals.add(ordinal)
 
-                    sections_for_calc = {}
-                    field_map = {}
-                    for field in fields_result:
-                        field_id = field.get('field_id')
-                        if field_id:
-                            field_map[field_id] = field
-                        section_title = field.get('section_title', '')
-                        section_type = field.get('section_type', 'normal')
-                        if section_title not in sections_for_calc:
-                            sections_for_calc[section_title] = {
-                                'type': section_type,
-                                'fields': [],
-                                'line_item_rows': {} if section_type == 'line_item' else None,
-                                'field_metadata': []
-                            }
-                        sections_for_calc[section_title]['fields'].append(field)
-                        if section_type == 'normal':
-                            sections_for_calc[section_title]['field_metadata'].append(field)
+                for section_title, section_info in sections_for_calc.items():
+                    if section_info['type'] == 'line_item':
+                        section_info['line_item_rows'] = {}
 
-
-                    for section_title, section_info in sections_for_calc.items():
-                        if section_info['type'] != 'line_item':
-                            section_info['fields'] = []
-
-
-
-                    line_item_ordinals = set()
-                    for value in current_invoice_values:
-                        if value.get('section_title') in sections_for_calc:
-                            section_info = sections_for_calc[value.get('section_title')]
-                            if section_info.get('type') == 'line_item':
-                                ordinal = value.get('value_ordinal', 0) or 0
-                                if ordinal > 0:
-                                    line_item_ordinals.add(ordinal)
-
-                    for section_title, section_info in sections_for_calc.items():
-                        if section_info['type'] == 'line_item':
-                            section_info['line_item_rows'] = {}
-
-
-                            for ordinal in line_item_ordinals:
+                        for ordinal in line_item_ordinals:
                                 row = []
 
                                 for field_meta in section_info['fields']:
@@ -998,40 +1002,31 @@ def generate_invoice_data(template_data, customer_data, org_ids):
                         invoice_total = Decimal(str(invoice_row.get('total_amount', 0) or 0)) if invoice_row else Decimal('0')
 
 
-                    status_roll = random.random()
-                    if status_roll < 0.3 and invoice_total > 0:
+                status_roll = random.random()
+                if status_roll < 0.3 and invoice_total > 0:
+                    payment_amount = invoice_total
+                    try:
+                        db.execute_proc('sp_record_payment', (
+                            invoice_id,
+                            payment_amount,
+                            random.choice(['Bank Transfer', 'Credit Card', 'Check']),
+                            f"REF-{random.randint(100000, 999999)}",
+                            None
+                        ), fetch=False)
+                    except DatabaseError as e:
+                        print(f"    [WARN] Could not add payment: {e}")
+                elif status_roll < 0.7:
+                    db.execute_proc('sp_update_invoice_status', (invoice_id, 'pending'), fetch=False)
 
-                        payment_amount = invoice_total
-                        try:
-                            db.execute_proc('sp_record_payment', (
-                                invoice_id,
-                                payment_amount,
-                                random.choice(['Bank Transfer', 'Credit Card', 'Check']),
-                                f"REF-{random.randint(100000, 999999)}",
-                                None
-                            ), fetch=False)
+                invoice_count += 1
+                if invoice_count % 10 == 0:
+                    print(f"  Created {invoice_count}/{total_invoices} invoices...")
 
-                        except DatabaseError as e:
-                            print(f"    [WARN] Could not add payment: {e}")
-                    elif status_roll < 0.7:
-                        db.execute_proc('sp_update_invoice_status', (invoice_id, 'pending'), fetch=False)
+        except DatabaseError as e:
+            print(f"  [ERROR] Error creating invoice: {e}")
+            continue
 
-
-                    invoice_count += 1
-                    if invoice_count % 10 == 0:
-                        print(f"  Created {invoice_count} invoices...")
-
-            except DatabaseError as e:
-                print(f"  [ERROR] Error creating invoice: {e}")
-                continue
-
-
-        if current_date.month == 12:
-            current_date = current_date.replace(year=current_date.year + 1, month=1)
-        else:
-            current_date = current_date.replace(month=current_date.month + 1)
-
-    print(f"  [OK] Created {invoice_count} invoices total")
+    print(f"  [OK] Created {invoice_count}/{total_invoices} invoices total")
 
 def delete_all_data():
     """Delete all existing data from the database"""
@@ -1108,7 +1103,7 @@ def main():
     try:
 
         delete_all_data()
-
+        exit()
 
         ensure_migration_applied()
         print()

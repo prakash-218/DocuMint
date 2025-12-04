@@ -244,7 +244,7 @@ def create_invoice():
 
         if not template_id:
 
-            all_templates = db.execute_proc('sp_list_templates', (org_id,))
+            all_templates = db.execute_proc('sp_list_templates', (org_id, False))
             templates = []
             seen_template_ids = set()
 
@@ -272,10 +272,10 @@ def create_invoice():
 
 
 
-        customers = db.execute_proc('sp_list_customers', (org_id,))
+        customers = db.execute_proc('sp_list_customers', (org_id, False))
 
 
-        all_templates = db.execute_proc('sp_list_templates', (org_id,))
+        all_templates = db.execute_proc('sp_list_templates', (org_id, False))
         templates = []
         seen_template_ids = set()
 
@@ -398,10 +398,15 @@ def view_invoice(invoice_id):
             print(f"DEBUG: First value sample: {invoice_values[0] if len(invoice_values) > 0 else 'None'}")
 
         for value in (invoice_values or []):
-            section_title = value.get('section_title', '') or value.get('section_title', 'Untitled Section')
+            section_title = value.get('section_title', '') or value.get('section_display_name', '') or 'Untitled Section'
             section_type = value.get('section_type', 'normal') or 'normal'
-            field_label = value.get('field_label', '')
+            field_label = value.get('field_label', '') or value.get('field_display_name', '')
             data_type = value.get('data_type', 'string')
+            
+            value['field_label'] = field_label
+            value['section_title'] = section_title
+            if 'is_currency' not in value or value.get('is_currency') is None:
+                value['is_currency'] = False
 
             if not section_title:
                 section_title = 'Untitled Section'
@@ -718,7 +723,16 @@ def view_invoice(invoice_id):
                              sections_data=sections_data,
                              payments=payments or [])
     except DatabaseError as e:
-        flash('Error loading invoice', 'error')
+        import traceback
+        print(f"ERROR loading invoice {invoice_id}: {str(e)}")
+        traceback.print_exc()
+        flash(f'Error loading invoice: {str(e)}', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+    except Exception as e:
+        import traceback
+        print(f"UNEXPECTED ERROR loading invoice {invoice_id}: {str(e)}")
+        traceback.print_exc()
+        flash(f'Error loading invoice: {str(e)}', 'error')
         return redirect(url_for('invoices_bp.list_invoices'))
 
 

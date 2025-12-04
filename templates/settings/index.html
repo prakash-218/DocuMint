@@ -44,12 +44,17 @@
                             Role: <strong>{{ org.get('role') or org.role }}</strong>
                         </div>
                     </div>
-                    {% if (org.get('org_id') or org.org_id) != current_org_id %}
-                    <form method="POST" action="{{ url_for('settings_bp.select_org') }}" style="margin: 0;">
-                        <input type="hidden" name="org_id" value="{{ org.get('org_id') or org.org_id }}">
-                        <button type="submit" class="btn btn-sm btn-secondary">Switch To</button>
-                    </form>
-                    {% endif %}
+                    <div style="display: flex; gap: var(--spacing-sm);">
+                        {% if (org.get('org_id') or org.org_id) == current_org_id and (org.get('role') or org.role) == 'owner' %}
+                        <a href="{{ url_for('settings_bp.edit_organization', org_id=org.get('org_id') or org.org_id) }}" class="btn btn-sm btn-primary">Edit</a>
+                        {% endif %}
+                        {% if (org.get('org_id') or org.org_id) != current_org_id %}
+                        <form method="POST" action="{{ url_for('settings_bp.select_org') }}" style="margin: 0;">
+                            <input type="hidden" name="org_id" value="{{ org.get('org_id') or org.org_id }}">
+                            <button type="submit" class="btn btn-sm btn-secondary">Switch To</button>
+                        </form>
+                        {% endif %}
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -59,17 +64,6 @@
             You are not a member of any organizations yet. Create or join one to get started.
         </p>
         {% endif %}
-    </div>
-</div>
-
-<div class="card mb-lg">
-    <div class="card-header">
-        <h2 class="card-title">Application Settings</h2>
-    </div>
-    <div class="card-body">
-        <p style="color: var(--text-secondary);">
-            The application uses the One Dark theme. All theme switching functionality has been removed.
-        </p>
     </div>
 </div>
 {% endblock %}

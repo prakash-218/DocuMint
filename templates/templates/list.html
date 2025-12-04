@@ -8,7 +8,11 @@
     <div class="list-header-left">
         <h2 class="list-title">Templates <span class="list-count">{{ templates|length if templates else 0 }}</span></h2>
     </div>
-    <div class="list-header-right">
+    <div class="list-header-right" style="display: flex; gap: var(--spacing-md); align-items: center;">
+        <a href="{{ url_for('templates_bp.list_templates', include_archived='true' if not include_archived else 'false') }}" 
+           class="btn btn-secondary btn-sm">
+            {% if include_archived %}Hide Archived{% else %}Show Archived{% endif %}
+        </a>
         <a href="{{ url_for('templates_bp.create_template') }}" class="btn btn-primary">
             <i data-lucide="plus" class="nav-icon"></i>
             Create Template
@@ -31,18 +35,23 @@
         </thead>
         <tbody>
             {% for template in templates %}
-            <tr class="list-row">
+            <tr class="list-row" {% if template.is_archived %}style="opacity: 0.6;"{% endif %}>
                 <td>
                     <div class="list-item-content">
                         <a href="{{ url_for('templates_bp.view_template', template_id=template.template_id) }}" class="item-id">
                             {{ template.name }}
                         </a>
+                        {% if template.is_archived %}
+                        <span class="badge badge-warning" style="margin-left: var(--spacing-xs);">Archived</span>
+                        {% endif %}
                     </div>
                 </td>
                 <td>{{ template.currency_code }}</td>
                 <td>v{{ template.version }}</td>
                 <td>
-                    {% if template.version == template.latest_version %}
+                    {% if template.is_archived %}
+                        <span class="badge badge-warning">Archived</span>
+                    {% elif template.version == template.latest_version %}
                         <span class="badge badge-success">Latest</span>
                     {% else %}
                         <span class="badge badge-warning">v{{ template.latest_version }} available</span>

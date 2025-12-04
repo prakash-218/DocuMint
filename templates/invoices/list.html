@@ -56,7 +56,7 @@
                 <td>{{ invoice.due_date or 'N/A' }}</td>
                 <td>
                     <div class="table-actions">
-                        <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-secondary">View</a>
+                    <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-secondary">View</a>
                         {% if (invoice.status or 'draft') == 'draft' %}
                         <a href="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-primary">Edit</a>
                         {% endif %}

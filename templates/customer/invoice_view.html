@@ -75,7 +75,11 @@
                                             <td>
                                                 {% if value %}
                                                     {% if value.data_type == 'number' %}
-                                                        {{ value.val_number | currency if value.val_number else 'N/A' }}
+                                                        {% if value.is_currency %}
+                                                            {{ value.val_number | currency if value.val_number else 'N/A' }}
+                                                        {% else %}
+                                                            {{ value.val_number | number if value.val_number else 'N/A' }}
+                                                        {% endif %}
                                                     {% elif value.data_type == 'date' %}
                                                         {{ value.val_date or 'N/A' }}
                                                     {% elif value.data_type == 'boolean' %}
@@ -102,7 +106,11 @@
                         <div class="card-nested" style="margin-bottom: var(--spacing-md); padding: var(--spacing-md); border-radius: var(--border-radius-lg); border: 1px solid var(--border-color);">
                             <strong>{{ value.field_label }}:</strong>
                             {% if value.data_type == 'number' %}
-                                {{ value.val_number | currency if value.val_number else 'N/A' }}
+                                {% if value.is_currency %}
+                                    {{ value.val_number | currency if value.val_number else 'N/A' }}
+                                {% else %}
+                                    {{ value.val_number | number if value.val_number else 'N/A' }}
+                                {% endif %}
                             {% elif value.data_type == 'date' %}
                                 {{ value.val_date or 'N/A' }}
                             {% elif value.data_type == 'boolean' %}
