@@ -1,3 +1,8 @@
+Create database DocuMint;
+
+use DocuMint;
+
+
 -- 1. GLOBAL ENTITIES
 CREATE TABLE users (
     user_id CHAR(36) PRIMARY KEY,
