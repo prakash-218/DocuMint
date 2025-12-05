@@ -35,19 +35,36 @@ def select_org():
         if org_id:
 
             orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
-            org = next((o for o in (orgs or []) if o['org_id'] == org_id), None)
+            # Compare org_id as strings to handle UUID format differences
+            org = next((o for o in (orgs or []) if str(o.get('org_id', '')) == str(org_id)), None)
 
             if org:
-                session['org_id'] = org_id
-                session['org_name'] = org['name']
+                session['org_id'] = str(org_id)  # Ensure it's a string
+                session['org_name'] = org.get('name')
+                session['org_status'] = org.get('status', 'active')
 
+                if org.get('status') != 'active':
+                    return render_template('errors/org_status.html', 
+                                         status=org.get('status'), 
+                                         org_name=org.get('name'))
+
+                # Refresh user organizations list
                 orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
                 if orgs:
                     session['user_organizations'] = orgs
+                
+                # Regenerate token with new org_id
+                from auth import generate_token
+                new_token = generate_token(user['user_id'], user.get('email'), str(org_id))
+                session['token'] = new_token
+                
                 flash('Organization switched successfully', 'success')
                 return redirect(request.referrer or url_for('dashboard_bp.index'))
             else:
-                flash('Invalid organization', 'error')
+                flash('You do not have access to this organization', 'error')
+                # Debug: show what orgs the user has access to
+                print(f"DEBUG: User {user['user_id']} tried to switch to org {org_id}")
+                print(f"DEBUG: User has access to orgs: {[str(o.get('org_id')) for o in (orgs or [])]}")
 
 
     try:
