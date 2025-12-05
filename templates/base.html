@@ -12,12 +12,12 @@
 <body>
     {% if current_user %}
     <div class="app-container">
-        <!-- Sidebar -->
+        
         <aside class="sidebar">
             <div class="sidebar-header">
                 <a href="{{ url_for('dashboard_bp.index') }}" class="sidebar-logo">
-                    <span class="logo-icon">IG</span>
-                    <span class="logo-text">InvoiceGen</span>
+                    <span class="logo-icon">DM</span>
+                    <span class="logo-text">DocuMint</span>
                 </a>
             </div>
             <nav>
@@ -50,30 +50,64 @@
                         </li>
                     </ul>
                 </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Settings</div>
+                    <ul class="sidebar-nav">
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('settings_bp.index') }}" class="sidebar-nav-link {% if request.endpoint and 'settings' in request.endpoint %}active{% endif %}">
+                                <i data-lucide="settings" class="nav-icon"></i>
+                                <span>Settings</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </nav>
         </aside>
 
-        <!-- Main Content -->
+        
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+        
         <main class="main-content">
             <header class="header">
                 <div class="header-content">
-                    <div class="header-title-section">
-                        <h1 class="header-title">{% block page_title %}Dashboard{% endblock %}</h1>
-                        {% block page_description %}{% endblock %}
+                    <div class="header-title-section" style="display: flex; align-items: center; gap: var(--spacing-md); width: 100%;">
+                        <button class="mobile-menu-btn" onclick="window.toggleSidebar()" aria-label="Toggle menu">
+                            <i data-lucide="menu"></i>
+                        </button>
+                        <div style="flex: 1;">
+                            <h1 class="header-title">{% block page_title %}Dashboard{% endblock %}</h1>
+                            {% block page_description %}{% endblock %}
+                        </div>
                     </div>
                     <div class="header-actions">
+                        {% if current_user %}
+                        {% set user_orgs = session.get('user_organizations', []) %}
+                        {% if user_orgs and user_orgs|length > 1 %}
+                        <div class="org-switcher" style="margin-right: var(--spacing-md);">
+                            <select id="orgSelect" class="form-select" style="min-width: 200px; padding: 8px 12px; font-size: 14px;" onchange="switchOrganization(this.value)">
+                                {% for org in user_orgs %}
+                                <option value="{{ org.get('org_id') or org.org_id }}" {% if (org.get('org_id') or org.org_id) == current_org_id %}selected{% endif %}>
+                                    {{ org.get('name') or org.name }} ({{ org.get('domain') or org.domain }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% elif current_org_id %}
+                        <div class="org-name-display" style="margin-right: var(--spacing-md); padding: 8px 12px; background: var(--bg-tertiary); border-radius: var(--border-radius); font-size: 14px; color: var(--text-secondary);">
+                            {{ session.get('org_name', 'Organization') }}
+                        </div>
+                        {% endif %}
+                        {% endif %}
                         <div class="user-info">
                             <span class="user-email">{{ current_user.email }}</span>
-                            {% if current_org_id %}
-                            <span class="org-name">{{ session.get('org_name', 'Organization') }}</span>
-                            {% endif %}
                         </div>
                         <a href="{{ url_for('auth_bp.logout') }}" class="btn btn-secondary btn-sm">Logout</a>
                     </div>
                 </div>
             </header>
 
-            <!-- Flash Messages -->
+            
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -88,14 +122,110 @@
         </main>
     </div>
     {% else %}
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div style="max-width: 600px; margin: 20px auto; padding: 0 var(--spacing-xl);">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" style="margin-bottom: var(--spacing-md);">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
         {% block auth_content %}{% endblock %}
     {% endif %}
 
     {% block extra_js %}{% endblock %}
+    <script src="{{ url_for('static', filename='js/table-sort.js') }}"></script>
     <script>
         // Initialize Lucide icons
-        if (typeof lucide !== 'undefined') {
-            lucide.createIcons();
+        function initIcons() {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+        
+        // Mobile sidebar toggle - make it globally accessible
+        window.toggleSidebar = function() {
+            const sidebar = document.querySelector('.sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            
+            if (sidebar && overlay) {
+                const isOpen = sidebar.classList.contains('open');
+                sidebar.classList.toggle('open');
+                overlay.classList.toggle('active');
+                
+                // Prevent body scroll when sidebar is open
+                if (!isOpen) {
+                    document.body.style.overflow = 'hidden';
+                } else {
+                    document.body.style.overflow = '';
+                }
+                
+                // Reinitialize icons after sidebar opens
+                setTimeout(initIcons, 100);
+            }
+        };
+        
+        // Close sidebar when clicking overlay
+        document.addEventListener('DOMContentLoaded', function() {
+            initIcons();
+            
+            const overlay = document.getElementById('sidebarOverlay');
+            if (overlay) {
+                overlay.addEventListener('click', function(e) {
+                    if (e.target === overlay) {
+                        window.toggleSidebar();
+                    }
+                });
+            }
+            
+            // Close sidebar when clicking a nav link on mobile
+            const navLinks = document.querySelectorAll('.sidebar-nav-link');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth <= 768) {
+                        window.toggleSidebar();
+                    }
+                });
+            });
+            
+            // Close sidebar on window resize if it becomes desktop size
+            let resizeTimer;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(function() {
+                    if (window.innerWidth > 768) {
+                        const sidebar = document.querySelector('.sidebar');
+                        const overlay = document.getElementById('sidebarOverlay');
+                        if (sidebar && overlay) {
+                            sidebar.classList.remove('open');
+                            overlay.classList.remove('active');
+                            document.body.style.overflow = '';
+                        }
+                    }
+                }, 250);
+            });
+        });
+        
+        // Organization switcher
+        function switchOrganization(orgId) {
+            if (!orgId) return;
+            
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{{ url_for("settings_bp.select_org") }}';
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'org_id';
+            input.value = orgId;
+            form.appendChild(input);
+            
+            document.body.appendChild(form);
+            form.submit();
         }
     </script>
 </body>

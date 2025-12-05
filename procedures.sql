@@ -1,18 +1,23 @@
--- ============================================================================
--- STORED PROCEDURES FOR MULTI-TENANT INVOICING SYSTEM
--- All database operations must go through these procedures
--- ============================================================================
+
+
+
+
 
 DELIMITER //
 
--- ============================================================================
--- AUTHENTICATION & USER MANAGEMENT
--- ============================================================================
 
--- Create a new organization
+
+
+
+
 CREATE PROCEDURE sp_create_organization(
     IN p_name VARCHAR(100),
     IN p_domain VARCHAR(100),
+    IN p_street_address VARCHAR(255),
+    IN p_city VARCHAR(100),
+    IN p_state VARCHAR(100),
+    IN p_zip_code VARCHAR(20),
+    IN p_country VARCHAR(100),
     OUT p_org_id CHAR(36)
 )
 BEGIN
@@ -24,14 +29,14 @@ BEGIN
     
     SET p_org_id = UUID();
     
-    INSERT INTO organization (org_id, domain, name)
-    VALUES (p_org_id, p_domain, p_name);
+    INSERT INTO organization (org_id, domain, name, street_address, city, state, zip_code, country)
+    VALUES (p_org_id, p_domain, p_name, p_street_address, p_city, p_state, p_zip_code, p_country);
     
-    -- Return the created org_id as a result set
+    
     SELECT p_org_id AS org_id;
 END //
 
--- Create a new user
+
 CREATE PROCEDURE sp_create_user(
     IN p_email VARCHAR(255),
     IN p_password_hash VARCHAR(255),
@@ -53,11 +58,11 @@ BEGIN
     INSERT INTO users (user_id, email, password_hash)
     VALUES (p_user_id, p_email, p_password_hash);
     
-    -- Return the created user_id as a result set
+    
     SELECT p_user_id AS user_id;
 END //
 
--- Assign user to organization
+
 CREATE PROCEDURE sp_assign_user_to_org(
     IN p_user_id CHAR(36),
     IN p_org_id CHAR(36),
@@ -83,7 +88,7 @@ BEGIN
     ON DUPLICATE KEY UPDATE role = IFNULL(p_role, role);
 END //
 
--- Authenticate user and return user info with organizations
+
 CREATE PROCEDURE sp_authenticate_user(
     IN p_email VARCHAR(255),
     IN p_password_hash VARCHAR(255),
@@ -109,17 +114,17 @@ BEGIN
     SET p_user_id = v_user_id;
     SET p_email_out = p_email;
     
-    -- Return user info as first result set
+    
     SELECT v_user_id AS user_id, p_email AS email;
     
-    -- Return organizations for this user as second result set
+    
     SELECT uo.org_id, o.name, o.domain, uo.role
     FROM user_organization uo
     JOIN organization o ON uo.org_id = o.org_id
     WHERE uo.user_id = v_user_id;
 END //
 
--- Get user by email (for authentication)
+
 CREATE PROCEDURE sp_get_user_by_email(
     IN p_email VARCHAR(255)
 )
@@ -129,7 +134,40 @@ BEGIN
     WHERE email = p_email;
 END //
 
--- Get user organizations
+
+DROP PROCEDURE IF EXISTS sp_find_organizations_by_domain //
+CREATE PROCEDURE sp_find_organizations_by_domain(
+    IN p_domain VARCHAR(100)
+)
+BEGIN
+    SELECT 
+        org_id,
+        name,
+        domain,
+        created_at
+    FROM organization
+    WHERE domain = p_domain
+    ORDER BY created_at DESC;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_find_organization_by_domain //
+CREATE PROCEDURE sp_find_organization_by_domain(
+    IN p_domain VARCHAR(100)
+)
+BEGIN
+    SELECT 
+        org_id,
+        name,
+        domain,
+        created_at
+    FROM organization
+    WHERE domain = p_domain
+    LIMIT 1;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_get_user_organizations //
 CREATE PROCEDURE sp_get_user_organizations(
     IN p_user_id CHAR(36)
 )
@@ -141,11 +179,66 @@ BEGIN
     ORDER BY uo.created_at DESC;
 END //
 
--- ============================================================================
--- TEMPLATE MANAGEMENT
--- ============================================================================
 
--- Create a new template (version 1)
+DROP PROCEDURE IF EXISTS sp_get_organization_details //
+CREATE PROCEDURE sp_get_organization_details(
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    SELECT 
+        org_id,
+        name,
+        domain,
+        street_address,
+        city,
+        state,
+        zip_code,
+        country,
+        created_at
+    FROM organization
+    WHERE org_id = p_org_id;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_update_organization //
+CREATE PROCEDURE sp_update_organization(
+    IN p_org_id CHAR(36),
+    IN p_name VARCHAR(100),
+    IN p_street_address VARCHAR(255),
+    IN p_city VARCHAR(100),
+    IN p_state VARCHAR(100),
+    IN p_zip_code VARCHAR(20),
+    IN p_country VARCHAR(100)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM organization WHERE org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Organization does not exist';
+    END IF;
+    
+    UPDATE organization
+    SET 
+        name = IFNULL(p_name, name),
+        street_address = p_street_address,
+        city = p_city,
+        state = p_state,
+        zip_code = p_zip_code,
+        country = p_country
+    WHERE org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
+END //
+
+
+
+
+
+
 CREATE PROCEDURE sp_create_template(
     IN p_org_id CHAR(36),
     IN p_name VARCHAR(100),
@@ -170,11 +263,35 @@ BEGIN
     INSERT INTO template (template_id, version, org_id, name, currency_code)
     VALUES (p_template_id, p_version, p_org_id, p_name, p_currency_code);
     
-    -- Return the created template_id and version as a result set
+    
     SELECT p_template_id AS template_id, p_version AS version;
 END //
 
--- Create a new version of an existing template (copies all sections and fields)
+
+DROP PROCEDURE IF EXISTS sp_check_template_version_has_invoices //
+CREATE PROCEDURE sp_check_template_version_has_invoices(
+    IN p_template_id CHAR(36),
+    IN p_template_version INT,
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE v_count INT DEFAULT 0;
+    DECLARE v_has_invoices BOOLEAN DEFAULT FALSE;
+    
+    SELECT COUNT(*) INTO v_count
+    FROM invoice
+    WHERE template_id = p_template_id
+      AND template_version = p_template_version
+      AND org_id = p_org_id;
+    
+    SET v_has_invoices = IF(v_count > 0, TRUE, FALSE);
+    
+    
+    SELECT v_has_invoices AS has_invoices, v_count AS invoice_count;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_create_template_version //
 CREATE PROCEDURE sp_create_template_version(
     IN p_template_id CHAR(36),
     IN p_org_id CHAR(36),
@@ -193,12 +310,12 @@ BEGIN
         RESIGNAL;
     END;
     
-    -- Validate organization
+    
     IF NOT EXISTS (SELECT 1 FROM organization WHERE org_id = p_org_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Organization does not exist';
     END IF;
     
-    -- Get latest version
+    
     SELECT MAX(version) INTO v_latest_version
     FROM template
     WHERE template_id = p_template_id
@@ -208,36 +325,38 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist or does not belong to organization';
     END IF;
     
-    -- Get template details
+    
     SELECT name, currency_code, total_field_id
     INTO v_template_name, v_currency_code, v_old_total_field_id
     FROM template
     WHERE template_id = p_template_id
       AND version = v_latest_version;
     
-    -- Calculate new version
+    
     SET p_new_version = v_latest_version + 1;
     
-    -- Create new template version
+    
     INSERT INTO template (template_id, version, org_id, name, currency_code, total_field_id)
     VALUES (p_template_id, p_new_version, p_org_id, v_template_name, v_currency_code, NULL);
     
-    -- Copy all sections with new IDs
-    INSERT INTO section (section_id, template_id, template_version, title, ordinal, section_type)
-    SELECT UUID(), p_template_id, p_new_version, title, ordinal, section_type
+    
+    INSERT INTO section (section_id, template_id, template_version, name, display_name, ordinal, section_type)
+    SELECT UUID(), p_template_id, p_new_version, name, display_name, ordinal, section_type
     FROM section
     WHERE template_id = p_template_id
       AND template_version = v_latest_version
     ORDER BY ordinal;
     
-    -- Copy all fields, mapping old section IDs to new section IDs
-    INSERT INTO field (field_id, section_id, label, data_type, is_required, ordinal, calculation_formula)
+    
+    INSERT INTO field (field_id, section_id, name, display_name, data_type, is_required, is_currency, ordinal, calculation_formula)
     SELECT 
         UUID(),
         new_s.section_id,
-        f.label,
+        f.name,
+        f.display_name,
         f.data_type,
         f.is_required,
+        f.is_currency,
         f.ordinal,
         f.calculation_formula
     FROM field f
@@ -245,12 +364,12 @@ BEGIN
     JOIN section new_s ON new_s.template_id = p_template_id
                       AND new_s.template_version = p_new_version
                       AND new_s.ordinal = old_s.ordinal
-                      AND new_s.title = old_s.title
+                      AND new_s.name = old_s.name
     WHERE old_s.template_id = p_template_id
       AND old_s.template_version = v_latest_version
     ORDER BY old_s.ordinal, f.ordinal;
     
-    -- Update total_field_id if it exists
+    
     IF v_old_total_field_id IS NOT NULL THEN
         SELECT f_new.field_id INTO v_new_total_field_id
         FROM field f_old
@@ -273,15 +392,16 @@ BEGIN
         END IF;
     END IF;
     
-    -- Return the new version as a result set
+    
     SELECT p_new_version AS new_version;
 END //
 
--- Create a new section in a template
+
 CREATE PROCEDURE sp_create_section(
     IN p_template_id CHAR(36),
     IN p_template_version INT,
-    IN p_title VARCHAR(100),
+    IN p_name VARCHAR(100),
+    IN p_display_name VARCHAR(100),
     IN p_ordinal INT,
     IN p_section_type VARCHAR(20),
     OUT p_section_id CHAR(36)
@@ -301,21 +421,31 @@ BEGIN
         SET p_section_type = 'normal';
     END IF;
     
+    IF p_name IS NULL OR p_name = '' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Section name is required and cannot contain spaces';
+    END IF;
+    
+    IF p_name LIKE '% %' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Section name cannot contain spaces';
+    END IF;
+    
     SET p_section_id = UUID();
     
-    INSERT INTO section (section_id, template_id, template_version, title, ordinal, section_type)
-    VALUES (p_section_id, p_template_id, p_template_version, p_title, IFNULL(p_ordinal, 0), IFNULL(p_section_type, 'normal'));
+    INSERT INTO section (section_id, template_id, template_version, name, display_name, ordinal, section_type)
+    VALUES (p_section_id, p_template_id, p_template_version, p_name, p_display_name, IFNULL(p_ordinal, 0), IFNULL(p_section_type, 'normal'));
     
-    -- Return the created section_id as a result set
+    
     SELECT p_section_id AS section_id;
 END //
 
--- Add a field to a section
+
 CREATE PROCEDURE sp_add_template_field(
     IN p_section_id CHAR(36),
-    IN p_label VARCHAR(100),
+    IN p_name VARCHAR(100),
+    IN p_display_name VARCHAR(100),
     IN p_data_type VARCHAR(20),
-    IN p_is_required TINYINT(1),
+    IN p_is_required BOOLEAN,
+    IN p_is_currency BOOLEAN,
     IN p_ordinal INT,
     IN p_calculation_formula TEXT,
     OUT p_field_id CHAR(36)
@@ -335,16 +465,24 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid data type. Must be: string, number, date, or boolean';
     END IF;
     
+    IF p_name IS NULL OR p_name = '' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Field name is required and cannot contain spaces';
+    END IF;
+    
+    IF p_name LIKE '% %' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Field name cannot contain spaces';
+    END IF;
+    
     SET p_field_id = UUID();
     
-    INSERT INTO field (field_id, section_id, label, data_type, is_required, ordinal, calculation_formula)
-    VALUES (p_field_id, p_section_id, p_label, p_data_type, IFNULL(p_is_required, 0), IFNULL(p_ordinal, 0), p_calculation_formula);
+    INSERT INTO field (field_id, section_id, name, display_name, data_type, is_required, is_currency, ordinal, calculation_formula)
+    VALUES (p_field_id, p_section_id, p_name, p_display_name, p_data_type, IFNULL(p_is_required, FALSE), IFNULL(p_is_currency, FALSE), IFNULL(p_ordinal, 0), p_calculation_formula);
     
-    -- Return the created field_id as a result set
+    
     SELECT p_field_id AS field_id;
 END //
 
--- Update template's total_field_id
+
 CREATE PROCEDURE sp_set_template_total_field(
     IN p_template_id CHAR(36),
     IN p_template_version INT,
@@ -361,7 +499,7 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template version does not exist';
     END IF;
     
-    -- Verify the field exists and belongs to this template
+    
     IF p_total_field_id IS NOT NULL THEN
         IF NOT EXISTS (
             SELECT 1 
@@ -380,14 +518,14 @@ BEGIN
     WHERE template_id = p_template_id AND version = p_template_version;
 END //
 
--- Get template fields (latest version) with sections
+
 CREATE PROCEDURE sp_get_template_fields(
     IN p_template_id CHAR(36)
 )
 BEGIN
     DECLARE v_latest_version INT;
     
-    -- Get latest version
+    
     SELECT MAX(version) INTO v_latest_version
     FROM template
     WHERE template_id = p_template_id;
@@ -396,16 +534,20 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist';
     END IF;
     
-    -- Return fields grouped by section
+    
     SELECT 
         s.section_id,
-        s.title AS section_title,
+        s.name AS section_name,
+        s.display_name AS section_display_name,
+        s.display_name AS section_title,
         s.ordinal AS section_ordinal,
         s.section_type,
         f.field_id,
-        f.label,
+        f.name AS field_name,
+        f.display_name AS field_display_name,
         f.data_type,
         f.is_required,
+        f.is_currency,
         f.ordinal AS field_ordinal,
         f.calculation_formula
     FROM section s
@@ -415,9 +557,10 @@ BEGIN
     ORDER BY s.ordinal, f.ordinal;
 END //
 
--- Get all templates for an organization
+
 CREATE PROCEDURE sp_list_templates(
-    IN p_org_id CHAR(36)
+    IN p_org_id CHAR(36),
+    IN p_include_archived BOOLEAN
 )
 BEGIN
     SELECT 
@@ -425,23 +568,154 @@ BEGIN
         t.version,
         t.name,
         t.currency_code,
+        t.is_archived,
         t.created_at,
         (SELECT MAX(version) FROM template WHERE template_id = t.template_id) AS latest_version
     FROM template t
     WHERE t.org_id = p_org_id
-    GROUP BY t.template_id, t.version, t.name, t.currency_code, t.created_at
-    ORDER BY t.created_at DESC;
+      AND (p_include_archived = TRUE OR t.is_archived = FALSE)
+    GROUP BY t.template_id, t.version, t.name, t.currency_code, t.is_archived, t.created_at
+    ORDER BY t.is_archived ASC, t.created_at DESC;
 END //
 
--- ============================================================================
--- CUSTOMER MANAGEMENT
--- ============================================================================
 
--- Create a new customer
+DROP PROCEDURE IF EXISTS sp_update_section //
+CREATE PROCEDURE sp_update_section(
+    IN p_section_id CHAR(36),
+    IN p_name VARCHAR(100),
+    IN p_display_name VARCHAR(100),
+    IN p_ordinal INT,
+    IN p_section_type VARCHAR(20)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM section WHERE section_id = p_section_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Section does not exist';
+    END IF;
+    
+    IF p_section_type IS NOT NULL AND p_section_type NOT IN ('normal', 'line_item') THEN
+        SET p_section_type = 'normal';
+    END IF;
+    
+    IF p_name IS NOT NULL AND p_name LIKE '% %' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Section name cannot contain spaces';
+    END IF;
+    
+    UPDATE section
+    SET 
+        name = IFNULL(p_name, name),
+        display_name = p_display_name,
+        ordinal = IFNULL(p_ordinal, ordinal),
+        section_type = IFNULL(p_section_type, section_type)
+    WHERE section_id = p_section_id;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_delete_section //
+CREATE PROCEDURE sp_delete_section(
+    IN p_section_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM section WHERE section_id = p_section_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Section does not exist';
+    END IF;
+    
+    
+    DELETE FROM field WHERE section_id = p_section_id;
+    
+    
+    DELETE FROM section WHERE section_id = p_section_id;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_update_field //
+CREATE PROCEDURE sp_update_field(
+    IN p_field_id CHAR(36),
+    IN p_name VARCHAR(100),
+    IN p_display_name VARCHAR(100),
+    IN p_data_type VARCHAR(20),
+    IN p_is_required BOOLEAN,
+    IN p_is_currency BOOLEAN,
+    IN p_ordinal INT,
+    IN p_calculation_formula TEXT
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM field WHERE field_id = p_field_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Field does not exist';
+    END IF;
+    
+    IF p_data_type IS NOT NULL AND p_data_type NOT IN ('string', 'number', 'date', 'boolean') THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid data type. Must be: string, number, date, or boolean';
+    END IF;
+    
+    IF p_name IS NOT NULL AND p_name LIKE '% %' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Field name cannot contain spaces';
+    END IF;
+    
+    UPDATE field
+    SET 
+        name = IFNULL(p_name, name),
+        display_name = p_display_name,
+        data_type = IFNULL(p_data_type, data_type),
+        is_required = IFNULL(p_is_required, is_required),
+        is_currency = IFNULL(p_is_currency, is_currency),
+        ordinal = IFNULL(p_ordinal, ordinal),
+        calculation_formula = p_calculation_formula
+    WHERE field_id = p_field_id;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_delete_field //
+CREATE PROCEDURE sp_delete_field(
+    IN p_field_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM field WHERE field_id = p_field_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Field does not exist';
+    END IF;
+    
+    
+    DELETE FROM field WHERE field_id = p_field_id;
+END //
+
+
+
+
+
+
+DROP PROCEDURE IF EXISTS sp_create_customer //
 CREATE PROCEDURE sp_create_customer(
     IN p_org_id CHAR(36),
     IN p_name VARCHAR(255),
     IN p_tax_id VARCHAR(50),
+    IN p_street_address VARCHAR(255),
+    IN p_city VARCHAR(100),
+    IN p_state VARCHAR(100),
+    IN p_zip_code VARCHAR(20),
+    IN p_country VARCHAR(100),
     OUT p_customer_id CHAR(36)
 )
 BEGIN
@@ -457,47 +731,62 @@ BEGIN
     
     SET p_customer_id = UUID();
     
-    INSERT INTO customer (customer_id, org_id, name, tax_id)
-    VALUES (p_customer_id, p_org_id, p_name, p_tax_id);
+    INSERT INTO customer (customer_id, org_id, name, tax_id, street_address, city, state, zip_code, country)
+    VALUES (p_customer_id, p_org_id, p_name, p_tax_id, p_street_address, p_city, p_state, p_zip_code, p_country);
     
-    -- Return the created customer_id as a result set
+    
     SELECT p_customer_id AS customer_id;
 END //
 
--- List customers for an organization
+
+DROP PROCEDURE IF EXISTS sp_list_customers //
 CREATE PROCEDURE sp_list_customers(
-    IN p_org_id CHAR(36)
+    IN p_org_id CHAR(36),
+    IN p_include_archived BOOLEAN
 )
 BEGIN
     SELECT 
         c.customer_id,
         c.name,
         c.tax_id,
+        c.street_address,
+        c.city,
+        c.state,
+        c.zip_code,
+        c.country,
+        c.is_archived,
         c.created_at,
         COUNT(DISTINCT i.invoice_id) AS invoice_count
     FROM customer c
     LEFT JOIN invoice i ON c.customer_id = i.customer_id
     WHERE c.org_id = p_org_id
-    GROUP BY c.customer_id, c.name, c.tax_id, c.created_at
+      AND (p_include_archived = TRUE OR c.is_archived = FALSE)
+    GROUP BY c.customer_id, c.name, c.tax_id, c.street_address, c.city, c.state, c.zip_code, c.country, c.is_archived, c.created_at
     ORDER BY c.name;
 END //
 
--- Get customer details with contacts
+
+DROP PROCEDURE IF EXISTS sp_get_customer_details //
 CREATE PROCEDURE sp_get_customer_details(
     IN p_customer_id CHAR(36)
 )
 BEGIN
-    -- Customer info
+    
     SELECT 
         c.customer_id,
         c.org_id,
         c.name,
         c.tax_id,
+        c.street_address,
+        c.city,
+        c.state,
+        c.zip_code,
+        c.country,
         c.created_at
     FROM customer c
     WHERE c.customer_id = p_customer_id;
     
-    -- Customer contacts
+    
     SELECT 
         p.person_id,
         p.email,
@@ -508,11 +797,46 @@ BEGIN
     WHERE cca.customer_id = p_customer_id;
 END //
 
--- ============================================================================
--- INVOICE MANAGEMENT
--- ============================================================================
 
--- Create a new invoice (auto-resolves latest template version)
+DROP PROCEDURE IF EXISTS sp_update_customer //
+CREATE PROCEDURE sp_update_customer(
+    IN p_customer_id CHAR(36),
+    IN p_name VARCHAR(255),
+    IN p_tax_id VARCHAR(50),
+    IN p_street_address VARCHAR(255),
+    IN p_city VARCHAR(100),
+    IN p_state VARCHAR(100),
+    IN p_zip_code VARCHAR(20),
+    IN p_country VARCHAR(100)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM customer WHERE customer_id = p_customer_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer does not exist';
+    END IF;
+    
+    UPDATE customer
+    SET 
+        name = IFNULL(p_name, name),
+        tax_id = p_tax_id,
+        street_address = p_street_address,
+        city = p_city,
+        state = p_state,
+        zip_code = p_zip_code,
+        country = p_country
+    WHERE customer_id = p_customer_id;
+END //
+
+
+
+
+
+
 CREATE PROCEDURE sp_create_invoice(
     IN p_org_id CHAR(36),
     IN p_customer_id CHAR(36),
@@ -528,24 +852,29 @@ BEGIN
         RESIGNAL;
     END;
     
-    -- Validate organization
+    
     IF NOT EXISTS (SELECT 1 FROM organization WHERE org_id = p_org_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Organization does not exist';
     END IF;
     
-    -- Validate customer
+    
     IF NOT EXISTS (SELECT 1 FROM customer WHERE customer_id = p_customer_id AND org_id = p_org_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer does not exist or does not belong to organization';
     END IF;
     
-    -- Get latest template version
+    IF EXISTS (SELECT 1 FROM customer WHERE customer_id = p_customer_id AND org_id = p_org_id AND is_archived = TRUE) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot create invoice for archived customer';
+    END IF;
+    
+    
     SELECT MAX(version) INTO v_latest_version
     FROM template
     WHERE template_id = p_template_id
-      AND org_id = p_org_id;
+      AND org_id = p_org_id
+      AND is_archived = FALSE;
     
     IF v_latest_version IS NULL THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist or does not belong to organization';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist, does not belong to organization, or is archived';
     END IF;
     
     SET p_invoice_id = UUID();
@@ -554,11 +883,11 @@ BEGIN
     INSERT INTO invoice (invoice_id, org_id, customer_id, template_id, template_version, status)
     VALUES (p_invoice_id, p_org_id, p_customer_id, p_template_id, p_template_version, 'draft');
     
-    -- Return the created invoice_id and template_version as a result set
+    
     SELECT p_invoice_id AS invoice_id, p_template_version AS template_version;
 END //
 
--- Save invoice value (upsert)
+
 CREATE PROCEDURE sp_save_invoice_value(
     IN p_invoice_id CHAR(36),
     IN p_field_id CHAR(36),
@@ -576,23 +905,23 @@ BEGIN
         RESIGNAL;
     END;
     
-    -- Validate invoice exists
+    
     IF NOT EXISTS (SELECT 1 FROM invoice WHERE invoice_id = p_invoice_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invoice does not exist';
     END IF;
     
-    -- Check if value already exists (for line items, check by field_id AND ordinal)
-    -- For line items (ordinal is not NULL), match by field_id AND ordinal
-    -- For normal fields (ordinal is NULL), match by field_id only
+    
+    
+    
     IF p_ordinal IS NULL THEN
-        -- Normal field - match by invoice_id and field_id only
+        
         SELECT value_id INTO v_value_id
         FROM invoice_value
         WHERE invoice_id = p_invoice_id 
           AND field_id = p_field_id
           AND (ordinal IS NULL OR ordinal = 0);
     ELSE
-        -- Line item - match by invoice_id, field_id, AND ordinal
+        
         SELECT value_id INTO v_value_id
         FROM invoice_value
         WHERE invoice_id = p_invoice_id 
@@ -601,7 +930,7 @@ BEGIN
     END IF;
     
     IF v_value_id IS NOT NULL THEN
-        -- Update existing
+        
         UPDATE invoice_value
         SET 
             val_string = p_val_string,
@@ -611,17 +940,17 @@ BEGIN
             ordinal = IFNULL(p_ordinal, 0)
         WHERE value_id = v_value_id;
     ELSE
-        -- Insert new
+        
         SET v_value_id = UUID();
     INSERT INTO invoice_value (value_id, invoice_id, field_id, val_string, val_number, val_date, val_boolean, ordinal)
     VALUES (v_value_id, p_invoice_id, p_field_id, p_val_string, p_val_number, p_val_date, p_val_boolean, IFNULL(p_ordinal, 0));
     END IF;
     
-    -- Update invoice total amount after saving value
+    
     CALL sp_update_invoice_total(p_invoice_id);
 END //
 
--- Update invoice total amount (called automatically after value changes)
+
 CREATE PROCEDURE sp_update_invoice_total(
     IN p_invoice_id CHAR(36)
 )
@@ -630,21 +959,21 @@ BEGIN
     DECLARE v_total_field_id CHAR(36);
     DECLARE v_template_total_field_id CHAR(36);
     
-    -- Strategy 1: Use the field specified in the template (if set)
+    
     SELECT t.total_field_id INTO v_template_total_field_id
     FROM invoice i
     JOIN template t ON i.template_id = t.template_id AND i.template_version = t.version
     WHERE i.invoice_id = p_invoice_id;
     
     IF v_template_total_field_id IS NOT NULL THEN
-        -- Use the template's specified total field
+        
         SELECT IFNULL(SUM(iv.val_number), 0) INTO v_total
         FROM invoice_value iv
         WHERE iv.invoice_id = p_invoice_id
           AND iv.field_id = v_template_total_field_id
           AND (iv.ordinal IS NULL OR iv.ordinal = 0);
     ELSE
-        -- Strategy 2: Try to find a field labeled "total", "grand total", "amount", etc.
+        
         SELECT f.field_id INTO v_total_field_id
         FROM invoice i
         JOIN template t ON i.template_id = t.template_id AND i.template_version = t.version
@@ -666,7 +995,7 @@ BEGIN
             END
         LIMIT 1;
         
-        -- If found, use that field's value (from normal section, ordinal 0)
+        
         IF v_total_field_id IS NOT NULL THEN
             SELECT IFNULL(SUM(iv.val_number), 0) INTO v_total
             FROM invoice_value iv
@@ -674,7 +1003,7 @@ BEGIN
               AND iv.field_id = v_total_field_id
               AND (iv.ordinal IS NULL OR iv.ordinal = 0);
         ELSE
-            -- Strategy 3: Look for calculated fields with sum() formulas
+            
             SELECT IFNULL(SUM(iv.val_number), 0) INTO v_total
             FROM invoice_value iv
             JOIN field f ON iv.field_id = f.field_id
@@ -686,7 +1015,7 @@ BEGIN
               AND s.section_type = 'normal'
               AND (iv.ordinal IS NULL OR iv.ordinal = 0);
             
-            -- Strategy 4: Fallback - sum all number fields from normal sections
+            
             IF v_total = 0 THEN
                 SELECT IFNULL(SUM(iv.val_number), 0) INTO v_total
                 FROM invoice_value iv
@@ -700,23 +1029,34 @@ BEGIN
         END IF;
     END IF;
     
-    -- Update invoice total
+    
     UPDATE invoice
     SET total_amount = IFNULL(v_total, 0)
     WHERE invoice_id = p_invoice_id;
 END //
 
--- Get invoice details (multiple result sets)
+
 CREATE PROCEDURE sp_get_invoice_details(
     IN p_invoice_id CHAR(36)
 )
 BEGIN
-    -- Result set 1: Invoice header
+    
     SELECT 
         i.invoice_id,
         i.org_id,
+        o.name AS organization_name,
+        o.street_address AS organization_street_address,
+        o.city AS organization_city,
+        o.state AS organization_state,
+        o.zip_code AS organization_zip_code,
+        o.country AS organization_country,
         i.customer_id,
         c.name AS customer_name,
+        c.street_address AS customer_street_address,
+        c.city AS customer_city,
+        c.state AS customer_state,
+        c.zip_code AS customer_zip_code,
+        c.country AS customer_country,
         i.template_id,
         i.template_version,
         t.name AS template_name,
@@ -725,18 +1065,24 @@ BEGIN
         i.due_date,
         i.status
     FROM invoice i
+    JOIN organization o ON i.org_id = o.org_id
     JOIN customer c ON i.customer_id = c.customer_id
     LEFT JOIN template t ON i.template_id = t.template_id AND i.template_version = t.version
     WHERE i.invoice_id = p_invoice_id;
     
-    -- Result set 2: Invoice values with field metadata
+    
     SELECT 
         iv.value_id,
         iv.field_id,
-        f.label AS field_label,
+        f.name AS field_name,
+        f.display_name AS field_display_name,
+        f.display_name AS field_label,
         f.data_type,
         f.calculation_formula,
-        s.title AS section_title,
+        f.is_currency,
+        s.name AS section_name,
+        s.display_name AS section_display_name,
+        s.display_name AS section_title,
         s.ordinal AS section_ordinal,
         s.section_type,
         f.ordinal AS field_ordinal,
@@ -752,7 +1098,7 @@ BEGIN
     ORDER BY s.ordinal, s.section_type, iv.ordinal, f.ordinal;
 END //
 
--- List invoices with pagination
+
 CREATE PROCEDURE sp_list_invoices(
     IN p_org_id CHAR(36),
     IN p_status_filter VARCHAR(20),
@@ -787,7 +1133,7 @@ BEGIN
     OFFSET v_offset;
 END //
 
--- Update invoice status
+
 CREATE PROCEDURE sp_update_invoice_status(
     IN p_invoice_id CHAR(36),
     IN p_status VARCHAR(20)
@@ -808,7 +1154,7 @@ BEGIN
     WHERE invoice_id = p_invoice_id;
 END //
 
--- Update invoice dates
+
 CREATE PROCEDURE sp_update_invoice_dates(
     IN p_invoice_id CHAR(36),
     IN p_issue_date DATE,
@@ -832,11 +1178,75 @@ BEGIN
     WHERE invoice_id = p_invoice_id;
 END //
 
--- ============================================================================
--- PAYMENT MANAGEMENT
--- ============================================================================
 
--- Record a payment
+DROP PROCEDURE IF EXISTS sp_delete_invoice //
+CREATE PROCEDURE sp_delete_invoice(
+    IN p_invoice_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM invoice WHERE invoice_id = p_invoice_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invoice does not exist';
+    END IF;
+    
+    
+    DELETE FROM payment WHERE invoice_id = p_invoice_id;
+    
+    
+    DELETE FROM invoice_value WHERE invoice_id = p_invoice_id;
+    
+    
+    DELETE FROM invoice WHERE invoice_id = p_invoice_id;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_delete_customer //
+CREATE PROCEDURE sp_delete_customer(
+    IN p_customer_id CHAR(36),
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE v_invoice_count INT;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    
+    IF NOT EXISTS (SELECT 1 FROM customer WHERE customer_id = p_customer_id AND org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer does not exist or does not belong to organization';
+    END IF;
+    
+    
+    SELECT COUNT(*) INTO v_invoice_count
+    FROM invoice
+    WHERE customer_id = p_customer_id;
+    
+    IF v_invoice_count > 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot delete customer with existing invoices. Delete invoices first.';
+    END IF;
+    
+    
+    DELETE FROM customer_user WHERE customer_id = p_customer_id;
+    
+    
+    DELETE FROM customer_contact_assignment WHERE customer_id = p_customer_id;
+    
+    
+    DELETE FROM customer WHERE customer_id = p_customer_id;
+END //
+
+
+
+
+
+
 CREATE PROCEDURE sp_record_payment(
     IN p_invoice_id CHAR(36),
     IN p_amount DECIMAL(15, 4),
@@ -864,20 +1274,20 @@ BEGIN
     INSERT INTO payment (payment_id, invoice_id, amount, method, reference_number)
     VALUES (p_payment_id, p_invoice_id, p_amount, p_method, p_reference_number);
     
-    -- Return the created payment_id as a result set
+    
     SELECT p_payment_id AS payment_id;
     
-    -- Update invoice total amount
+    
     CALL sp_update_invoice_total(p_invoice_id);
     
-    -- Auto-update invoice status if fully paid
+    
     UPDATE invoice i
     SET status = 'paid'
     WHERE i.invoice_id = p_invoice_id
       AND (SELECT IFNULL(SUM(amount), 0) FROM payment WHERE invoice_id = i.invoice_id) >= i.total_amount;
 END //
 
--- Get invoice payments
+
 CREATE PROCEDURE sp_get_invoice_payments(
     IN p_invoice_id CHAR(36)
 )
@@ -893,45 +1303,46 @@ BEGIN
     ORDER BY payment_date DESC;
 END //
 
--- ============================================================================
--- DASHBOARD STATISTICS
--- ============================================================================
 
--- Get dashboard statistics for an organization
+
+
+
+
+DROP PROCEDURE IF EXISTS sp_get_dashboard_stats //
 CREATE PROCEDURE sp_get_dashboard_stats(
     IN p_org_id CHAR(36)
 )
 BEGIN
     SELECT 
-        -- Total revenue (sum of all invoice totals for paid/pending invoices)
+        
         (SELECT IFNULL(SUM(i.total_amount), 0)
          FROM invoice i
          WHERE i.org_id = p_org_id 
            AND i.status IN ('paid', 'pending')) AS total_revenue,
         
-        -- Pending invoices count
+        
         (SELECT COUNT(*)
          FROM invoice
          WHERE org_id = p_org_id AND status = 'pending') AS pending_count,
         
-        -- Paid invoices count
+        
         (SELECT COUNT(*)
          FROM invoice
          WHERE org_id = p_org_id AND status = 'paid') AS paid_count,
         
-        -- Overdue invoices count
+        
         (SELECT COUNT(*)
          FROM invoice
          WHERE org_id = p_org_id 
            AND status IN ('pending', 'draft')
            AND due_date < CURDATE()) AS overdue_count,
         
-        -- Total invoices
+        
         (SELECT COUNT(*)
          FROM invoice
          WHERE org_id = p_org_id) AS total_invoices,
         
-        -- Revenue this month (from invoices issued this month)
+        
         (SELECT IFNULL(SUM(i.total_amount), 0)
          FROM invoice i
          WHERE i.org_id = p_org_id
@@ -939,21 +1350,44 @@ BEGIN
            AND YEAR(i.issue_date) = YEAR(CURDATE())
            AND MONTH(i.issue_date) = MONTH(CURDATE())) AS revenue_this_month,
         
-        -- Revenue last month (from invoices issued last month)
+        
         (SELECT IFNULL(SUM(i.total_amount), 0)
          FROM invoice i
          WHERE i.org_id = p_org_id
            AND i.status IN ('paid', 'pending')
            AND YEAR(i.issue_date) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
-           AND MONTH(i.issue_date) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))) AS revenue_last_month;
+           AND MONTH(i.issue_date) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))) AS revenue_last_month,
+        
+        
+        (SELECT COUNT(*)
+         FROM invoice
+         WHERE org_id = p_org_id
+           AND YEAR(issue_date) = YEAR(CURDATE())
+           AND MONTH(issue_date) = MONTH(CURDATE())) AS invoices_created_this_month,
+        
+        
+        (SELECT IFNULL(SUM(p.amount), 0)
+         FROM payment p
+         JOIN invoice i ON p.invoice_id = i.invoice_id
+         WHERE i.org_id = p_org_id
+           AND YEAR(p.payment_date) = YEAR(CURDATE())
+           AND MONTH(p.payment_date) = MONTH(CURDATE())) AS money_received_this_month,
+        
+        
+        (SELECT IFNULL(SUM(i.total_amount), 0)
+         FROM invoice i
+         WHERE i.org_id = p_org_id
+           AND i.status = 'pending'
+           AND YEAR(i.issue_date) = YEAR(CURDATE())
+           AND MONTH(i.issue_date) = MONTH(CURDATE())) AS pending_money_this_month;
 END //
 
--- Get revenue data for the last 6 months (for charts)
+
 CREATE PROCEDURE sp_get_revenue_timeseries(
     IN p_org_id CHAR(36)
 )
 BEGIN
-    -- Get revenue grouped by month, using issue_date or falling back to current date
+    
     SELECT 
         DATE_FORMAT(IFNULL(i.issue_date, CURDATE()), '%Y-%m') AS month,
         DATE_FORMAT(IFNULL(i.issue_date, CURDATE()), '%b %Y') AS month_label,
@@ -968,7 +1402,7 @@ BEGIN
     LIMIT 12;
 END //
 
--- Get invoice status distribution (for pie chart)
+
 CREATE PROCEDURE sp_get_invoice_status_distribution(
     IN p_org_id CHAR(36)
 )
@@ -981,7 +1415,7 @@ BEGIN
     GROUP BY status;
 END //
 
--- Get revenue by status (for charts)
+
 CREATE PROCEDURE sp_get_revenue_by_status(
     IN p_org_id CHAR(36)
 )
@@ -995,11 +1429,11 @@ BEGIN
     GROUP BY status;
 END //
 
--- ============================================================================
--- CUSTOMER PORTAL PROCEDURES
--- ============================================================================
 
--- Create customer user account
+
+
+
+
 CREATE PROCEDURE sp_create_customer_user(
     IN p_customer_id CHAR(36),
     IN p_email VARCHAR(255),
@@ -1026,11 +1460,11 @@ BEGIN
     INSERT INTO customer_user (customer_user_id, customer_id, email, password_hash)
     VALUES (p_customer_user_id, p_customer_id, p_email, p_password_hash);
     
-    -- Return the created customer_user_id as a result set
+    
     SELECT p_customer_user_id AS customer_user_id;
 END //
 
--- Get customer user by email (for password verification)
+
 CREATE PROCEDURE sp_get_customer_user_by_email(
     IN p_email VARCHAR(255)
 )
@@ -1047,7 +1481,7 @@ BEGIN
     WHERE cu.email = p_email;
 END //
 
--- Get all portal accounts for a customer
+
 CREATE PROCEDURE sp_get_customer_users(
     IN p_customer_id CHAR(36)
 )
@@ -1062,7 +1496,7 @@ BEGIN
     ORDER BY cu.created_at DESC;
 END //
 
--- Authenticate customer
+
 CREATE PROCEDURE sp_authenticate_customer(
     IN p_email VARCHAR(255),
     IN p_password_hash VARCHAR(255)
@@ -1085,7 +1519,7 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid email or password';
     END IF;
     
-    -- Return customer user info
+    
     SELECT 
         cu.customer_user_id,
         cu.customer_id,
@@ -1097,7 +1531,7 @@ BEGIN
     WHERE cu.customer_user_id = v_customer_user_id;
 END //
 
--- Get invoices for customer
+
 CREATE PROCEDURE sp_get_customer_invoices(
     IN p_customer_id CHAR(36)
 )
@@ -1117,6 +1551,102 @@ BEGIN
       AND i.status IS NOT NULL
       AND i.status != 'draft'
     ORDER BY i.issue_date DESC, i.invoice_id DESC;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_archive_customer //
+CREATE PROCEDURE sp_archive_customer(
+    IN p_customer_id CHAR(36),
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM customer WHERE customer_id = p_customer_id AND org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer does not exist or does not belong to organization';
+    END IF;
+    
+    UPDATE customer
+    SET is_archived = TRUE
+    WHERE customer_id = p_customer_id AND org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_unarchive_customer //
+CREATE PROCEDURE sp_unarchive_customer(
+    IN p_customer_id CHAR(36),
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM customer WHERE customer_id = p_customer_id AND org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer does not exist or does not belong to organization';
+    END IF;
+    
+    UPDATE customer
+    SET is_archived = FALSE
+    WHERE customer_id = p_customer_id AND org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_archive_template //
+CREATE PROCEDURE sp_archive_template(
+    IN p_template_id CHAR(36),
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM template WHERE template_id = p_template_id AND org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist or does not belong to organization';
+    END IF;
+    
+    UPDATE template
+    SET is_archived = TRUE
+    WHERE template_id = p_template_id AND org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
+END //
+
+
+DROP PROCEDURE IF EXISTS sp_unarchive_template //
+CREATE PROCEDURE sp_unarchive_template(
+    IN p_template_id CHAR(36),
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM template WHERE template_id = p_template_id AND org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Template does not exist or does not belong to organization';
+    END IF;
+    
+    UPDATE template
+    SET is_archived = FALSE
+    WHERE template_id = p_template_id AND org_id = p_org_id;
+    
+    SELECT ROW_COUNT() AS rows_affected;
 END //
 
 DELIMITER ;

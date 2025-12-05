@@ -1,0 +1,12 @@
+[providers]
+python = "312"
+
+[phases.setup]
+nixPkgs = ["python312", "cairo", "pkg-config", "gcc"]
+
+[phases.install]
+cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
+
+[start]
+cmd = "gunicorn wsgi:app --bind 0.0.0.0:5000"
+

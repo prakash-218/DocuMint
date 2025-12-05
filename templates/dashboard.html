@@ -13,56 +13,52 @@
     <h2 class="section-title">Financial Overview</h2>
     <div class="stats-grid">
     <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="Total Revenue Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value">{{ stats.total_revenue or 0 | currency }}</div>
-        <div class="stat-label">Total Revenue</div>
-    </div>
-    <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="Total Invoices Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value">{{ stats.total_invoices or 0 }}</div>
-        <div class="stat-label">Total Invoices</div>
-    </div>
-    <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="Pending Invoices Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value">{{ stats.pending_count or 0 }}</div>
-        <div class="stat-label">Pending</div>
-    </div>
-    <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="Overdue Invoices Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value">{{ stats.overdue_count or 0 }}</div>
-        <div class="stat-label">Overdue</div>
-    </div>
-    <div class="stat-card">
         <button class="card-menu" aria-label="Menu" data-tooltip="This Month Revenue Options">
             <i data-lucide="more-horizontal" class="nav-icon"></i>
         </button>
         <div class="stat-value">{{ stats.revenue_this_month or 0 | currency }}</div>
-        <div class="stat-label">This Month</div>
-        {% if stats.revenue_last_month %}
+        <div class="stat-label">This Month Revenue</div>
+        {% if stats.revenue_last_month and stats.revenue_last_month > 0 %}
         <div class="stat-change {% if stats.revenue_this_month > stats.revenue_last_month %}positive{% else %}negative{% endif %}">
-            vs Last Month: {{ ((stats.revenue_this_month - stats.revenue_last_month) / stats.revenue_last_month * 100) | round(1) }}%
+            {% set change_pct = ((stats.revenue_this_month - stats.revenue_last_month) / stats.revenue_last_month * 100) | round(1) %}
+            {% if change_pct > 0 %}+{% endif %}{{ change_pct }}% vs last month
         </div>
         {% endif %}
     </div>
     <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="Paid Invoices Options">
+        <button class="card-menu" aria-label="Menu" data-tooltip="This Month Invoices Options">
             <i data-lucide="more-horizontal" class="nav-icon"></i>
         </button>
-        <div class="stat-value">{{ stats.paid_count or 0 }}</div>
-        <div class="stat-label">Paid</div>
+        <div class="stat-value">{{ stats.invoices_created_this_month or 0 }}</div>
+        <div class="stat-label">Invoices Created</div>
+        <div class="stat-change" style="color: var(--text-tertiary); font-size: 0.7rem; margin-top: 4px;">
+            This month
+        </div>
+    </div>
+    <div class="stat-card">
+        <button class="card-menu" aria-label="Menu" data-tooltip="Money Received This Month Options">
+            <i data-lucide="more-horizontal" class="nav-icon"></i>
+        </button>
+        <div class="stat-value" style="color: var(--color-success);">{{ stats.money_received_this_month or 0 | currency }}</div>
+        <div class="stat-label">Money Received</div>
+        <div class="stat-change" style="color: var(--text-tertiary); font-size: 0.7rem; margin-top: 4px;">
+            Paid this month
+        </div>
+    </div>
+    <div class="stat-card">
+        <button class="card-menu" aria-label="Menu" data-tooltip="Pending Money This Month Options">
+            <i data-lucide="more-horizontal" class="nav-icon"></i>
+        </button>
+        <div class="stat-value" style="color: var(--color-warning);">{{ stats.pending_money_this_month or 0 | currency }}</div>
+        <div class="stat-label">Pending Money</div>
+        <div class="stat-change" style="color: var(--text-tertiary); font-size: 0.7rem; margin-top: 4px;">
+            Awaiting payment
+        </div>
     </div>
 </div>
 </section>
 
-<!-- Charts Section -->
+
 <section class="dashboard-section">
     <h2 class="section-title">Analytics</h2>
     <div class="charts-grid">
@@ -178,31 +174,31 @@
                     return;
                 }
 
-        // Modern Chart.js configuration - Donut Chart Style
+        // Modern Chart.js configuration - Purple & Teal Theme
         const chartColors = {
-            // Main purple (medium purple/periwinkle - for large segments)
-            primary: '#7F68ED', // Medium purple/periwinkle
-            primaryGradient: ['#7F68ED', '#8d8dff', '#9e9eff'],
-            // Light lavender/pale purple
-            secondary: '#DDD4FF', // Light lavender
-            secondaryGradient: ['#DDD4FF', '#c8b9ff', '#d8c9ff'],
-            // Muted purple (slightly darker)
-            tertiary: '#FFE163', // Muted purple
-            tertiaryGradient: ['#FFE163', '#f5b643', '#f5c663'],
-            // Golden yellow
-            accent: '#F5A623', // Golden yellow
-            accentGradient: ['#F5A623', '#f5b643', '#f5c663'],
+            // Soft Purple (main color)
+            primary: '#9B86FF', // Soft Purple
+            primaryGradient: ['#9B86FF', '#B5A5FF', '#CFC4FF'],
+            // Teal Accent (secondary)
+            secondary: '#4CD4A9', // Teal Accent
+            secondaryGradient: ['#4CD4A9', '#6DD9B8', '#8EDEC7'],
+            // Lighter Purple (tertiary)
+            tertiary: '#B5A5FF', // Lighter Purple
+            tertiaryGradient: ['#B5A5FF', '#CFC4FF', '#E9E3FF'],
+            // Primary Hover Purple (accent)
+            accent: '#8B76F5', // Primary Hover Purple
+            accentGradient: ['#8B76F5', '#A595F7', '#BFB4F9'],
             // Additional colors for variety
-            success: '#10b981',
-            successGradient: ['#10b981', '#34d399', '#6ee7b7'],
-            warning: '#f59e0b',
-            warningGradient: ['#f59e0b', '#fbbf24', '#fcd34d'],
-            error: '#ef4444',
-            errorGradient: ['#ef4444', '#f87171', '#fca5a5'],
-            info: '#7C7CFF',
-            infoGradient: ['#7C7CFF', '#8d8dff', '#9e9eff'],
-            gray: '#9ca3af',
-            grayGradient: ['#9ca3af', '#d1d5db', '#e5e7eb']
+            success: '#34D399',
+            successGradient: ['#34D399', '#5DD9B3', '#86DFCD'],
+            warning: '#EAB308',
+            warningGradient: ['#EAB308', '#F0C948', '#F6E088'],
+            error: '#EF4444',
+            errorGradient: ['#EF4444', '#F87171', '#FCA5A5'],
+            info: '#4CD4A9',
+            infoGradient: ['#4CD4A9', '#6DD9B8', '#8EDEC7'],
+            gray: '#A0A0A0',
+            grayGradient: ['#A0A0A0', '#C0C0C0', '#E0E0E0']
         };
 
         // Helper function to create gradient
@@ -325,6 +321,10 @@
                 console.log('Parsing revenue:', revenue, 'type:', typeof revenue, '->', parsed);
                 return isNaN(parsed) ? 0 : parsed;
             });
+            
+            // Reverse arrays so oldest month is on the left
+            revenueLabels = revenueLabels.reverse();
+            revenueValues = revenueValues.reverse();
         } else {
             console.warn('No revenue timeseries data available or not an array');
             console.warn('revenueData:', revenueData);
@@ -336,9 +336,9 @@
         const revenueCtx = document.getElementById('revenueChart');
         if (revenueCtx && revenueLabels.length > 0 && revenueValues.length > 0) {
             const revenueGradient = createGradient(revenueCtx.getContext('2d'), [
-                'rgba(124, 124, 255, 0.25)',
-                'rgba(124, 124, 255, 0.1)',
-                'rgba(124, 124, 255, 0)'
+                'rgba(155, 134, 255, 0.25)',  // #9B86FF with opacity
+                'rgba(155, 134, 255, 0.1)',
+                'rgba(155, 134, 255, 0)'
             ]);
 
             new Chart(revenueCtx, {
@@ -394,12 +394,12 @@
         const statusCtx = document.getElementById('statusChart');
         if (statusCtx) {
             const ctx = statusCtx.getContext('2d');
-            // Color palette matching the donut chart style
+            // Color palette using purple & teal theme
             const donutColors = [
-                '#8F78F8',  // Medium purple (primary)
-                '#DDD4FF',  // Light lavender
-                '#FFE163',  // Muted purple
-                '#9881FF'   // Golden yellow
+                '#9B86FF',  // Soft Purple (primary)
+                '#4CD4A9',  // Teal Accent (secondary)
+                '#8B76F5',  // Primary Hover Purple (tertiary)
+                '#B5A5FF'   // Lighter Purple (accent)
             ];
             
             const statusColors = statusData.map((item, index) => {
@@ -462,12 +462,12 @@
         const revenueStatusCtx = document.getElementById('revenueStatusChart');
         if (revenueStatusCtx) {
             const ctx = revenueStatusCtx.getContext('2d');
-            // Color palette matching the donut chart style
+            // Color palette using purple & teal theme
             const donutColors = [
-                '#8F78F8',  // Medium purple (primary)
-                '#DDD4FF',  // Light lavender
-                '#FFE163',  // Muted purple
-                '#9881FF'   // Golden yellow
+                '#9B86FF',  // Soft Purple (primary)
+                '#4CD4A9',  // Teal Accent (secondary)
+                '#8B76F5',  // Primary Hover Purple (tertiary)
+                '#B5A5FF'   // Lighter Purple (accent)
             ];
             
             const revenueStatusGradients = revenueStatusData.map((item, index) => {

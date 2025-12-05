@@ -11,7 +11,7 @@
 <body>
     {% if current_customer %}
     <div class="app-container">
-        <!-- Sidebar -->
+        
         <aside class="sidebar">
             <div class="sidebar-header">
                 <a href="{{ url_for('customer_portal_bp.dashboard') }}" class="sidebar-logo">Invoice Portal</a>
@@ -27,7 +27,7 @@
             </nav>
         </aside>
 
-        <!-- Main Content -->
+        
         <main class="main-content">
             <header class="header">
                 <h1 class="header-title">{% block page_title %}My Invoices{% endblock %}</h1>
@@ -39,7 +39,7 @@
                 </div>
             </header>
 
-            <!-- Flash Messages -->
+            
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}

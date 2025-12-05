@@ -6,7 +6,46 @@
 {% block content %}
 <div class="card">
     <div class="card-body">
+        {% if step == 'template' or not selected_template_id %}
+        {# Step 1: Template Selection #}
+        <h2 style="margin-bottom: var(--spacing-lg);">Step 1: Select Template</h2>
+        <form method="GET" action="{{ url_for('invoices_bp.create_invoice') }}">
+            <div class="form-group">
+                <label for="template_id" class="form-label">Template *</label>
+                <select id="template_id" name="template_id" class="form-select" required onchange="this.form.submit()">
+                    <option value="">Select a template</option>
+                    {% for template in templates %}
+                    <option value="{{ template.template_id }}" {% if template.template_id == selected_template_id %}selected{% endif %}>
+                        {{ template.name }} (v{{ template.latest_version }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <small class="form-text" style="display: block; margin-top: var(--spacing-xs); color: var(--color-text-secondary);">
+                    Only the latest version of each template is shown.
+                </small>
+            </div>
+        </form>
+        {% else %}
+        {# Step 2: Customer and Invoice Fields #}
+        <div style="margin-bottom: var(--spacing-lg);">
+            <a href="{{ url_for('invoices_bp.create_invoice') }}" class="btn btn-sm btn-secondary" style="margin-bottom: var(--spacing-md);">
+                ← Change Template
+            </a>
+            <h2 style="margin-bottom: var(--spacing-md);">Step 2: Create Invoice</h2>
+            <p style="color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
+                Template: <strong>
+                    {% if selected_template_info %}
+                        {{ selected_template_info.name }} (v{{ selected_template_info.latest_version }})
+                    {% else %}
+                        Template Selected
+                    {% endif %}
+                </strong>
+            </p>
+        </div>
+        
         <form method="POST" action="{{ url_for('invoices_bp.create_invoice') }}">
+            <input type="hidden" name="template_id" value="{{ selected_template_id }}">
+            
             <div class="form-group">
                 <label for="customer_id" class="form-label">Customer *</label>
                 <select id="customer_id" name="customer_id" class="form-select" required>
@@ -16,26 +55,6 @@
                     {% endfor %}
                 </select>
             </div>
-            
-            <div class="form-group">
-                <label for="template_id" class="form-label">Template *</label>
-                <select id="template_id" name="template_id" class="form-select" required onchange="loadTemplateFields(this.value)">
-                    <option value="">Select a template</option>
-                    {% for template in templates %}
-                    <option value="{{ template.template_id }}" {% if template.template_id == selected_template_id %}selected{% endif %}>
-                        {{ template.name }} (v{{ template.latest_version }})
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            
-            <script>
-            function loadTemplateFields(templateId) {
-                if (templateId) {
-                    window.location.href = '{{ url_for("invoices_bp.create_invoice") }}?template_id=' + templateId;
-                }
-            }
-            </script>
             
             <div class="form-group">
                 <label for="issue_date" class="form-label">Issue Date</label>
@@ -315,9 +334,11 @@
             
             <div class="form-group" style="margin-top: var(--spacing-xl);">
                 <button type="submit" class="btn btn-primary">Create Invoice</button>
+                <a href="{{ url_for('invoices_bp.create_invoice') }}" class="btn btn-secondary">Change Template</a>
                 <a href="{{ url_for('invoices_bp.list_invoices') }}" class="btn btn-secondary">Cancel</a>
             </div>
         </form>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

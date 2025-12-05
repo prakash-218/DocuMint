@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Select Organization - Invoice System{% endblock %}
+
+{% block auth_content %}
+<div style="max-width: 600px; margin: 50px auto; padding: var(--spacing-xl);">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Choose Your Organization</h2>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-top: 8px;">{% if existing_user %}Join an existing organization or create a new one{% else %}Step 2 of 3: Join an existing organization or create a new one{% endif %}</p>
+            <p style="color: var(--text-tertiary); font-size: 13px; margin-top: 4px;">Email: <strong>{{ email }}</strong></p>
+        </div>
+        <div class="card-body">
+            {% if existing_orgs and existing_orgs|length > 0 %}
+            <div style="margin-bottom: var(--spacing-xl);">
+                <h3 style="font-size: 16px; font-weight: 600; margin-bottom: var(--spacing-md); color: var(--text-primary);">
+                    Organizations with domain <strong>{{ domain }}</strong>
+                </h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: var(--spacing-lg);">
+                        We found {{ existing_orgs|length }} organization(s) with your domain. You can join one of them or create a new organization. You can create or join additional organizations later from Settings.
+                    </p>
+                
+                <form method="POST" action="{{ url_for('auth_bp.select_org_register', email=email, domain=domain) }}">
+                    <input type="hidden" name="email" value="{{ email }}">
+                    <input type="hidden" name="domain" value="{{ domain }}">
+                    
+                    <div style="display: flex; flex-direction: column; gap: var(--spacing-sm); margin-bottom: var(--spacing-lg);">
+                        {% for org in existing_orgs %}
+                        <label style="display: flex; align-items: center; padding: var(--spacing-md); border: 1px solid var(--border-color); border-radius: var(--border-radius); cursor: pointer; transition: all 150ms; background: var(--bg-secondary);" 
+                               onmouseover="this.style.borderColor='var(--color-primary)'; this.style.background='var(--bg-tertiary)'"
+                               onmouseout="this.style.borderColor='var(--border-color)'; this.style.background='var(--bg-secondary)'">
+                            <input type="radio" name="org_id" value="{{ org.get('org_id') or org.org_id }}" required style="margin-right: var(--spacing-md);">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
+                                    {{ org.get('name') or org.name }}
+                                </div>
+                                <div style="font-size: 13px; color: var(--text-secondary);">
+                                    {{ org.get('domain') or org.domain }} • Created {{ org.get('created_at') or org.created_at }}
+                                </div>
+                            </div>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="form-group">
+                        <button type="submit" name="action" value="join" class="btn btn-primary" style="width: 100%; margin-bottom: var(--spacing-md);">
+                            Join Selected Organization
+                        </button>
+                    </div>
+                </form>
+                
+                <div style="text-align: center; margin: var(--spacing-lg) 0; position: relative;">
+                    <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: var(--border-color);"></div>
+                    <span style="position: relative; background: var(--bg-primary); padding: 0 var(--spacing-md); color: var(--text-tertiary); font-size: 13px;">OR</span>
+                </div>
+            </div>
+            {% endif %}
+            
+            <div>
+                <h3 style="font-size: 16px; font-weight: 600; margin-bottom: var(--spacing-md); color: var(--text-primary);">
+                    Create New Organization
+                </h3>
+                <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: var(--spacing-lg);">
+                    {% if existing_orgs and existing_orgs|length > 0 %}
+                    Create a new organization with domain <strong>{{ domain }}</strong>. You can create or join additional organizations later from Settings.
+                    {% else %}
+                    No existing organizations found. Create a new one with domain <strong>{{ domain }}</strong>. You can create or join additional organizations later from Settings.
+                    {% endif %}
+                </p>
+                
+                <form method="POST" action="{{ url_for('auth_bp.select_org_register', email=email, domain=domain) }}">
+                    <input type="hidden" name="email" value="{{ email }}">
+                    <input type="hidden" name="domain" value="{{ domain }}">
+                    <input type="hidden" name="action" value="create">
+                    <button type="submit" class="btn btn-secondary" style="width: 100%;">
+                        Create New Organization
+                    </button>
+                </form>
+            </div>
+            
+            <div style="text-align: center; margin-top: var(--spacing-lg);">
+                <a href="{{ url_for('auth_bp.register') }}" style="color: var(--text-secondary); font-size: 14px;">← Back to email</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

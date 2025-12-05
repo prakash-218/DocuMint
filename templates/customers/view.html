@@ -6,7 +6,37 @@
 {% block content %}
 <div class="card mb-lg">
     <div class="card-header">
-        <h2 class="card-title">{{ customer.name }}</h2>
+        <div class="flex-between">
+            <div>
+                <h2 class="card-title">{{ customer.name }}</h2>
+                {% if customer.is_archived %}
+                <span class="badge badge-warning" style="margin-top: var(--spacing-xs); display: inline-block;">Archived</span>
+                {% endif %}
+            </div>
+            <div style="display: flex; gap: var(--spacing-sm);">
+                {% if not customer.is_archived %}
+                <a href="{{ url_for('customers_bp.edit_customer', customer_id=customer.customer_id) }}" class="btn btn-primary btn-sm">
+                    Edit
+                </a>
+                {% endif %}
+                {% if customer.is_archived %}
+                <form method="POST" action="{{ url_for('customers_bp.unarchive_customer', customer_id=customer.customer_id) }}" 
+                      style="display: inline;">
+                    <button type="submit" class="btn btn-success btn-sm">
+                        Unarchive
+                    </button>
+                </form>
+                {% else %}
+                <form method="POST" action="{{ url_for('customers_bp.archive_customer', customer_id=customer.customer_id) }}" 
+                      style="display: inline;" 
+                      onsubmit="return confirm('Are you sure you want to archive this customer? Archived customers cannot be used for new invoices, but existing invoices will remain accessible.');">
+                    <button type="submit" class="btn btn-warning btn-sm">
+                        Archive
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
     </div>
     <div class="card-body">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-lg);">
@@ -23,6 +53,19 @@
                 {{ customer.created_at.strftime('%Y-%m-%d') if customer.created_at else 'N/A' }}
             </div>
         </div>
+        
+        {% if customer.street_address or customer.city or customer.state or customer.zip_code or customer.country %}
+        <div style="margin-top: var(--spacing-lg); padding-top: var(--spacing-lg); border-top: 1px solid var(--border-color);">
+            <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: var(--spacing-md); color: var(--text-primary);">Address</h3>
+            <div style="color: var(--text-secondary); line-height: 1.6;">
+                {% if customer.street_address %}{{ customer.street_address }}<br>{% endif %}
+                {% if customer.city or customer.state or customer.zip_code %}
+                    {% if customer.city %}{{ customer.city }}{% endif %}{% if customer.city and customer.state %}, {% endif %}{% if customer.state %}{{ customer.state }}{% endif %} {% if customer.zip_code %}{{ customer.zip_code }}{% endif %}<br>
+                {% endif %}
+                {% if customer.country %}{{ customer.country }}{% endif %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -83,7 +126,7 @@
                        minlength="8" placeholder="At least 8 characters">
                 <small class="form-text">Customer can change this after first login</small>
             </div>
-            <div class="form-group">
+            <!-- <div class="form-group">
                 <label>
                     <input type="checkbox" name="send_invitation" class="form-checkbox">
                     Send invitation email (requires email configuration)
@@ -91,7 +134,7 @@
                 <small class="form-text" style="display: block; margin-top: var(--spacing-xs);">
                     If checked, an invitation email will be sent. Currently, this feature requires email service setup.
                 </small>
-            </div>
+            </div> -->
             <div class="form-group">
                 <button type="submit" class="btn btn-primary">Create Portal Account</button>
             </div>

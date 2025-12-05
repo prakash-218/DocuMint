@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Setup Organization - Invoice System{% endblock %}
+
+{% block auth_content %}
+<div style="max-width: 600px; margin: 50px auto; padding: var(--spacing-xl);">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Complete Your Registration</h2>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-top: 8px;">Step 2 of 2: Set password and organization</p>
+            <p style="color: var(--text-tertiary); font-size: 13px; margin-top: 4px;">Email: <strong>{{ email }}</strong></p>
+        </div>
+        <div class="card-body">
+            {% if existing_org %}
+            <div class="alert alert-info" style="margin-bottom: var(--spacing-lg);">
+                <strong>Joining Organization</strong><br>
+                You're joining <strong>{{ existing_org.get('name') or existing_org.name }}</strong> ({{ existing_org.get('domain') or existing_org.domain }})
+            </div>
+            {% endif %}
+            
+            {% if existing_user %}
+            <div class="alert alert-success" style="margin-bottom: var(--spacing-lg);">
+                <strong>Account Verified</strong><br>
+                Your account has been verified. You can now join organizations or create a new one.
+            </div>
+            {% endif %}
+            
+            <form method="POST" action="{{ url_for('auth_bp.register_org', email=email, domain=domain, org_id=existing_org_id, existing_user='true' if existing_user else None) }}" id="registerForm">
+                <input type="hidden" name="email" value="{{ email }}">
+                <input type="hidden" name="domain" value="{{ domain }}">
+                {% if existing_org_id %}
+                <input type="hidden" name="org_id" value="{{ existing_org_id }}">
+                {% endif %}
+                {% if existing_user %}
+                <input type="hidden" name="existing_user" value="true">
+                {% endif %}
+                
+                {% if not existing_user %}
+                <div class="form-group">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" id="password" name="password" class="form-input" required minlength="8">
+                    <small style="color: var(--text-tertiary); font-size: var(--font-size-sm);">Must be at least 8 characters</small>
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password" class="form-label">Confirm Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" class="form-input" required>
+                </div>
+                {% endif %}
+                
+                {% if not existing_org_id %}
+                <div class="form-group">
+                    <label for="org_name" class="form-label">Organization Name</label>
+                    <input type="text" id="org_name" name="org_name" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="org_domain" class="form-label">Organization Domain</label>
+                    <input type="text" id="org_domain" name="org_domain" class="form-input" required 
+                           placeholder="example.com" value="{{ domain or '' }}">
+                    <small style="color: var(--text-tertiary); font-size: var(--font-size-sm);">
+                        Domain extracted from your email
+                    </small>
+                </div>
+                
+                <div style="margin-top: var(--spacing-lg); padding-top: var(--spacing-lg); border-top: 1px solid var(--border-color);">
+                    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: var(--spacing-md); color: var(--text-primary);">Organization Address</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: var(--spacing-md);">
+                        This address will appear on your invoices
+                    </p>
+                    
+                    <div class="form-group">
+                        <label for="street_address" class="form-label">Street Address</label>
+                        <input type="text" id="street_address" name="street_address" class="form-input" 
+                               placeholder="123 Main Street">
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
+                        <div class="form-group">
+                            <label for="city" class="form-label">City</label>
+                            <input type="text" id="city" name="city" class="form-input" placeholder="New York">
+                        </div>
+                        <div class="form-group">
+                            <label for="state" class="form-label">State/Province</label>
+                            <input type="text" id="state" name="state" class="form-input" placeholder="NY">
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
+                        <div class="form-group">
+                            <label for="zip_code" class="form-label">ZIP/Postal Code</label>
+                            <input type="text" id="zip_code" name="zip_code" class="form-input" placeholder="10001">
+                        </div>
+                        <div class="form-group">
+                            <label for="country" class="form-label">Country</label>
+                            <input type="text" id="country" name="country" class="form-input" placeholder="USA">
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">
+                        {% if existing_org_id %}Join Organization & Create Account{% else %}Create Account{% endif %}
+                    </button>
+                </div>
+            </form>
+            
+            <div style="text-align: center; margin-top: var(--spacing-md);">
+                <a href="{% if existing_org_id %}{{ url_for('auth_bp.select_org_register', email=email, domain=domain) }}{% else %}{{ url_for('auth_bp.register') }}{% endif %}" style="color: var(--text-secondary); font-size: 14px;">
+                    ← Back{% if existing_org_id %} to organization selection{% else %} to email{% endif %}
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

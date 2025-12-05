@@ -6,12 +6,14 @@
 {% block content %}
 <div class="card mb-lg">
     <div class="card-header">
-        <div class="flex-between">
+        <div class="flex-between flex flex-grow">
             <div>
                 <h2 class="card-title">
                     {% if template_info %}
                         {{ template_info.name }} - v{{ template_info.version }}
-                        {% if template_info.version == template_info.latest_version %}
+                        {% if template_info.is_archived %}
+                            <span class="badge badge-warning" style="margin-left: var(--spacing-sm);">Archived</span>
+                        {% elif template_info.version == template_info.latest_version %}
                             <span class="badge badge-success" style="margin-left: var(--spacing-sm);">Latest</span>
                         {% else %}
                             <span class="badge badge-warning" style="margin-left: var(--spacing-sm);">v{{ template_info.latest_version }} available</span>
@@ -21,14 +23,31 @@
                     {% endif %}
                 </h2>
             </div>
-            <div>
-                {% if template_info and template_info.version == template_info.latest_version %}
-                <form method="POST" action="{{ url_for('templates_bp.create_template_version', template_id=template_id) }}" style="display: inline;">
-                    <button type="submit" class="btn btn-primary" onclick="return confirm('This will create a new version of this template. Continue?')">
-                        <i data-lucide="copy" class="nav-icon"></i>
-                        Create New Version
-                    </button>
-                </form>
+            <div class="card-title card-actions">
+                {% if template_info and not template_info.is_archived and template_info.version == template_info.latest_version %}
+                <a href="{{ url_for('templates_bp.edit_template', template_id=template_id) }}" class="btn btn-primary left-space">
+                    
+                    Edit Template
+                </a>
+                {% endif %}
+                {% if template_info %}
+                    {% if template_info.is_archived %}
+                    <form method="POST" action="{{ url_for('templates_bp.unarchive_template', template_id=template_id) }}" 
+                          style="display: inline;" class="left-space">
+                        <button type="submit" class="btn btn-success">
+                            Unarchive
+                        </button>
+                    </form>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('templates_bp.archive_template', template_id=template_id) }}" 
+                          style="display: inline;" 
+                          class="left-space"
+                          onsubmit="return confirm('Are you sure you want to archive this template? Archived templates cannot be used for new invoices, but existing invoices will remain accessible.');">
+                        <button type="submit" class="btn btn-warning">
+                            Archive
+                        </button>
+                    </form>
+                    {% endif %}
                 {% endif %}
             </div>
         </div>
@@ -44,16 +63,34 @@
                     </span>
                 </h3>
                 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--spacing-md);">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--spacing-md);">
                     {% for field in section.fields %}
                     <div class="card-nested" style="padding: var(--spacing-md); border-radius: var(--border-radius-lg); border: 1px solid var(--border-color);">
-                        <strong>{{ field.label }}</strong>
-                        <div style="margin-top: var(--spacing-xs);">
+                        <div style="margin-bottom: var(--spacing-sm);">
+                            <strong>{{ field.label }}</strong>
+                            {% if field.get('field_name') %}
+                            <span style="color: var(--color-text-secondary); font-size: 0.85em; margin-left: var(--spacing-xs);">
+                                ({{ field.field_name }})
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div style="margin-top: var(--spacing-xs); margin-bottom: var(--spacing-xs);">
                             <span class="badge badge-info">{{ field.data_type }}</span>
                             {% if field.is_required %}
                             <span class="badge badge-warning">Required</span>
                             {% endif %}
+                            {% if field.is_currency %}
+                            <span class="badge badge-success">Currency</span>
+                            {% endif %}
                         </div>
+                        {% if field.calculation_formula %}
+                        <div style="margin-top: var(--spacing-sm); padding: var(--spacing-sm); background-color: var(--color-bg-secondary); border-radius: var(--border-radius); border-left: 3px solid var(--color-primary);">
+                            <div style="font-size: 0.85em; color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
+                                <strong>Formula:</strong>
+                            </div>
+                            <code style="font-size: 0.9em; color: var(--color-primary); word-break: break-all;">{{ field.calculation_formula }}</code>
+                        </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>

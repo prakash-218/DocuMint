@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Verify Account - Invoice System{% endblock %}
+
+{% block auth_content %}
+<div style="max-width: 500px; margin: 50px auto; padding: var(--spacing-xl);">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Verify Your Account</h2>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-top: 8px;">An account with this email already exists</p>
+            <p style="color: var(--text-tertiary); font-size: 13px; margin-top: 4px;">Email: <strong>{{ email }}</strong></p>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info" style="margin-bottom: var(--spacing-lg);">
+                Please enter your password to verify your account. You'll then be able to join existing organizations or create new ones.
+            </div>
+            
+            <form method="POST" action="{{ url_for('auth_bp.verify_existing_user', email=email, domain=domain) }}">
+                <input type="hidden" name="email" value="{{ email }}">
+                <input type="hidden" name="domain" value="{{ domain }}">
+                
+                <div class="form-group">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" id="password" name="password" class="form-input" required autofocus>
+                </div>
+                
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Verify & Continue</button>
+                </div>
+            </form>
+            
+            <div style="text-align: center; margin-top: var(--spacing-md);">
+                <a href="{{ url_for('auth_bp.register') }}" style="color: var(--text-secondary); font-size: 14px;">← Back to email</a>
+                <span style="color: var(--text-tertiary); margin: 0 var(--spacing-sm);">•</span>
+                <a href="{{ url_for('auth_bp.login') }}" style="color: var(--text-secondary); font-size: 14px;">Login instead</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

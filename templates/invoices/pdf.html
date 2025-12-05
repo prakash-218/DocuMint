@@ -7,78 +7,196 @@
     <style>
         @page {
             size: A4;
-            margin: 2cm;
+            margin: 0.8cm;
         }
         
-        body {
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 12pt;
-            line-height: 1.6;
-            color: #333;
+        * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
         
-        .header {
-            margin-bottom: 30px;
-            border-bottom: 2px solid #333;
-            padding-bottom: 20px;
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: #ffffff;
         }
         
-        .header h1 {
-            margin: 0;
-            font-size: 24pt;
-            color: #333;
+        .invoice-container {
+            max-width: 100%;
+            margin: 0 auto;
         }
         
-        .invoice-info {
+        /* Header Section */
+        .invoice-header {
+            display: table;
             width: 100%;
-            margin: 20px 0;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #9B86FF;
         }
         
-        .invoice-info-row {
-            margin-bottom: 8px;
-        }
-        
-        .invoice-info-label {
-            font-weight: bold;
-            display: inline-block;
-            width: 150px;
+        .header-left {
+            display: table-cell;
+            width: 60%;
             vertical-align: top;
         }
         
-        .invoice-info-value {
-            display: inline-block;
+        .header-right {
+            display: table-cell;
+            width: 40%;
+            vertical-align: top;
+            text-align: right;
         }
         
-        .section {
+        .invoice-title {
+            font-size: 36pt;
+            font-weight: 700;
+            color: #9B86FF;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+        }
+        
+        .invoice-number {
+            font-size: 14pt;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-top: 5px;
+        }
+        
+        .invoice-number-label {
+            font-size: 9pt;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 3px;
+        }
+        
+        .invoice-number-value {
+            font-size: 16pt;
+            font-weight: 700;
+            color: #1a1a1a;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            font-size: 9pt;
+            font-weight: 600;
+            text-transform: uppercase;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+            margin-top: 10px;
+        }
+        
+        .status-paid {
+            background-color: #4CD4A9;
+            color: #064E3B;
+        }
+        
+        .status-pending {
+            background-color: #EAB308;
+            color: #78350F;
+        }
+        
+        .status-draft {
+            background-color: #A0A0A0;
+            color: #1a1a1a;
+        }
+        
+        /* Info Section */
+        .info-section {
+            display: table;
+            width: 100%;
+            margin-bottom: 30px;
+        }
+        
+        .info-left {
+            display: table-cell;
+            width: 50%;
+            vertical-align: top;
+            padding-right: 20px;
+        }
+        
+        .info-right {
+            display: table-cell;
+            width: 50%;
+            vertical-align: top;
+            padding-left: 20px;
+        }
+        
+        .info-box {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #9B86FF;
+            margin-bottom: 15px;
+        }
+        
+        .info-box-title {
+            font-size: 9pt;
+            font-weight: 700;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .info-box-content {
+            font-size: 10pt;
+            color: #1a1a1a;
+            line-height: 1.8;
+        }
+        
+        .info-box-content strong {
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        /* Dates Section */
+        .dates-section {
+            display: table;
+            width: 100%;
+            margin-bottom: 25px;
+        }
+        
+        .date-item {
+            display: table-cell;
+            width: 33.33%;
+            padding: 0 10px;
+            text-align: center;
+        }
+        
+        .date-label {
+            font-size: 8pt;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        
+        .date-value {
+            font-size: 11pt;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        /* Line Items Table */
+        .line-items-section {
             margin: 30px 0;
         }
         
         .section-title {
-            font-size: 16pt;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: #333;
-            border-bottom: 1px solid #ccc;
-            padding-bottom: 5px;
-        }
-        
-        .field-group {
-            margin: 10px 0;
-            padding: 10px;
-            background-color: #f9f9f9;
-            border-left: 3px solid #007bff;
-        }
-        
-        .field-label {
-            font-weight: bold;
-            display: inline-block;
-            width: 150px;
-        }
-        
-        .field-value {
-            display: inline-block;
+            font-size: 12pt;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         table {
@@ -88,20 +206,135 @@
         }
         
         table thead {
-            background-color: #333;
-            color: white;
+            background-color: #9B86FF;
         }
         
         table th {
-            padding: 10px;
+            padding: 12px 10px;
             text-align: left;
-            font-weight: bold;
-            border: 1px solid #ddd;
+            font-weight: 600;
+            font-size: 9pt;
+            color: #000000;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: none;
+        }
+        
+        table th.text-right {
+            text-align: right;
+        }
+        
+        table tbody tr {
+            border-bottom: 1px solid #000000;
+        }
+        
+        table tbody tr:nth-child(even) {
+            background-color: #f8f9fa;
         }
         
         table td {
-            padding: 8px 10px;
-            border: 1px solid #ddd;
+            padding: 12px 10px;
+            border: none;
+            color: #1a1a1a;
+            font-size: 10pt;
+        }
+        
+        table td.text-right {
+            text-align: right;
+        }
+        
+        .currency {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        /* Totals Section */
+        .totals-section {
+            margin-top: 30px;
+            margin-left: auto;
+            width: 300px;
+        }
+        
+        .total-row {
+            display: table;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+        
+        .total-label {
+            display: table-cell;
+            text-align: right;
+            padding-right: 15px;
+            font-size: 10pt;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .total-value {
+            display: table-cell;
+            text-align: right;
+            font-size: 10pt;
+            color: #1a1a1a;
+            font-weight: 600;
+            font-family: 'Courier New', monospace;
+            width: 120px;
+        }
+        
+        .total-row.grand-total {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid #9B86FF;
+        }
+        
+        .total-row.grand-total .total-label {
+            font-size: 12pt;
+            font-weight: 700;
+            color: #1a1a1a;
+            text-transform: uppercase;
+        }
+        
+        .total-row.grand-total .total-value {
+            font-size: 14pt;
+            font-weight: 700;
+            color: #9B86FF;
+        }
+        
+        /* Field Groups (for non-line-item sections) */
+        .field-group {
+            margin: 10px 0;
+            padding: 10px 15px;
+            background-color: #f8f9fa;
+            border-left: 3px solid #9B86FF;
+        }
+        
+        .field-label {
+            font-weight: 600;
+            display: inline-block;
+            width: 150px;
+            color: #1a1a1a;
+            font-size: 10pt;
+        }
+        
+        .field-value {
+            display: inline-block;
+            color: #1a1a1a;
+            font-size: 10pt;
+        }
+        
+        /* Payments Section */
+        .payments-section {
+            margin-top: 30px;
+        }
+        
+        /* Footer */
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            font-size: 8pt;
+            color: #666;
+            text-align: center;
         }
         
         .text-right {
@@ -112,172 +345,212 @@
             text-align: center;
         }
         
-        .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            font-size: 10pt;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        
-        .status-paid {
-            background-color: #28a745;
-            color: white;
-        }
-        
-        .status-pending {
-            background-color: #ffc107;
-            color: #333;
-        }
-        
-        .status-draft {
-            background-color: #6c757d;
-            color: white;
-        }
-        
-        .footer {
-            margin-top: 50px;
-            padding-top: 20px;
-            border-top: 1px solid #ccc;
-            font-size: 10pt;
-            color: #666;
-            text-align: center;
-        }
-        
-        .currency {
-            font-family: 'Courier New', monospace;
+        /* Page Break */
+        .page-break {
+            page-break-before: always;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>INVOICE</h1>
-        <div class="invoice-info">
-            <div class="invoice-info-row">
-                <div class="invoice-info-label">Invoice ID:</div>
-                <div class="invoice-info-value">{{ invoice.invoice_id }}</div>
+    <div class="invoice-container">
+        
+        <div class="invoice-header">
+            <div class="header-left">
+                <div class="invoice-title">INVOICE</div>
             </div>
-            <div class="invoice-info-row">
-                <div class="invoice-info-label">Status:</div>
-                <div class="invoice-info-value">
-                    <span class="status-badge status-{{ invoice.status or 'draft' }}">
-                        {{ invoice.status or 'draft' }}
-                    </span>
+            <div class="header-right">
+                <div class="invoice-number-label">Invoice Number</div>
+                <div class="invoice-number-value">#{{ invoice.invoice_id[:8].upper() }}</div>
+                <div class="status-badge status-{{ invoice.status or 'draft' }}">
+                    {{ (invoice.status or 'draft')|upper }}
                 </div>
             </div>
-            <div class="invoice-info-row">
-                <div class="invoice-info-label">Customer:</div>
-                <div class="invoice-info-value">{{ invoice.customer_name }}</div>
+        </div>
+        
+        
+        <div class="info-section">
+            <div class="info-left">
+                <div class="info-box">
+                    <div class="info-box-title">From</div>
+                    <div class="info-box-content">
+                        <strong>{{ invoice.organization_name or 'Organization' }}</strong><br>
+                        {% if invoice.organization_street_address %}{{ invoice.organization_street_address }}<br>{% endif %}
+                        {% if invoice.organization_city or invoice.organization_state or invoice.organization_zip_code %}
+                            {% if invoice.organization_city %}{{ invoice.organization_city }}{% endif %}{% if invoice.organization_city and invoice.organization_state %}, {% endif %}{% if invoice.organization_state %}{{ invoice.organization_state }}{% endif %} {% if invoice.organization_zip_code %}{{ invoice.organization_zip_code }}{% endif %}<br>
+                        {% endif %}
+                        {% if invoice.organization_country %}{{ invoice.organization_country }}{% endif %}
+                    </div>
+                </div>
             </div>
-            <div class="invoice-info-row">
-                <div class="invoice-info-label">Issue Date:</div>
-                <div class="invoice-info-value">{{ invoice.issue_date or 'N/A' }}</div>
-            </div>
-            <div class="invoice-info-row">
-                <div class="invoice-info-label">Due Date:</div>
-                <div class="invoice-info-value">{{ invoice.due_date or 'N/A' }}</div>
-            </div>
-            <div class="invoice-info-row">
-                <div class="invoice-info-label">Currency:</div>
-                <div class="invoice-info-value">{{ invoice.currency_code }}</div>
+            <div class="info-right">
+                <div class="info-box">
+                    <div class="info-box-title">Bill To</div>
+                    <div class="info-box-content">
+                        <strong>{{ invoice.customer_name }}</strong><br>
+                        {% if invoice.customer_street_address %}{{ invoice.customer_street_address }}<br>{% endif %}
+                        {% if invoice.customer_city or invoice.customer_state or invoice.customer_zip_code %}
+                            {% if invoice.customer_city %}{{ invoice.customer_city }}{% endif %}{% if invoice.customer_city and invoice.customer_state %}, {% endif %}{% if invoice.customer_state %}{{ invoice.customer_state }}{% endif %} {% if invoice.customer_zip_code %}{{ invoice.customer_zip_code }}{% endif %}<br>
+                        {% endif %}
+                        {% if invoice.customer_country %}{{ invoice.customer_country }}{% endif %}
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-
-    {% if sections_data %}
-        {% for section_title, section_info in sections_data.items() %}
-            <div class="section">
-                <div class="section-title">{{ section_title }}</div>
-                
-                {% if section_info.type == 'line_item' %}
-                    {# Display as table for line items #}
-                    {% if section_info.line_item_headers and section_info.line_item_rows %}
-                    <table>
-                        <thead>
-                            <tr>
-                                {% for header in section_info.line_item_headers %}
-                                    <th>{{ header }}</th>
-                                {% endfor %}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in section_info.line_item_rows %}
+        
+        <div class="info-section">
+            <div class="info-right" style="width: 100%;">
+                <div class="info-box">
+                    <div class="info-box-title">Invoice Details</div>
+                    <div class="info-box-content">
+                        <strong>Currency:</strong> {{ invoice.currency_code }}<br>
+                        <strong>Issue Date:</strong> {{ invoice.issue_date or 'N/A' }}<br>
+                        <strong>Due Date:</strong> {{ invoice.due_date or 'N/A' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        
+        {% if sections_data %}
+            {% for section_title, section_info in sections_data.items() %}
+                <div class="line-items-section">
+                    <div class="section-title">{{ section_title }}</div>
+                    
+                    {% if section_info.type == 'line_item' %}
+                        {# Display as table for line items #}
+                        {% if section_info.line_item_headers and section_info.line_item_rows %}
+                        <table>
+                            <thead>
                                 <tr>
-                                    {% for value in row %}
-                                        <td>
-                                            {% if value %}
-                                                {% if value.data_type == 'number' %}
-                                                    <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
-                                                {% elif value.data_type == 'date' %}
-                                                    {{ value.val_date or 'N/A' }}
-                                                {% elif value.data_type == 'boolean' %}
-                                                    {{ 'Yes' if value.val_boolean else 'No' }}
-                                                {% else %}
-                                                    {{ value.val_string or 'N/A' }}
-                                                {% endif %}
-                                            {% else %}
-                                                N/A
-                                            {% endif %}
-                                        </td>
+                                    {% for header in section_info.line_item_headers %}
+                                        <th{% if loop.last %} class="text-right"{% endif %}>{{ header }}</th>
                                     {% endfor %}
                                 </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {% for row in section_info.line_item_rows %}
+                                    <tr>
+                                        {% for value in row %}
+                                            <td{% if loop.last %} class="text-right"{% endif %}>
+                                                {% if value %}
+                                                    {% if value.data_type == 'number' %}
+                                                        {% if value.is_currency %}
+                                                            <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
+                                                        {% else %}
+                                                            <span>{% if value.val_number %}{{ value.val_number | number }}{% else %}N/A{% endif %}</span>
+                                                        {% endif %}
+                                                    {% elif value.data_type == 'date' %}
+                                                        {{ value.val_date or 'N/A' }}
+                                                    {% elif value.data_type == 'boolean' %}
+                                                        {{ 'Yes' if value.val_boolean else 'No' }}
+                                                    {% else %}
+                                                        {{ value.val_string or 'N/A' }}
+                                                    {% endif %}
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            </td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% endif %}
+                    {% else %}
+                        {# Display as fields for normal sections #}
+                        {% for value in section_info.fields %}
+                            <div class="field-group">
+                                <span class="field-label">{{ value.field_label }}:</span>
+                                <span class="field-value">
+                                    {% if value.data_type == 'number' %}
+                                        {% if value.is_currency %}
+                                            <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
+                                        {% else %}
+                                            <span>{% if value.val_number %}{{ value.val_number | number }}{% else %}N/A{% endif %}</span>
+                                        {% endif %}
+                                    {% elif value.data_type == 'date' %}
+                                        {{ value.val_date or 'N/A' }}
+                                    {% elif value.data_type == 'boolean' %}
+                                        {{ 'Yes' if value.val_boolean else 'No' }}
+                                    {% else %}
+                                        {{ value.val_string or 'N/A' }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                        {% endfor %}
                     {% endif %}
-                {% else %}
-                    {# Display as fields for normal sections #}
-                    {% for value in section_info.fields %}
-                        <div class="field-group">
-                            <span class="field-label">{{ value.field_label }}:</span>
-                            <span class="field-value">
-                                {% if value.data_type == 'number' %}
-                                    <span class="currency">{% if value.val_number %}{{ value.val_number | currency }}{% else %}N/A{% endif %}</span>
-                                {% elif value.data_type == 'date' %}
-                                    {{ value.val_date or 'N/A' }}
-                                {% elif value.data_type == 'boolean' %}
-                                    {{ 'Yes' if value.val_boolean else 'No' }}
-                                {% else %}
-                                    {{ value.val_string or 'N/A' }}
-                                {% endif %}
-                            </span>
-                        </div>
-                    {% endfor %}
-                {% endif %}
+                </div>
+            {% endfor %}
+        {% endif %}
+        
+        
+        {% if invoice.total_amount %}
+        <div class="totals-section">
+            <div class="total-row grand-total">
+                <div class="total-label">Total Amount</div>
+                <div class="total-value">{{ invoice.total_amount | currency }}</div>
             </div>
-        {% endfor %}
-    {% endif %}
-
-    {% if payments %}
-    <div class="section">
-        <div class="section-title">Payments</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th class="text-right">Amount</th>
-                    <th>Method</th>
-                    <th>Reference</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for payment in payments %}
-                <tr>
-                    <td>{{ payment.payment_date }}</td>
-                    <td class="text-right currency">{% if payment.amount %}{{ payment.amount | currency }}{% else %}N/A{% endif %}</td>
-                    <td>{{ payment.method or 'N/A' }}</td>
-                    <td>{{ payment.reference_number or 'N/A' }}</td>
-                </tr>
+        </div>
+        {% else %}
+            {# Fallback: Try to find total from line items #}
+            {% if sections_data %}
+                {% for section_title, section_info in sections_data.items() %}
+                    {% if section_info.type == 'line_item' and section_info.line_item_rows %}
+                        {# Find total field if it exists #}
+                        {% set total_value = None %}
+                        {% for row in section_info.line_item_rows %}
+                            {% for value in row %}
+                                {% if value and value.field_label and ('total' in value.field_label.lower() or 'amount' in value.field_label.lower()) and value.data_type == 'number' and value.val_number %}
+                                    {% set total_value = value.val_number %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endfor %}
+                        
+                        {% if total_value %}
+                        <div class="totals-section">
+                            <div class="total-row grand-total">
+                                <div class="total-label">Total Amount</div>
+                                <div class="total-value">{{ total_value | currency }}</div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% endif %}
                 {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-
-    <div class="footer">
-        <p>Generated on {{ current_date }}</p>
-        <p>This is a computer-generated invoice. No signature required.</p>
+            {% endif %}
+        {% endif %}
+        
+        
+        {% if payments %}
+        <div class="payments-section">
+            <div class="section-title">Payment History</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th class="text-right">Amount</th>
+                        <th>Method</th>
+                        <th>Reference</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for payment in payments %}
+                    <tr>
+                        <td>{{ payment.payment_date or 'N/A' }}</td>
+                        <td class="text-right currency">{% if payment.amount %}{{ payment.amount | currency }}{% else %}N/A{% endif %}</td>
+                        <td>{{ payment.method or 'N/A' }}</td>
+                        <td>{{ payment.reference_number or 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        
+        <div class="footer">
+            <p><strong>Generated on:</strong> {{ current_date }}</p>
+            <p>This is a computer-generated invoice. No signature required.</p>
+        </div>
     </div>
 </body>
 </html>
-
