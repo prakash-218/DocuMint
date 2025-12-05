@@ -1649,5 +1649,435 @@ BEGIN
     SELECT ROW_COUNT() AS rows_affected;
 END //
 
+
+CREATE PROCEDURE sp_get_template_max_version(
+    IN p_template_id CHAR(36)
+)
+BEGIN
+    SELECT MAX(version) AS max_version
+    FROM template
+    WHERE template_id = p_template_id;
+END //
+
+
+CREATE PROCEDURE sp_get_template_fields_by_version(
+    IN p_template_id CHAR(36),
+    IN p_version INT
+)
+BEGIN
+    SELECT 
+        s.section_id,
+        s.name AS section_name,
+        s.display_name AS section_display_name,
+        s.display_name AS section_title,
+        s.ordinal AS section_ordinal,
+        s.section_type,
+        f.field_id,
+        f.name AS field_name,
+        f.display_name AS field_display_name,
+        f.display_name AS label,
+        f.data_type,
+        f.is_required,
+        f.is_currency,
+        f.ordinal AS field_ordinal,
+        f.calculation_formula
+    FROM section s
+    JOIN field f ON s.section_id = f.section_id
+    WHERE s.template_id = p_template_id
+      AND s.template_version = p_version
+    ORDER BY s.ordinal, f.ordinal;
+END //
+
+
+CREATE PROCEDURE sp_get_template_total_field(
+    IN p_template_id CHAR(36),
+    IN p_version INT
+)
+BEGIN
+    SELECT total_field_id
+    FROM template
+    WHERE template_id = p_template_id AND version = p_version;
+END //
+
+
+CREATE PROCEDURE sp_delete_invoice_values_by_fields(
+    IN p_invoice_id CHAR(36),
+    IN p_field_ids TEXT
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    SET @sql = CONCAT('DELETE FROM invoice_value WHERE invoice_id = ''', p_invoice_id, ''' AND field_id IN (', p_field_ids, ')');
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+    
+    SELECT ROW_COUNT() AS rows_deleted;
+END //
+
+
+CREATE PROCEDURE sp_update_member_status(
+    IN p_org_id CHAR(36),
+    IN p_user_id CHAR(36),
+    IN p_status VARCHAR(20),
+    IN p_role VARCHAR(20)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    IF NOT EXISTS (SELECT 1 FROM users WHERE user_id = p_user_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User does not exist';
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM organization WHERE org_id = p_org_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Organization does not exist';
+    END IF;
+    
+    IF p_status = 'rejected' THEN
+        DELETE FROM user_organization 
+        WHERE org_id = p_org_id AND user_id = p_user_id;
+    ELSE
+        UPDATE user_organization 
+        SET status = p_status, role = IFNULL(p_role, role)
+        WHERE org_id = p_org_id AND user_id = p_user_id;
+    END IF;
+END //
+
+
+CREATE PROCEDURE sp_get_org_members(
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    SELECT 
+        u.user_id, 
+        u.email, 
+        uo.role, 
+        uo.status,
+        uo.created_at as joined_at
+    FROM user_organization uo
+    JOIN users u ON uo.user_id = u.user_id
+    WHERE uo.org_id = p_org_id 
+    AND uo.status IN ('active', 'deactivated')
+    ORDER BY uo.role, u.email;
+END //
+
+
+CREATE PROCEDURE sp_get_pending_members(
+    IN p_org_id CHAR(36)
+)
+BEGIN
+    SELECT 
+        u.user_id, 
+        u.email, 
+        uo.role, 
+        uo.created_at as joined_at
+    FROM user_organization uo
+    JOIN users u ON uo.user_id = u.user_id
+    WHERE uo.org_id = p_org_id 
+    AND uo.status = 'pending'
+    ORDER BY uo.created_at DESC;
+END //
+
+DELIMITER ;
+
+-- ============================================
+-- TRIGGERS FOR AUDIT LOGGING AND VALIDATION
+-- ============================================
+
+-- Create audit log table
+CREATE TABLE IF NOT EXISTS audit_log (
+    audit_id CHAR(36) NOT NULL PRIMARY KEY,
+    table_name VARCHAR(100) NOT NULL,
+    record_id VARCHAR(100) NOT NULL,
+    action_type ENUM('INSERT', 'UPDATE', 'DELETE') NOT NULL,
+    field_name VARCHAR(100),
+    old_value TEXT,
+    new_value TEXT,
+    changed_by VARCHAR(255),
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    additional_info TEXT,
+    INDEX idx_audit_table_record (table_name, record_id),
+    INDEX idx_audit_changed_at (changed_at),
+    INDEX idx_audit_action (action_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+DELIMITER //
+
+-- Trigger: Audit role changes in user_organization
+DROP TRIGGER IF EXISTS trg_user_organization_role_update //
+CREATE TRIGGER trg_user_organization_role_update
+AFTER UPDATE ON user_organization
+FOR EACH ROW
+BEGIN
+    IF OLD.role != NEW.role THEN
+        INSERT INTO audit_log (
+            audit_id,
+            table_name,
+            record_id,
+            action_type,
+            field_name,
+            old_value,
+            new_value,
+            additional_info
+        ) VALUES (
+            UUID(),
+            'user_organization',
+            CONCAT(NEW.user_id, ':', NEW.org_id),
+            'UPDATE',
+            'role',
+            OLD.role,
+            NEW.role,
+            CONCAT('User: ', (SELECT email FROM users WHERE user_id = NEW.user_id), 
+                   ' | Org: ', (SELECT name FROM organization WHERE org_id = NEW.org_id))
+        );
+    END IF;
+    
+    IF OLD.status != NEW.status THEN
+        INSERT INTO audit_log (
+            audit_id,
+            table_name,
+            record_id,
+            action_type,
+            field_name,
+            old_value,
+            new_value,
+            additional_info
+        ) VALUES (
+            UUID(),
+            'user_organization',
+            CONCAT(NEW.user_id, ':', NEW.org_id),
+            'UPDATE',
+            'status',
+            OLD.status,
+            NEW.status,
+            CONCAT('User: ', (SELECT email FROM users WHERE user_id = NEW.user_id), 
+                   ' | Org: ', (SELECT name FROM organization WHERE org_id = NEW.org_id))
+        );
+    END IF;
+END //
+
+-- Trigger: Audit invoice status changes
+DROP TRIGGER IF EXISTS trg_invoice_status_update //
+CREATE TRIGGER trg_invoice_status_update
+AFTER UPDATE ON invoice
+FOR EACH ROW
+BEGIN
+    IF OLD.status != NEW.status THEN
+        INSERT INTO audit_log (
+            audit_id,
+            table_name,
+            record_id,
+            action_type,
+            field_name,
+            old_value,
+            new_value,
+            additional_info
+        ) VALUES (
+            UUID(),
+            'invoice',
+            NEW.invoice_id,
+            'UPDATE',
+            'status',
+            IFNULL(OLD.status, 'NULL'),
+            IFNULL(NEW.status, 'NULL'),
+            CONCAT('Customer: ', (SELECT name FROM customer WHERE customer_id = NEW.customer_id),
+                   ' | Amount: ', NEW.total_amount)
+        );
+    END IF;
+END //
+
+-- Trigger: Audit payment insertions
+DROP TRIGGER IF EXISTS trg_payment_insert //
+CREATE TRIGGER trg_payment_insert
+AFTER INSERT ON payment
+FOR EACH ROW
+BEGIN
+    INSERT INTO audit_log (
+        audit_id,
+        table_name,
+        record_id,
+        action_type,
+        field_name,
+        new_value,
+        additional_info
+    ) VALUES (
+        UUID(),
+        'payment',
+        NEW.payment_id,
+        'INSERT',
+        'amount',
+        NEW.amount,
+        CONCAT('Invoice: ', NEW.invoice_id,
+               ' | Method: ', IFNULL(NEW.method, 'N/A'),
+               ' | Reference: ', IFNULL(NEW.reference_number, 'N/A'))
+    );
+END //
+
+-- Trigger: Prevent removing the last owner from an organization
+DROP TRIGGER IF EXISTS trg_user_organization_prevent_last_owner //
+CREATE TRIGGER trg_user_organization_prevent_last_owner
+BEFORE UPDATE ON user_organization
+FOR EACH ROW
+BEGIN
+    DECLARE owner_count INT;
+    
+    -- Check if we're changing an owner's role to something else
+    IF OLD.role = 'owner' AND NEW.role != 'owner' THEN
+        -- Count remaining owners in this organization (excluding the current user being updated)
+        SELECT COUNT(*) INTO owner_count
+        FROM user_organization
+        WHERE org_id = NEW.org_id
+          AND user_id != NEW.user_id
+          AND role = 'owner'
+          AND status = 'active';
+        
+        -- If this is the last owner, prevent the change
+        IF owner_count = 0 THEN
+            SIGNAL SQLSTATE '45000' 
+            SET MESSAGE_TEXT = 'Cannot change role: Organization must have at least one active owner';
+        END IF;
+    END IF;
+END //
+
+-- Trigger: Prevent deleting the last owner from an organization
+DROP TRIGGER IF EXISTS trg_user_organization_prevent_delete_last_owner //
+CREATE TRIGGER trg_user_organization_prevent_delete_last_owner
+BEFORE DELETE ON user_organization
+FOR EACH ROW
+BEGIN
+    DECLARE owner_count INT;
+    
+    -- Check if we're deleting an owner
+    IF OLD.role = 'owner' AND OLD.status = 'active' THEN
+        -- Count remaining owners in this organization
+        SELECT COUNT(*) INTO owner_count
+        FROM user_organization
+        WHERE org_id = OLD.org_id
+          AND role = 'owner'
+          AND status = 'active';
+        
+        -- If this is the last owner, prevent deletion
+        IF owner_count <= 1 THEN
+            SIGNAL SQLSTATE '45000' 
+            SET MESSAGE_TEXT = 'Cannot delete: Organization must have at least one active owner';
+        END IF;
+    END IF;
+END //
+
+-- Trigger: Audit customer archival
+DROP TRIGGER IF EXISTS trg_customer_archive_update //
+CREATE TRIGGER trg_customer_archive_update
+AFTER UPDATE ON customer
+FOR EACH ROW
+BEGIN
+    IF OLD.is_archived != NEW.is_archived THEN
+        INSERT INTO audit_log (
+            audit_id,
+            table_name,
+            record_id,
+            action_type,
+            field_name,
+            old_value,
+            new_value,
+            additional_info
+        ) VALUES (
+            UUID(),
+            'customer',
+            NEW.customer_id,
+            'UPDATE',
+            'is_archived',
+            OLD.is_archived,
+            NEW.is_archived,
+            CONCAT('Customer: ', NEW.name, ' | Org: ', (SELECT name FROM organization WHERE org_id = NEW.org_id))
+        );
+    END IF;
+END //
+
+-- Trigger: Audit template archival
+DROP TRIGGER IF EXISTS trg_template_archive_update //
+CREATE TRIGGER trg_template_archive_update
+AFTER UPDATE ON template
+FOR EACH ROW
+BEGIN
+    IF OLD.is_archived != NEW.is_archived THEN
+        INSERT INTO audit_log (
+            audit_id,
+            table_name,
+            record_id,
+            action_type,
+            field_name,
+            old_value,
+            new_value,
+            additional_info
+        ) VALUES (
+            UUID(),
+            'template',
+            CONCAT(NEW.template_id, ':', NEW.version),
+            'UPDATE',
+            'is_archived',
+            OLD.is_archived,
+            NEW.is_archived,
+            CONCAT('Template: ', NEW.name, ' v', NEW.version, ' | Org: ', (SELECT name FROM organization WHERE org_id = NEW.org_id))
+        );
+    END IF;
+END //
+
+CREATE PROCEDURE sp_get_audit_log(
+    IN p_org_id CHAR(36),
+    IN p_table_name VARCHAR(100),
+    IN p_limit INT,
+    IN p_offset INT
+)
+BEGIN
+    DECLARE v_limit INT DEFAULT 100;
+    DECLARE v_offset INT DEFAULT 0;
+    
+    SET v_limit = IFNULL(p_limit, 100);
+    SET v_offset = IFNULL(p_offset, 0);
+    
+    SELECT 
+        al.audit_id,
+        al.table_name,
+        al.record_id,
+        al.action_type,
+        al.field_name,
+        al.old_value,
+        al.new_value,
+        al.changed_by,
+        al.changed_at,
+        al.additional_info
+    FROM audit_log al
+    WHERE (p_table_name IS NULL OR al.table_name = p_table_name)
+      AND (
+          -- Filter by organization context for relevant tables
+          (al.table_name = 'user_organization' AND al.record_id LIKE CONCAT('%:', p_org_id))
+          OR (al.table_name = 'invoice' AND EXISTS (
+              SELECT 1 FROM invoice i WHERE i.invoice_id = al.record_id AND i.org_id = p_org_id
+          ))
+          OR (al.table_name = 'payment' AND EXISTS (
+              SELECT 1 FROM payment p 
+              JOIN invoice i ON p.invoice_id = i.invoice_id 
+              WHERE p.payment_id = al.record_id AND i.org_id = p_org_id
+          ))
+          OR (al.table_name = 'customer' AND EXISTS (
+              SELECT 1 FROM customer c WHERE c.customer_id = al.record_id AND c.org_id = p_org_id
+          ))
+          OR (al.table_name = 'template' AND EXISTS (
+              SELECT 1 FROM template t WHERE CONCAT(t.template_id, ':', t.version) = al.record_id AND t.org_id = p_org_id
+          ))
+      )
+    ORDER BY al.changed_at DESC
+    LIMIT v_limit
+    OFFSET v_offset;
+END //
+
 DELIMITER ;
 

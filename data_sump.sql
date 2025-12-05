@@ -1,3 +1,4 @@
+DROP DATABASE IF EXISTS  `invoice_generator`;
 CREATE DATABASE  IF NOT EXISTS `invoice_generator` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
 USE `invoice_generator`;
 -- MySQL dump 10.13  Distrib 8.0.43, for Win64 (x86_64)
@@ -382,7 +383,8 @@ DROP TABLE IF EXISTS `user_organization`;
 CREATE TABLE `user_organization` (
   `user_id` char(36) NOT NULL,
   `org_id` char(36) NOT NULL,
-  `role` varchar(50) DEFAULT 'member',
+  `role` enum('owner','member','viewer') NOT NULL DEFAULT 'viewer',
+  `status` enum('active','pending','rejected','deactivated') NOT NULL DEFAULT 'pending',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`user_id`,`org_id`),
   KEY `idx_user_org_user` (`user_id`),
@@ -398,7 +400,7 @@ CREATE TABLE `user_organization` (
 
 LOCK TABLES `user_organization` WRITE;
 /*!40000 ALTER TABLE `user_organization` DISABLE KEYS */;
-INSERT INTO `user_organization` VALUES ('13838994-d11f-11f0-a496-e40d36ebc7e6','39c1312b-d119-11f0-a496-e40d36ebc7e6','member','2025-12-04 14:39:45'),('39c29420-d119-11f0-a496-e40d36ebc7e6','192c3ffd-d11a-11f0-a496-e40d36ebc7e6','owner','2025-12-04 14:04:07'),('39c29420-d119-11f0-a496-e40d36ebc7e6','39c1312b-d119-11f0-a496-e40d36ebc7e6','owner','2025-12-04 13:57:52'),('ae4e13c2-d11f-11f0-a496-e40d36ebc7e6','192c3ffd-d11a-11f0-a496-e40d36ebc7e6','member','2025-12-04 14:44:22'),('ae4e13c2-d11f-11f0-a496-e40d36ebc7e6','39c1312b-d119-11f0-a496-e40d36ebc7e6','member','2025-12-04 14:44:04');
+INSERT INTO `user_organization` VALUES ('13838994-d11f-11f0-a496-e40d36ebc7e6','39c1312b-d119-11f0-a496-e40d36ebc7e6','member','active','2025-12-04 14:39:45'),('39c29420-d119-11f0-a496-e40d36ebc7e6','192c3ffd-d11a-11f0-a496-e40d36ebc7e6','owner','active','2025-12-04 14:04:07'),('39c29420-d119-11f0-a496-e40d36ebc7e6','39c1312b-d119-11f0-a496-e40d36ebc7e6','owner','active','2025-12-04 13:57:52'),('ae4e13c2-d11f-11f0-a496-e40d36ebc7e6','192c3ffd-d11a-11f0-a496-e40d36ebc7e6','member','active','2025-12-04 14:44:22'),('ae4e13c2-d11f-11f0-a496-e40d36ebc7e6','39c1312b-d119-11f0-a496-e40d36ebc7e6','member','active','2025-12-04 14:44:04');
 /*!40000 ALTER TABLE `user_organization` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -525,6 +527,104 @@ BEGIN
     SELECT ROW_COUNT() AS rows_affected;
 END ;;
 DELIMITER ;
+
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP PROCEDURE IF EXISTS `sp_archive_template` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER //
+
+-- Procedure to get all members (Active & Deactivated) for the Team List
+DROP PROCEDURE IF EXISTS sp_get_org_members //
+CREATE PROCEDURE sp_get_org_members(IN p_org_id CHAR(36))
+BEGIN
+    SELECT 
+        u.user_id, 
+        u.email, 
+        uo.role, 
+        uo.status,
+        uo.created_at as joined_at
+    FROM user_organization uo
+    JOIN users u ON uo.user_id = u.user_id
+    WHERE uo.org_id = p_org_id 
+    AND uo.status IN ('active', 'deactivated')
+    ORDER BY uo.role, u.email;
+END //
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP PROCEDURE IF EXISTS `sp_archive_template` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER //
+DROP PROCEDURE IF EXISTS sp_get_pending_members //
+CREATE PROCEDURE sp_get_pending_members(IN p_org_id CHAR(36))
+BEGIN
+    SELECT 
+        u.user_id, 
+        u.email, 
+        uo.role, 
+        uo.created_at as joined_at
+    FROM user_organization uo
+    JOIN users u ON uo.user_id = u.user_id
+    WHERE uo.org_id = p_org_id 
+    AND uo.status = 'pending'
+    ORDER BY uo.created_at DESC;
+END //
+DELIMITER ;
+
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP PROCEDURE IF EXISTS `sp_archive_template` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+
+DROP PROCEDURE IF EXISTS sp_update_member_status;
+DELIMITER //
+CREATE PROCEDURE sp_update_member_status(
+    IN p_org_id CHAR(36),
+    IN p_user_id CHAR(36),
+    IN p_status VARCHAR(20),
+    IN p_role VARCHAR(20)
+)
+BEGIN
+    IF p_status = 'rejected' THEN
+        -- Permanently remove rejected requests (optional: or keep them as 'rejected')
+        DELETE FROM user_organization 
+        WHERE org_id = p_org_id AND user_id = p_user_id;
+    ELSE
+        -- Handle active, pending, and deactivated
+        UPDATE user_organization 
+        SET status = p_status, role = p_role
+        WHERE org_id = p_org_id AND user_id = p_user_id;
+    END IF;
+END //
+DELIMITER ;
+
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
@@ -578,7 +678,8 @@ DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_assign_user_to_org`(
     IN p_user_id CHAR(36),
     IN p_org_id CHAR(36),
-    IN p_role VARCHAR(50)
+    IN p_role VARCHAR(50),
+    IN p_status VARCHAR(50)
 )
 BEGIN
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -595,8 +696,8 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Organization does not exist';
     END IF;
     
-    INSERT INTO user_organization (user_id, org_id, role)
-    VALUES (p_user_id, p_org_id, IFNULL(p_role, 'member'))
+    INSERT INTO user_organization (user_id, org_id, role,status)
+    VALUES (p_user_id, p_org_id, IFNULL(p_role, 'member'),p_status)
     ON DUPLICATE KEY UPDATE role = IFNULL(p_role, role);
 END ;;
 DELIMITER ;
@@ -1925,7 +2026,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_get_user_organizations`(
     IN p_user_id CHAR(36)
 )
 BEGIN
-    SELECT uo.org_id, o.name, o.domain, uo.role
+    SELECT uo.org_id, o.name, o.domain, uo.role, uo.status
     FROM user_organization uo
     JOIN organization o ON uo.org_id = o.org_id
     WHERE uo.user_id = p_user_id

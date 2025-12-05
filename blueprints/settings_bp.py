@@ -14,14 +14,43 @@ settings_bp = Blueprint('settings_bp', __name__)
 def index():
     """Settings page"""
     user = g.current_user
+    org_id = g.current_org_id
+
+    # Get current role
+    current_role = None
+    if session.get('user_organizations'):
+        for org in session['user_organizations']:
+            if str(org.get('org_id')) == str(org_id):
+                current_role = org.get('role')
+                break
 
     try:
         user_orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
         current_org_id = g.current_org_id if hasattr(g, 'current_org_id') else None
-        return render_template('settings/index.html', user_organizations=user_orgs or [], current_org_id=current_org_id)
+        
+        # Fetch team management data for owners
+        pending_requests = []
+        active_members = []
+        if current_role == 'owner':
+            pending_requests = db.execute_proc('sp_get_pending_members', (org_id,))
+            active_members = db.execute_proc('sp_get_org_members', (org_id,))
+            if active_members:
+                active_members = [m for m in active_members if m.get('status') in ['active', 'deactivated']]
+        
+        return render_template('settings/index.html', 
+                             user_organizations=user_orgs or [], 
+                             current_org_id=current_org_id,
+                             current_org_role=current_role,
+                             pending_requests=pending_requests or [],
+                             active_members=active_members or [])
     except DatabaseError:
         current_org_id = g.current_org_id if hasattr(g, 'current_org_id') else None
-        return render_template('settings/index.html', user_organizations=[], current_org_id=current_org_id)
+        return render_template('settings/index.html', 
+                             user_organizations=[], 
+                             current_org_id=current_org_id,
+                             current_org_role=None,
+                             pending_requests=[],
+                             active_members=[])
 
 
 @settings_bp.route('/select-org', methods=['GET', 'POST'])
@@ -135,7 +164,7 @@ def create_organization():
         new_org_id = org_result[0].get('org_id')
 
 
-        db.execute_proc('sp_assign_user_to_org', (user['user_id'], new_org_id, 'owner'), fetch=False)
+        db.execute_proc('sp_assign_user_to_org', (user['user_id'], new_org_id, 'owner','active'), fetch=False)
 
 
         orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
@@ -197,7 +226,7 @@ def join_organization():
                             return redirect(url_for('settings_bp.index'))
 
 
-                db.execute_proc('sp_assign_user_to_org', (user['user_id'], selected_org_id, 'member'), fetch=False)
+                db.execute_proc('sp_assign_user_to_org', (user['user_id'], selected_org_id, 'member','pending'), fetch=False)
 
 
                 orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
@@ -300,4 +329,103 @@ def edit_organization(org_id):
     except DatabaseError as e:
         flash(f'Error loading organization: {str(e)}', 'error')
         return redirect(url_for('settings_bp.index'))
+    
+
+@settings_bp.route('/members/approve', methods=['POST'])
+@require_org
+def approve_member():
+    """Approve, Reject, Deactivate, Reactivate, or Change Role of a member"""
+    org_id = g.current_org_id
+    user_id = request.form.get('user_id')
+    role = request.form.get('role') 
+    action = request.form.get('action')
+    
+    # Check if current user is owner
+    current_role = None
+    if session.get('user_organizations'):
+        for org in session['user_organizations']:
+            if str(org.get('org_id')) == str(org_id):
+                current_role = org.get('role')
+                break
+    
+    if current_role != 'owner':
+        flash('Only owners can manage team members', 'error')
+        return redirect(request.referrer or url_for('settings_bp.index'))
+
+    if not user_id or not action:
+        flash('Invalid request', 'error')
+        return redirect(request.referrer or url_for('settings_bp.index'))
+
+    try:
+        if action == 'approve':
+            if not role:
+                flash('Role is required', 'error')
+                return redirect(request.referrer or url_for('settings_bp.index'))
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'active', role), fetch=False)
+            flash('Member approved', 'success')
+            
+        elif action == 'reject':
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'rejected', 'viewer'), fetch=False)
+            flash('User rejected and removed', 'info')
+            
+        elif action == 'deactivate':
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'deactivated', None), fetch=False)
+            flash('Member deactivated. They can no longer access this organization.', 'warning')
+            
+        elif action == 'reactivate':
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'active', 'member'), fetch=False)
+            flash('Member reactivated successfully', 'success')
+            
+        elif action == 'change_role':
+            if not role:
+                flash('Role is required', 'error')
+                return redirect(request.referrer or url_for('settings_bp.index'))
+            # Get current member status to preserve it
+            members = db.execute_proc('sp_get_org_members', (org_id,))
+            current_member = next((m for m in (members or []) if m.get('user_id') == user_id), None)
+            current_status = current_member.get('status', 'active') if current_member else 'active'
+            db.execute_proc('sp_update_member_status', (org_id, user_id, current_status, role), fetch=False)
+            flash(f'Member role changed to {role.title()} successfully', 'success')
+
+    except DatabaseError as e:
+        flash(f'Error updating member: {str(e)}', 'error')
+
+    return redirect(request.referrer or url_for('settings_bp.index'))
+
+
+@settings_bp.route('/audit-log')
+@require_org
+def audit_log():
+    """View audit log (owners only)"""
+    org_id = g.current_org_id
+    
+    # Get current role
+    current_role = None
+    if session.get('user_organizations'):
+        for org in session['user_organizations']:
+            if str(org.get('org_id')) == str(org_id):
+                current_role = org.get('role')
+                break
+    
+    if current_role != 'owner':
+        flash('Only owners can view audit logs', 'error')
+        return redirect(url_for('settings_bp.index'))
+    
+    try:
+        table_filter = request.args.get('table_name')
+        limit = request.args.get('limit', 100, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        
+        audit_logs = db.execute_proc('sp_get_audit_log', (org_id, table_filter, limit, offset))
+        
+        return render_template('settings/audit_log.html',
+                             audit_logs=audit_logs or [],
+                             current_org_role=current_role,
+                             table_filter=table_filter)
+    except DatabaseError as e:
+        flash(f'Error loading audit log: {str(e)}', 'error')
+        return render_template('settings/audit_log.html',
+                             audit_logs=[],
+                             current_org_role=current_role,
+                             table_filter=None)
 

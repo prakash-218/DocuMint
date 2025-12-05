@@ -1,0 +1,40 @@
+{% extends "header.html" %}
+
+{% block title %}Access Status - Invoice System{% endblock %}
+
+{% block content %}
+<div style="max-width: 500px; margin: 100px auto; padding: 2rem;">
+    <div class="card" style="text-align: center; padding: 40px;">
+        <div style="margin-bottom: 20px;">
+            {% if status == 'pending' %}
+                <i data-lucide="clock" style="width: 64px; height: 64px; color: #EAB308;"></i>
+            {% elif status == 'rejected' %}
+                <i data-lucide="x-circle" style="width: 64px; height: 64px; color: #EF4444;"></i>
+            {% else %}
+                <i data-lucide="lock" style="width: 64px; height: 64px; color: #6B7280;"></i>
+            {% endif %}
+        </div>
+
+        <h2 style="font-size: 24px; font-weight: bold; margin-bottom: 15px;">
+            {% if status == 'pending' %}Status Under Review{% endif %}
+            {% if status == 'rejected' %}Access Denied{% endif %}
+            {% if status == 'deactivated' %}Account Deactivated{% endif %}
+        </h2>
+
+        <p style="color: #6B7280; margin-bottom: 30px; line-height: 1.6;">
+            {% if status == 'pending' %}
+                Your request to join <strong>{{ org_name }}</strong> has been sent. 
+                <br>You cannot access the dashboard until an organization Owner approves your request.
+            {% else %}
+                You do not have permission to access <strong>{{ org_name }}</strong>.
+                <br>Please contact the administrator.
+            {% endif %}
+        </p>
+
+        <div style="display: flex; gap: 15px; justify-content: center;">
+            <a href="{{ url_for('auth_bp.logout') }}" class="btn btn-secondary">Logout</a>
+            <a href="{{ url_for('settings_bp.select_org') }}" class="btn btn-primary">Switch Organization</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

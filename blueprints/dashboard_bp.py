@@ -15,6 +15,13 @@ def index():
     """Dashboard home page"""
     org_id = g.current_org_id
 
+    current_role = None
+    if session.get('user_organizations'):
+        for org in session['user_organizations']:
+            if str(org.get('org_id')) == str(org_id):
+                current_role = org.get('role')
+                break
+
     try:
 
         stats = db.execute_proc_single('sp_get_dashboard_stats', (org_id,))
@@ -31,6 +38,16 @@ def index():
         print("DEBUG: revenue_timeseries raw:", revenue_timeseries)
         print("DEBUG: status_distribution raw:", status_distribution)
         print("DEBUG: revenue_by_status raw:", revenue_by_status)
+
+        pending_requests = []
+        active_members = []
+        
+        if current_role == 'owner':
+            pending_requests = db.execute_proc('sp_get_pending_members', (org_id,))
+            print(pending_requests)
+            active_members = db.execute_proc('sp_get_org_members', (org_id,))
+            if active_members:
+                active_members = [m for m in active_members if m.get('status') in ['active', 'deactivated']]
 
 
         if recent_invoices is None:
@@ -61,7 +78,10 @@ def index():
                              recent_invoices=recent_invoices,
                              revenue_timeseries=revenue_timeseries,
                              status_distribution=status_distribution,
-                             revenue_by_status=revenue_by_status)
+                             revenue_by_status=revenue_by_status,
+                             current_org_role=current_role,
+                             pending_requests=pending_requests,
+                             active_members=active_members)
     except DatabaseError as e:
         import traceback
         traceback.print_exc()
