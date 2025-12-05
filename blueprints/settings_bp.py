@@ -2,9 +2,12 @@
 Settings blueprint - Organization settings and preferences
 """
 
+import logging
 from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, jsonify
 from db import db, DatabaseError
 from auth import require_auth, require_org, hash_password
+
+logger = logging.getLogger(__name__)
 
 settings_bp = Blueprint('settings_bp', __name__)
 
@@ -57,51 +60,94 @@ def index():
 @require_auth
 def select_org():
     """Select organization context"""
-    user = g.current_user
-
-    if request.method == 'POST':
-        org_id = request.form.get('org_id')
-        if org_id:
-
-            orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
-            # Compare org_id as strings to handle UUID format differences
-            org = next((o for o in (orgs or []) if str(o.get('org_id', '')) == str(org_id)), None)
-
-            if org:
-                session['org_id'] = str(org_id)  # Ensure it's a string
-                session['org_name'] = org.get('name')
-                session['org_status'] = org.get('status', 'active')
-
-                if org.get('status') != 'active':
-                    return render_template('errors/org_status.html', 
-                                         status=org.get('status'), 
-                                         org_name=org.get('name'))
-
-                # Refresh user organizations list
-                orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
-                if orgs:
-                    session['user_organizations'] = orgs
-                
-                # Regenerate token with new org_id
-                from auth import generate_token
-                new_token = generate_token(user['user_id'], user.get('email'), str(org_id))
-                session['token'] = new_token
-                
-                flash('Organization switched successfully', 'success')
-                return redirect(request.referrer or url_for('dashboard_bp.index'))
-            else:
-                flash('You do not have access to this organization', 'error')
-                # Debug: show what orgs the user has access to
-                print(f"DEBUG: User {user['user_id']} tried to switch to org {org_id}")
-                print(f"DEBUG: User has access to orgs: {[str(o.get('org_id')) for o in (orgs or [])]}")
-
-
     try:
-        orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
-        return render_template('settings/select_org.html', organizations=orgs or [])
-    except DatabaseError as e:
-        flash('Error loading organizations', 'error')
-        return render_template('settings/select_org.html', organizations=[])
+        user = g.current_user
+        logger.info(f"select_org called - User ID: {user.get('user_id') if user else 'None'}, Method: {request.method}")
+
+        if request.method == 'POST':
+            org_id = request.form.get('org_id')
+            logger.info(f"POST request - org_id from form: {org_id}, type: {type(org_id)}")
+            
+            if not org_id:
+                logger.warning("No org_id provided in POST request")
+                flash('Organization ID is required', 'error')
+                return redirect(url_for('settings_bp.select_org'))
+
+            try:
+                orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
+                logger.info(f"Retrieved {len(orgs) if orgs else 0} organizations for user")
+                
+                if orgs:
+                    logger.debug(f"Available org IDs: {[str(o.get('org_id', '')) for o in orgs]}")
+                    logger.debug(f"Looking for org_id: {str(org_id)}")
+                
+                # Compare org_id as strings to handle UUID format differences
+                org = next((o for o in (orgs or []) if str(o.get('org_id', '')) == str(org_id)), None)
+
+                if org:
+                    logger.info(f"Organization found: {org.get('name')}, Status: {org.get('status')}")
+                    
+                    try:
+                        session['org_id'] = str(org_id)  # Ensure it's a string
+                        session['org_name'] = org.get('name')
+                        session['org_status'] = org.get('status', 'active')
+                        logger.info(f"Session updated - org_id: {session.get('org_id')}, org_name: {session.get('org_name')}, org_status: {session.get('org_status')}")
+
+                        if org.get('status') != 'active':
+                            logger.warning(f"Organization status is not active: {org.get('status')}")
+                            return render_template('errors/org_status.html', 
+                                                 status=org.get('status'), 
+                                                 org_name=org.get('name'))
+
+                        # Refresh user organizations list
+                        orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
+                        if orgs:
+                            session['user_organizations'] = orgs
+                            logger.info(f"User organizations list refreshed: {len(orgs)} orgs")
+                        
+                        # Regenerate token with new org_id
+                        from auth import generate_token
+                        new_token = generate_token(user['user_id'], user.get('email'), str(org_id))
+                        session['token'] = new_token
+                        logger.info("Token regenerated successfully")
+                        
+                        flash('Organization switched successfully', 'success')
+                        redirect_url = request.referrer or url_for('dashboard_bp.index')
+                        logger.info(f"Redirecting to: {redirect_url}")
+                        return redirect(redirect_url)
+                    except Exception as e:
+                        logger.error(f"Error updating session or generating token: {str(e)}", exc_info=True)
+                        flash(f'Error switching organization: {str(e)}', 'error')
+                        return redirect(url_for('settings_bp.select_org'))
+                else:
+                    logger.warning(f"Organization not found or user doesn't have access - org_id: {org_id}")
+                    logger.debug(f"User {user['user_id']} tried to switch to org {org_id}")
+                    logger.debug(f"User has access to orgs: {[str(o.get('org_id')) for o in (orgs or [])]}")
+                    flash('You do not have access to this organization', 'error')
+                    return redirect(url_for('settings_bp.select_org'))
+                    
+            except DatabaseError as e:
+                logger.error(f"Database error in select_org POST: {str(e)}", exc_info=True)
+                flash(f'Error loading organizations: {str(e)}', 'error')
+                return redirect(url_for('settings_bp.select_org'))
+            except Exception as e:
+                logger.error(f"Unexpected error in select_org POST: {str(e)}", exc_info=True)
+                flash(f'An unexpected error occurred: {str(e)}', 'error')
+                return redirect(url_for('settings_bp.select_org'))
+
+        # GET request
+        try:
+            orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
+            logger.info(f"GET request - Loaded {len(orgs) if orgs else 0} organizations")
+            return render_template('settings/select_org.html', organizations=orgs or [])
+        except DatabaseError as e:
+            logger.error(f"Database error in select_org GET: {str(e)}", exc_info=True)
+            flash('Error loading organizations', 'error')
+            return render_template('settings/select_org.html', organizations=[])
+    except Exception as e:
+        logger.error(f"Critical error in select_org: {str(e)}", exc_info=True)
+        flash('An unexpected error occurred', 'error')
+        return redirect(url_for('dashboard_bp.index'))
 
 
 @settings_bp.route('/organizations/create', methods=['GET', 'POST'])

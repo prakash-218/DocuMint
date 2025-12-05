@@ -2,6 +2,7 @@
 Main Flask application.
 """
 
+import logging
 from flask import Flask, render_template, session, g
 from dotenv import load_dotenv
 import os
@@ -30,6 +31,14 @@ def create_app(config_name=None):
     """Create and configure Flask application"""
     app = Flask(__name__)
 
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Flask application starting...")
 
     config_name = config_name or os.getenv('FLASK_ENV', 'development')
     app.config.from_object(config[config_name])
