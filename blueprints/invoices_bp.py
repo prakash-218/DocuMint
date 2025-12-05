@@ -4,7 +4,7 @@ Invoices blueprint - CRUD operations for invoices
 
 from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, make_response
 from db import db, DatabaseError
-from auth import require_org
+from auth import require_org, get_current_org_role, can_create_invoice, can_edit_invoice, can_delete_invoice, can_finalize_invoice
 import uuid
 from datetime import datetime
 try:
@@ -23,6 +23,9 @@ def list_invoices():
     """List all invoices"""
     org_id = g.current_org_id
     status_filter = request.args.get('status')
+    
+    # Get current role
+    current_role = get_current_org_role()
 
     try:
         invoices = db.execute_proc('sp_list_invoices', (org_id, status_filter, 50, 0))
@@ -31,7 +34,7 @@ def list_invoices():
             invoices = []
         elif not isinstance(invoices, list):
             invoices = [invoices] if invoices else []
-        return render_template('invoices/list.html', invoices=invoices)
+        return render_template('invoices/list.html', invoices=invoices, current_org_role=current_role)
     except DatabaseError as e:
         flash(f'Error loading invoices: {str(e)}', 'error')
         import traceback
@@ -48,6 +51,11 @@ def list_invoices():
 @require_org
 def create_invoice():
     """Create a new invoice"""
+    current_role = get_current_org_role()
+    if not can_create_invoice():
+        flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to create invoices.', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+    
     org_id = g.current_org_id
 
     if request.method == 'POST':
@@ -491,47 +499,19 @@ def view_invoice(invoice_id):
         sections_for_calc = None
         if template_id:
 
-
-            import pymysql
-            with db.get_connection() as conn:
-                with conn.cursor(pymysql.cursors.DictCursor) as cursor:
-
-                    cursor.execute(
-                        "SELECT MAX(version) as max_version FROM template WHERE template_id = %s",
-                        (template_id,)
-                    )
-                    version_result = cursor.fetchone()
-                    if version_result and version_result.get('max_version'):
-                        max_version = version_result['max_version']
-
-                        cursor.execute("""
-                            SELECT
-                                s.section_id,
-                                s.name AS section_name,
-                                s.display_name AS section_display_name,
-                                s.display_name AS section_title,
-                                s.ordinal AS section_ordinal,
-                                s.section_type,
-                                f.field_id,
-                                f.name AS field_name,
-                                f.display_name AS field_display_name,
-                                f.display_name AS label,
-                                f.data_type,
-                                f.is_required,
-                                f.is_currency,
-                                f.ordinal AS field_ordinal,
-                                f.calculation_formula
-                            FROM section s
-                            JOIN field f ON s.section_id = f.section_id
-                            WHERE s.template_id = %s
-                              AND s.template_version = %s
-                            ORDER BY s.ordinal, f.ordinal
-                        """, (template_id, max_version))
-                        fields = cursor.fetchall()
-                    else:
-                        fields = []
+            # Get max version using stored procedure
+            version_result = db.execute_proc_single('sp_get_template_max_version', (template_id,))
+            if version_result and version_result.get('max_version'):
+                max_version = version_result['max_version']
+                
+                # Get fields by version using stored procedure
+                fields_result = db.execute_proc('sp_get_template_fields_by_version', (template_id, max_version))
+                fields = fields_result if fields_result else []
+            else:
+                fields = []
 
             if not fields:
+                # Fallback to latest version if specific version not found
                 fields_result = db.execute_proc('sp_get_template_fields', (template_id,))
                 fields = fields_result if fields_result else []
 
@@ -773,12 +753,16 @@ def view_invoice(invoice_id):
 
 
         payments = db.execute_proc('sp_get_invoice_payments', (invoice_id,))
+        
+        # Get current role
+        current_role = get_current_org_role()
 
         return render_template('invoices/view.html',
                              invoice=invoice_header,
                              values=invoice_values or [],
                              sections_data=sections_data,
-                             payments=payments or [])
+                             payments=payments or [],
+                             current_org_role=current_role)
     except DatabaseError as e:
         import traceback
         print(f"ERROR loading invoice {invoice_id}: {str(e)}")
@@ -922,6 +906,11 @@ def export_pdf(invoice_id):
 @require_org
 def finalize_invoice(invoice_id):
     """Finalize an invoice (change status from draft to pending)"""
+    current_role = get_current_org_role()
+    if not can_finalize_invoice():
+        flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to finalize invoices.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    
     try:
 
         result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
@@ -965,6 +954,11 @@ def finalize_invoice(invoice_id):
 @require_org
 def edit_invoice(invoice_id):
     """Edit invoice"""
+    current_role = get_current_org_role()
+    if not can_edit_invoice():
+        flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to edit invoices.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    
     org_id = g.current_org_id
 
 
@@ -1045,20 +1039,12 @@ def edit_invoice(invoice_id):
                 if section_type == 'line_item':
                     # First, delete all existing line item values for this section
                     # This ensures deleted rows are removed and prevents conflicts
-                    import pymysql
-                    with db.get_connection() as conn:
-                        with conn.cursor() as cursor:
-                            # Get all field IDs for this section
-                            field_ids = [f['field_id'] for f in section_data['fields']]
-                            if field_ids:
-                                placeholders = ','.join(['%s'] * len(field_ids))
-                                cursor.execute(f"""
-                                    DELETE FROM invoice_value 
-                                    WHERE invoice_id = %s 
-                                    AND field_id IN ({placeholders})
-                                """, (invoice_id,) + tuple(field_ids))
-                                conn.commit()
-                                print(f"DEBUG EDIT -- Deleted existing line item values for section {section_id}")
+                    field_ids = [f['field_id'] for f in section_data['fields']]
+                    if field_ids:
+                        # Format field_ids as comma-separated quoted values for the stored procedure
+                        field_ids_str = ','.join([f"'{fid}'" for fid in field_ids])
+                        db.execute_proc('sp_delete_invoice_values_by_fields', (invoice_id, field_ids_str), fetch=False)
+                        print(f"DEBUG EDIT -- Deleted existing line item values for section {section_id}")
 
                     line_item_keys = [k for k in request.form.keys() if k.startswith(f'line_item_{section_id}_')]
                     print(f"DEBUG EDIT -- Section {section_id}: Found {len(line_item_keys)} line item form keys")
@@ -1386,6 +1372,11 @@ def edit_invoice(invoice_id):
 @require_org
 def delete_invoice(invoice_id):
     """Delete an invoice"""
+    current_role = get_current_org_role()
+    if not can_delete_invoice():
+        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to delete invoices.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    
     org_id = g.current_org_id
 
     try:
@@ -1421,6 +1412,11 @@ def delete_invoice(invoice_id):
 @require_org
 def add_payment(invoice_id):
     """Add payment to invoice"""
+    current_role = get_current_org_role()
+    if not can_edit_invoice():
+        flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to add payments.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    
     amount = request.form.get('amount')
     method = request.form.get('method')
     reference_number = request.form.get('reference_number')

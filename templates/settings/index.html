@@ -4,6 +4,153 @@
 {% block page_title %}Settings{% endblock %}
 
 {% block content %}
+
+{% if current_org_role == 'owner' and pending_requests %}
+<section class="dashboard-section">
+    <div class="card" style="border-left: 4px solid var(--color-warning);">
+        <div class="card-header">
+            <h2 class="card-title" style="color: var(--color-warning-dark);">
+                <i data-lucide="user-plus" style="vertical-align: middle; margin-right: 8px;"></i>
+                Pending Access Requests
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>User Email</th>
+                            <th>Date Requested</th>
+                            <th>Assign Role</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in pending_requests %}
+                        <tr>
+                            <td><strong>{{ req.email }}</strong></td>
+                            <td>{{ req.joined_at }}</td>
+                            <td>
+                                <form id="approve-form-{{ req.user_id }}" action="{{ url_for('settings_bp.approve_member') }}" method="POST">
+                                    <input type="hidden" name="user_id" value="{{ req.user_id }}">
+                                    <select name="role" class="form-select" style="padding: 4px 8px; font-size: 13px;">
+                                        <option value="viewer">Viewer (Read Only)</option>
+                                        <option value="member" selected>Member</option>
+                                        <option value="owner">Owner</option>
+                                    </select>
+                                </form>
+                            </td>
+                            <td>
+                                <div style="display: flex; gap: 10px;">
+                                    <button type="submit" form="approve-form-{{ req.user_id }}" name="action" value="approve" class="btn btn-sm btn-success">
+                                        Approve
+                                    </button>
+                                    <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" style="display:inline;">
+                                        <input type="hidden" name="user_id" value="{{ req.user_id }}">
+                                        <button type="submit" name="action" value="reject" class="btn btn-sm btn-danger" onclick="return confirm('Reject this request?');">
+                                            Reject
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if current_org_role == 'owner' %}
+<section class="dashboard-section">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">System Administration</h2>
+        </div>
+        <div class="card-body">
+            <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
+                <a href="{{ url_for('settings_bp.audit_log') }}" class="btn btn-secondary">
+                    <i data-lucide="file-text" style="width: 16px; height: 16px; margin-right: 8px;"></i>
+                    View Audit Log
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if current_org_role == 'owner' and active_members %}
+<section class="dashboard-section">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Team Management</h2>
+        </div>
+        <div class="card-body">
+            <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for member in active_members %}
+                        <tr>
+                            <td>{{ member.email }}</td>
+                            <td>
+                                {% if member.user_id != current_user.user_id %}
+                                    <form id="role-form-{{ member.user_id }}" action="{{ url_for('settings_bp.approve_member') }}" method="POST" style="display: inline;">
+                                        <input type="hidden" name="user_id" value="{{ member.user_id }}">
+                                        <input type="hidden" name="action" value="change_role">
+                                        <select name="role" class="form-select" style="padding: 4px 8px; font-size: 13px; display: inline-block; width: auto;" onchange="this.form.submit()">
+                                            <option value="viewer" {% if member.role == 'viewer' %}selected{% endif %}>Viewer</option>
+                                            <option value="member" {% if member.role == 'member' %}selected{% endif %}>Member</option>
+                                            <option value="owner" {% if member.role == 'owner' %}selected{% endif %}>Owner</option>
+                                        </select>
+                                    </form>
+                                {% else %}
+                                    <span class="badge badge-secondary">{{ member.role|upper }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if member.status == 'active' %}
+                                    <span class="badge badge-success">Active</span>
+                                {% else %}
+                                    <span class="badge badge-danger">{{ member.status|title }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if member.user_id != current_user.user_id %}
+                                    <div style="display: flex; gap: 10px;">
+                                        {% if member.status == 'active' %}
+                                            <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" style="display:inline;">
+                                                <input type="hidden" name="user_id" value="{{ member.user_id }}">
+                                                <button type="submit" name="action" value="deactivate" class="btn btn-sm btn-danger" onclick="return confirm('Deactivate this user?');">Deactivate</button>
+                                            </form>
+                                        {% else %}
+                                            <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" style="display:inline;">
+                                                <input type="hidden" name="user_id" value="{{ member.user_id }}">
+                                                <button type="submit" name="action" value="reactivate" class="btn btn-sm btn-success">Reactivate</button>
+                                            </form>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+
 <div class="card mb-lg">
     <div class="card-header">
         <h2 class="card-title">Organizations</h2>
@@ -66,4 +213,5 @@
         {% endif %}
     </div>
 </div>
+
 {% endblock %}
