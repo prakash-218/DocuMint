@@ -351,6 +351,7 @@ def register_org():
                 session['email'] = email
                 session['org_id'] = org['org_id']
                 session['org_name'] = org['name']
+                session['org_status'] = org.get('status', 'pending')  # Set status from org data
 
 
                 token = generate_token(user_id, email, org['org_id'])
@@ -358,6 +359,13 @@ def register_org():
                 session.permanent = True
 
                 flash(f'Account created! You have been added to {org["name"]}.', 'success')
+                
+                # If status is pending, redirect to org_status page instead of dashboard
+                if org.get('status') == 'pending':
+                    return render_template('errors/org_status.html', 
+                                         status='pending', 
+                                         org_name=org['name'])
+                
                 return redirect(url_for('dashboard_bp.index'))
 
 

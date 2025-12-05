@@ -4,7 +4,7 @@ Customers blueprint - CRUD operations for customers
 
 from flask import Blueprint, request, render_template, redirect, url_for, flash, g
 from db import db, DatabaseError
-from auth import require_org
+from auth import require_org, get_current_org_role
 
 customers_bp = Blueprint('customers_bp', __name__)
 
@@ -14,20 +14,26 @@ customers_bp = Blueprint('customers_bp', __name__)
 def list_customers():
     """List all customers"""
     org_id = g.current_org_id
+    current_role = get_current_org_role()
 
     try:
         include_archived = request.args.get('include_archived', 'false').lower() == 'true'
         customers = db.execute_proc('sp_list_customers', (org_id, include_archived))
-        return render_template('customers/list.html', customers=customers or [], include_archived=include_archived)
+        return render_template('customers/list.html', customers=customers or [], include_archived=include_archived, current_org_role=current_role)
     except DatabaseError as e:
         flash('Error loading customers', 'error')
-        return render_template('customers/list.html', customers=[])
+        return render_template('customers/list.html', customers=[], current_org_role=current_role)
 
 
 @customers_bp.route('/create', methods=['GET', 'POST'])
 @require_org
 def create_customer():
     """Create a new customer"""
+    current_role = get_current_org_role()
+    if current_role != 'owner':
+        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to create customers.', 'error')
+        return redirect(url_for('customers_bp.list_customers'))
+    
     org_id = g.current_org_id
 
     if request.method == 'POST':
@@ -62,6 +68,7 @@ def create_customer():
 @require_org
 def view_customer(customer_id):
     """View customer details"""
+    current_role = get_current_org_role()
     try:
         result = db.execute_proc('sp_get_customer_details', (customer_id,))
 
@@ -111,7 +118,8 @@ def view_customer(customer_id):
         return render_template('customers/view.html',
                              customer=customer,
                              contacts=contacts or [],
-                             customer_user=customer_user)
+                             customer_user=customer_user,
+                             current_org_role=current_role)
     except DatabaseError as e:
         flash('Error loading customer', 'error')
         return redirect(url_for('customers_bp.list_customers'))
@@ -121,6 +129,11 @@ def view_customer(customer_id):
 @require_org
 def create_portal_account(customer_id):
     """Create a customer portal account (admin action)"""
+    current_role = get_current_org_role()
+    if current_role != 'owner':
+        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to create portal accounts.', 'error')
+        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+    
     org_id = g.current_org_id
 
     email = request.form.get('email')
@@ -174,6 +187,11 @@ def create_portal_account(customer_id):
 @require_org
 def edit_customer(customer_id):
     """Edit customer details"""
+    current_role = get_current_org_role()
+    if current_role != 'owner':
+        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to edit customers.', 'error')
+        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+    
     org_id = g.current_org_id
 
 
@@ -246,6 +264,11 @@ def edit_customer(customer_id):
 @require_org
 def delete_customer(customer_id):
     """Delete a customer"""
+    current_role = get_current_org_role()
+    if current_role != 'owner':
+        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to delete customers.', 'error')
+        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+    
     org_id = g.current_org_id
 
     try:
@@ -287,6 +310,11 @@ def delete_customer(customer_id):
 @require_org
 def archive_customer(customer_id):
     """Archive a customer"""
+    current_role = get_current_org_role()
+    if current_role != 'owner':
+        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to archive customers.', 'error')
+        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+    
     org_id = g.current_org_id
     
     try:
@@ -302,6 +330,11 @@ def archive_customer(customer_id):
 @require_org
 def unarchive_customer(customer_id):
     """Unarchive a customer"""
+    current_role = get_current_org_role()
+    if current_role != 'owner':
+        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to unarchive customers.', 'error')
+        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+    
     org_id = g.current_org_id
     
     try:
