@@ -109,10 +109,13 @@ def create_template():
                     if section_title:
 
 
-                        print(f"  Calling sp_create_section with: template_id={template_id}, version={template_version}, title={section_title}, ordinal={section_ordinal}, type={section_type}")
+                        # Convert section_title to name (no spaces) and display_name (original)
+                        section_name = section_title.replace(' ', '_').lower()
+                        section_display_name = section_title
+                        print(f"  Calling sp_create_section with: template_id={template_id}, version={template_version}, name={section_name}, display_name={section_display_name}, ordinal={section_ordinal}, type={section_type}")
                         try:
                             section_result = db.execute_proc('sp_create_section',
-                                                             (template_id, template_version, section_title, section_ordinal, section_type, None))
+                                                             (template_id, template_version, section_name, section_display_name, section_ordinal, section_type, None))
                             print(f"  sp_create_section returned: {section_result}")
 
                             if section_result and len(section_result) > 0:
@@ -147,6 +150,9 @@ def create_template():
                                         field_ordinal = j
 
                                     if field_label and field_type:
+                                        # Convert field_label to name (no spaces) and display_name (original)
+                                        field_name = field_label.replace(' ', '_').lower()
+                                        field_display_name = field_label
 
                                         field_type_lower = field_type.lower().strip()
                                         valid_types = ['string', 'number', 'date', 'boolean']
@@ -157,11 +163,11 @@ def create_template():
                                         if field_type_lower != 'number':
                                             field_currency = 0
 
-                                        print(f"    Calling sp_add_template_field with: section_id={section_id}, label={field_label}, type={field_type_lower}, required={field_required}, currency={field_currency}, ordinal={field_ordinal}, calculation={field_calculation}")
+                                        print(f"    Calling sp_add_template_field with: section_id={section_id}, name={field_name}, display_name={field_display_name}, type={field_type_lower}, required={field_required}, currency={field_currency}, ordinal={field_ordinal}, calculation={field_calculation}")
                                         try:
 
                                             field_result = db.execute_proc('sp_add_template_field',
-                                                          (section_id, field_label, field_type_lower, field_required, field_currency, field_ordinal, field_calculation, None))
+                                                          (section_id, field_name, field_display_name, field_type_lower, field_required, field_currency, field_ordinal, field_calculation, None))
                                             if field_result and len(field_result) > 0:
                                                 field_id = field_result[0].get('field_id')
                                                 field_id_map[(i, j)] = field_id
@@ -270,6 +276,9 @@ def view_template(template_id):
         sections = {}
         if fields:
             for field in fields:
+                # Map field_display_name to label for template compatibility
+                if 'field_display_name' in field and 'label' not in field:
+                    field['label'] = field['field_display_name']
                 section_id = field['section_id']
                 if section_id not in sections:
                     sections[section_id] = {
@@ -349,8 +358,11 @@ def edit_template(template_id):
                 if title:
                     try:
                         ordinal_int = int(ordinal) if ordinal else None
+                        # Convert title to name (no spaces) and display_name (original)
+                        section_name = title.replace(' ', '_').lower()
+                        section_display_name = title
                         db.execute_proc('sp_update_section',
-                                       (section_id, title, ordinal_int, section_type),
+                                       (section_id, section_name, section_display_name, ordinal_int, section_type),
                                        fetch=False)
                     except (ValueError, DatabaseError) as e:
                         flash(f'Error updating section: {str(e)}', 'error')
@@ -370,8 +382,11 @@ def edit_template(template_id):
                         is_currency = 0
                     try:
                         ordinal_int = int(ordinal) if ordinal else None
+                        # Convert label to name (no spaces) and display_name (original)
+                        field_name = label.replace(' ', '_').lower()
+                        field_display_name = label
                         db.execute_proc('sp_update_field',
-                                       (field_id, label, data_type, is_required, is_currency, ordinal_int, calculation),
+                                       (field_id, field_name, field_display_name, data_type, is_required, is_currency, ordinal_int, calculation),
                                        fetch=False)
                     except (ValueError, DatabaseError) as e:
                         flash(f'Error updating field: {str(e)}', 'error')
@@ -404,8 +419,11 @@ def edit_template(template_id):
                                 field_currency = 0
                             try:
                                 field_ordinal_int = int(field_ordinal) if field_ordinal else field_num
+                                # Convert field_label to name (no spaces) and display_name (original)
+                                field_name = field_label.replace(' ', '_').lower()
+                                field_display_name = field_label
                                 db.execute_proc('sp_add_template_field',
-                                               (section_id, field_label, field_type, field_required, field_currency, field_ordinal_int, field_calculation, None),
+                                               (section_id, field_name, field_display_name, field_type, field_required, field_currency, field_ordinal_int, field_calculation, None),
                                                fetch=False)
                             except DatabaseError as e:
                                 flash(f'Error adding field: {str(e)}', 'error')
@@ -420,8 +438,11 @@ def edit_template(template_id):
                 if title:
                     try:
                         ordinal_int = int(ordinal) if ordinal else latest_version
+                        # Convert title to name (no spaces) and display_name (original)
+                        section_name = title.replace(' ', '_').lower()
+                        section_display_name = title
                         result = db.execute_proc('sp_create_section',
-                                                 (template_id, latest_version, title, ordinal_int, section_type, None))
+                                                 (template_id, latest_version, section_name, section_display_name, ordinal_int, section_type, None))
                         if result and len(result) > 0:
                             new_section_id = result[0].get('section_id')
 
@@ -431,14 +452,20 @@ def edit_template(template_id):
                                 field_label = request.form.get(f'new_section_{i}_field_{j}_label')
                                 field_type = request.form.get(f'new_section_{i}_field_{j}_type')
                                 field_required = 1 if request.form.get(f'new_section_{i}_field_{j}_required') == 'on' else 0
+                                field_currency = 1 if request.form.get(f'new_section_{i}_field_{j}_currency') == 'on' else 0
                                 field_ordinal = request.form.get(f'new_section_{i}_field_{j}_ordinal', str(j))
                                 field_calculation = request.form.get(f'new_section_{i}_field_{j}_calculation', '').strip() or None
 
                                 if field_label and field_type:
+                                    if field_type != 'number':
+                                        field_currency = 0
                                     try:
                                         field_ordinal_int = int(field_ordinal) if field_ordinal else j
+                                        # Convert field_label to name (no spaces) and display_name (original)
+                                        field_name = field_label.replace(' ', '_').lower()
+                                        field_display_name = field_label
                                         db.execute_proc('sp_add_template_field',
-                                                       (new_section_id, field_label, field_type, field_required, field_ordinal_int, field_calculation, None),
+                                                       (new_section_id, field_name, field_display_name, field_type, field_required, field_currency, field_ordinal_int, field_calculation, None),
                                                        fetch=False)
                                     except DatabaseError as e:
                                         flash(f'Error adding field: {str(e)}', 'error')
@@ -485,7 +512,7 @@ def edit_template(template_id):
 
     try:
 
-        templates = db.execute_proc('sp_list_templates', (org_id,))
+        templates = db.execute_proc('sp_list_templates', (org_id, False))
         template_info = None
         latest_version = None
         for t in templates or []:
@@ -563,6 +590,9 @@ def edit_template(template_id):
         sections = {}
         if fields:
             for field in fields:
+                # Map field_display_name to label for template compatibility
+                if 'field_display_name' in field and 'label' not in field:
+                    field['label'] = field['field_display_name']
                 section_id = field['section_id']
                 if section_id not in sections:
                     sections[section_id] = {

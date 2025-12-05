@@ -63,16 +63,34 @@
                     </span>
                 </h3>
                 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--spacing-md);">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--spacing-md);">
                     {% for field in section.fields %}
                     <div class="card-nested" style="padding: var(--spacing-md); border-radius: var(--border-radius-lg); border: 1px solid var(--border-color);">
-                        <strong>{{ field.label }}</strong>
-                        <div style="margin-top: var(--spacing-xs);">
+                        <div style="margin-bottom: var(--spacing-sm);">
+                            <strong>{{ field.label }}</strong>
+                            {% if field.get('field_name') %}
+                            <span style="color: var(--color-text-secondary); font-size: 0.85em; margin-left: var(--spacing-xs);">
+                                ({{ field.field_name }})
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div style="margin-top: var(--spacing-xs); margin-bottom: var(--spacing-xs);">
                             <span class="badge badge-info">{{ field.data_type }}</span>
                             {% if field.is_required %}
                             <span class="badge badge-warning">Required</span>
                             {% endif %}
+                            {% if field.is_currency %}
+                            <span class="badge badge-success">Currency</span>
+                            {% endif %}
                         </div>
+                        {% if field.calculation_formula %}
+                        <div style="margin-top: var(--spacing-sm); padding: var(--spacing-sm); background-color: var(--color-bg-secondary); border-radius: var(--border-radius); border-left: 3px solid var(--color-primary);">
+                            <div style="font-size: 0.85em; color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
+                                <strong>Formula:</strong>
+                            </div>
+                            <code style="font-size: 0.9em; color: var(--color-primary); word-break: break-all;">{{ field.calculation_formula }}</code>
+                        </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>

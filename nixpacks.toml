@@ -8,5 +8,5 @@ nixPkgs = ["python312", "cairo", "pkg-config", "gcc"]
 cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
 
 [start]
-cmd = "gunicorn wsgi:app --bind 0.0.0.0"
+cmd = "gunicorn wsgi:app --bind 0.0.0.0:5000"
 

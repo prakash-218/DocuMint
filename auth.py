@@ -154,7 +154,16 @@ def register_user(email: str, password: str, org_name: str, org_domain: str) -> 
 
 
 
-        org_result = db.execute_proc('sp_create_organization', (org_name, org_domain, None))
+        org_result = db.execute_proc('sp_create_organization', (
+            org_name, 
+            org_domain, 
+            None,  # street_address
+            None,  # city
+            None,  # state
+            None,  # zip_code
+            None,  # country
+            None   # OUT p_org_id
+        ))
         if not org_result or len(org_result) == 0:
             raise DatabaseError("Failed to create organization - no result returned")
 

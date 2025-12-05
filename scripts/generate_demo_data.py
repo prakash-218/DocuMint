@@ -351,7 +351,16 @@ def create_organizations():
 
     for org_data in ORGANIZATIONS:
         try:
-            result = db.execute_proc('sp_create_organization', (org_data['name'], org_data['domain'], None))
+            result = db.execute_proc('sp_create_organization', (
+                org_data['name'], 
+                org_data['domain'], 
+                None,  # street_address
+                None,  # city
+                None,  # state
+                None,  # zip_code
+                None,  # country
+                None   # OUT p_org_id
+            ))
             if result and len(result) > 0:
                 org_id = result[0].get('org_id')
                 org_ids.append(org_id)

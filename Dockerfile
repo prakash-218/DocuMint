@@ -21,5 +21,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Run gunicorn
-CMD gunicorn wsgi:app --bind 0.0.0.0
+CMD gunicorn wsgi:app --bind 0.0.0.0:5000
 

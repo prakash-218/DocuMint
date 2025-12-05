@@ -94,9 +94,16 @@ function updateTotalFieldDropdown() {
             const fieldsContainer = section.querySelector(`#fields_${sectionNum}`);
             if (fieldsContainer) {
                 const fieldInputs = fieldsContainer.querySelectorAll('.form-group');
-                fieldInputs.forEach((fieldDiv, fieldIndex) => {
-                    const fieldNum = fieldIndex + 1;
-                    const labelInput = fieldDiv.querySelector(`input[name="section_${sectionNum}_field_${fieldNum}_label"]`);
+                fieldInputs.forEach((fieldDiv) => {
+                    // Find the label input to extract the actual field number from its name
+                    const labelInput = fieldDiv.querySelector(`input[name^="section_${sectionNum}_field_"][name$="_label"]`);
+                    if (!labelInput) return;
+                    
+                    // Extract field number from name attribute (e.g., "section_1_field_3_label" -> 3)
+                    const nameMatch = labelInput.name.match(/section_\d+_field_(\d+)_label/);
+                    if (!nameMatch) return;
+                    
+                    const fieldNum = parseInt(nameMatch[1]);
                     const typeSelect = fieldDiv.querySelector(`select[name="section_${sectionNum}_field_${fieldNum}_type"]`);
                     
                     if (labelInput && typeSelect) {
@@ -214,10 +221,54 @@ function addField(sectionNum) {
         </div>
         <div class="form-group">
             <label class="form-label">Calculation Formula (Optional)</label>
-            <input type="text" name="section_${sectionNum}_field_${fieldCount}_calculation" class="form-input" 
-                   placeholder="e.g., sum(line_items.amount), this.price * this.qty">
+            <div class="formula-builder-container" data-field-id="section_${sectionNum}_field_${fieldCount}" data-section-id="section_${sectionNum}">
+                <div class="formula-input-wrapper">
+                    <input type="text" 
+                           name="section_${sectionNum}_field_${fieldCount}_calculation" 
+                           class="form-input formula-input" 
+                           placeholder="e.g., SUM(Line_Items.Amount) or this.Quantity * this.Unit_Price"
+                           data-formula-input="true">
+                    <button type="button" class="btn btn-sm btn-secondary formula-helper-btn" onclick="toggleFormulaHelper(this)">
+                        <span>📝</span> Helper
+                    </button>
+                </div>
+                <div class="formula-helper-panel" style="display: none;">
+                    <div class="formula-helper-content">
+                        <div class="formula-functions">
+                            <strong>Functions:</strong>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaFunction(this, 'SUM')">SUM()</button>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaFunction(this, 'AVG')">AVG()</button>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaFunction(this, 'COUNT')">COUNT()</button>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaFunction(this, 'GET')">GET()</button>
+                        </div>
+                        <div class="formula-operators" style="margin-top: var(--spacing-sm);">
+                            <strong>Operators:</strong>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaText(this, ' + ')">+</button>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaText(this, ' - ')">-</button>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaText(this, ' * ')">×</button>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaText(this, ' / ')">/</button>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaText(this, ' ( ')">(</button>
+                            <button type="button" class="btn btn-xs btn-secondary" onclick="insertFormulaText(this, ' ) ')">)</button>
+                        </div>
+                        <div class="formula-examples" style="margin-top: var(--spacing-sm); padding: var(--spacing-sm); background: var(--bg-secondary); border-radius: var(--border-radius);">
+                            <strong>Examples:</strong>
+                            <div style="font-size: 0.9em; color: var(--text-secondary); margin-top: var(--spacing-xs);">
+                                <div><code>SUM(Line_Items.Amount)</code> - Sum all amounts in line items</div>
+                                <div><code>this.price * this.qty</code> - Multiply fields in same row (use field names, no spaces)</div>
+                                <div><code>this.quantity * this.unit_price</code> - Another example</div>
+                                <div><code>Subtotal + Tax_Amount</code> - Add two fields</div>
+                                <div><code>AVG(Line_Items.Rate)</code> - Average of line item rates</div>
+                                <div style="margin-top: var(--spacing-xs); color: var(--color-warning);">
+                                    <strong>Note:</strong> For <code>this.</code> references, use the field name (no spaces, lowercase). 
+                                    Field names are auto-converted from labels (e.g., "Unit Price" → "unit_price").
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <small class="form-text" style="display: block; margin-top: var(--spacing-xs); color: var(--color-text-secondary);">
-                Examples: <code>sum(line_items.amount)</code>, <code>this.price * this.qty</code>, <code>count(line_items)</code>
+                Field names use underscores (no spaces).
             </small>
         </div>
     `;
@@ -304,6 +355,130 @@ document.addEventListener('input', function(e) {
         updateTotalFieldDropdown();
     }
 });
+
+// Formula Builder Functions
+function toggleFormulaHelper(btn) {
+    const container = btn.closest('.formula-builder-container');
+    const panel = container.querySelector('.formula-helper-panel');
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        btn.innerHTML = '<span>📝</span> Hide';
+    } else {
+        panel.style.display = 'none';
+        btn.innerHTML = '<span>📝</span> Helper';
+    }
+}
+
+function insertFormulaFunction(btn, funcName) {
+    const container = btn.closest('.formula-builder-container');
+    const input = container.querySelector('.formula-input');
+    const cursorPos = input.selectionStart;
+    const textBefore = input.value.substring(0, cursorPos);
+    const textAfter = input.value.substring(cursorPos);
+    
+    let insertText = '';
+    if (funcName === 'SUM' || funcName === 'AVG') {
+        insertText = `${funcName}(Section_Name.Field_Name)`;
+    } else if (funcName === 'COUNT') {
+        insertText = `${funcName}(Section_Name)`;
+    } else if (funcName === 'GET') {
+        insertText = `${funcName}(Section_Name.Field_Name)`;
+    }
+    
+    input.value = textBefore + insertText + textAfter;
+    input.focus();
+    // Position cursor after function name
+    const newPos = cursorPos + funcName.length + 1;
+    input.setSelectionRange(newPos, newPos);
+}
+
+function insertFormulaText(btn, text) {
+    const container = btn.closest('.formula-builder-container');
+    const input = container.querySelector('.formula-input');
+    const cursorPos = input.selectionStart;
+    const textBefore = input.value.substring(0, cursorPos);
+    const textAfter = input.value.substring(cursorPos);
+    
+    input.value = textBefore + text + textAfter;
+    input.focus();
+    const newPos = cursorPos + text.length;
+    input.setSelectionRange(newPos, newPos);
+}
+
+function insertFormulaField(select) {
+    if (!select.value) return;
+    
+    const container = select.closest('.formula-builder-container');
+    const input = container.querySelector('.formula-input');
+    const cursorPos = input.selectionStart;
+    const textBefore = input.value.substring(0, cursorPos);
+    const textAfter = input.value.substring(cursorPos);
+    
+    // Convert field label to field name (no spaces, lowercase)
+    const fieldName = select.value.replace(/\s+/g, '_').toLowerCase();
+    
+    input.value = textBefore + fieldName + textAfter;
+    input.focus();
+    const newPos = cursorPos + fieldName.length;
+    input.setSelectionRange(newPos, newPos);
+    select.value = ''; // Reset dropdown
+}
 </script>
+
+<style>
+.formula-builder-container {
+    margin-top: var(--spacing-xs);
+}
+
+.formula-input-wrapper {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: flex-start;
+}
+
+.formula-input-wrapper .formula-input {
+    flex: 1;
+}
+
+.formula-helper-btn {
+    white-space: nowrap;
+    padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.formula-helper-panel {
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+.formula-helper-content {
+    font-size: 0.9em;
+}
+
+.formula-functions, .formula-operators {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    flex-wrap: wrap;
+}
+
+.formula-functions strong, .formula-operators strong {
+    margin-right: var(--spacing-xs);
+}
+
+.formula-examples code {
+    background: var(--bg-primary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+.formula-field-select {
+    min-width: 200px;
+}
+</style>
 {% endblock %}
 

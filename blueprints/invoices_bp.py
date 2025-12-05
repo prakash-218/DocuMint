@@ -76,10 +76,17 @@ def create_invoice():
 
             sections = {}
             for field in fields:
+                # Map field_display_name to label for template compatibility
+                if 'field_display_name' in field and 'label' not in field:
+                    field['label'] = field['field_display_name']
+                # Map section_display_name to title for line item headers
+                if 'section_display_name' in field and 'section_title' not in field:
+                    field['section_title'] = field['section_display_name']
                 section_id = field['section_id']
                 if section_id not in sections:
                     sections[section_id] = {
                         'type': field.get('section_type', 'normal'),
+                        'title': field.get('section_title') or field.get('section_display_name') or 'Untitled Section',
                         'fields': []
                     }
                 sections[section_id]['fields'].append(field)
@@ -310,11 +317,17 @@ def create_invoice():
 
 
                     for field in fields:
+                        # Map field_display_name to label for template compatibility
+                        if 'field_display_name' in field and 'label' not in field:
+                            field['label'] = field['field_display_name']
+                        # Map section_display_name to title for line item headers
+                        if 'section_display_name' in field and 'section_title' not in field:
+                            field['section_title'] = field['section_display_name']
                         section_id = field.get('section_id')
                         if section_id:
                             if section_id not in sections_data:
                                 sections_data[section_id] = {
-                                    'title': field.get('section_title', '') or 'Untitled Section',
+                                    'title': field.get('section_title', '') or field.get('section_display_name', '') or 'Untitled Section',
                                     'type': field.get('section_type', 'normal') or 'normal',
                                     'fields': []
                                 }
@@ -494,13 +507,18 @@ def view_invoice(invoice_id):
                         cursor.execute("""
                             SELECT
                                 s.section_id,
-                                s.title AS section_title,
+                                s.name AS section_name,
+                                s.display_name AS section_display_name,
+                                s.display_name AS section_title,
                                 s.ordinal AS section_ordinal,
                                 s.section_type,
                                 f.field_id,
-                                f.label,
+                                f.name AS field_name,
+                                f.display_name AS field_display_name,
+                                f.display_name AS label,
                                 f.data_type,
                                 f.is_required,
+                                f.is_currency,
                                 f.ordinal AS field_ordinal,
                                 f.calculation_formula
                             FROM section s
@@ -523,6 +541,13 @@ def view_invoice(invoice_id):
             for field in fields:
                 field_id = field.get('field_id')
                 if field_id:
+                    # Ensure field has all necessary attributes for calculations
+                    if 'field_name' not in field:
+                        field['field_name'] = field.get('name', '')
+                    if 'field_display_name' not in field:
+                        field['field_display_name'] = field.get('display_name') or field.get('label', '')
+                    if 'label' not in field:
+                        field['label'] = field.get('field_display_name') or field.get('display_name', '')
                     field_map[field_id] = field
 
             print(f"DEBUG: Created field_map with {len(field_map)} fields")
@@ -533,46 +558,63 @@ def view_invoice(invoice_id):
                     formula_str = 'None'
                 else:
                     formula_str = formula_val
-                print(f"DEBUG: Field {field_id}: label='{field.get('label')}', formula='{formula_str}' (type: {type(formula_val).__name__})")
+                print(f"DEBUG: Field {field_id}: name='{field.get('field_name')}', label='{field.get('label')}', formula='{formula_str}' (type: {type(formula_val).__name__})")
 
             sections_for_calc = {}
             for field in fields:
-                section_title = field.get('section_title', '')
+                # Get section title from multiple possible sources
+                section_title = (field.get('section_title') or 
+                               field.get('section_display_name') or 
+                               field.get('section_name') or 
+                               '')
+                if not section_title:
+                    print(f"DEBUG: WARNING: Field {field.get('field_id')} has no section_title! Skipping.")
+                    continue  # Skip fields without a section
                 section_type = field.get('section_type', 'normal')
+                # Also get the normalized section name for lookup
+                section_name = field.get('section_name', '').replace(' ', '_').lower() if field.get('section_name') else section_title.replace(' ', '_').lower()
                 if section_title not in sections_for_calc:
                     sections_for_calc[section_title] = {
                         'type': section_type,
+                        'name': section_name,  # Store normalized name for lookup
                         'fields': [],
                         'line_item_rows': {} if section_type == 'line_item' else None
                     }
                 sections_for_calc[section_title]['fields'].append(field)
+            
+            print(f"DEBUG: Built sections_for_calc with keys: {list(sections_for_calc.keys())}")
 
 
             for value in invoice_values or []:
-                section_title = value.get('section_title', '')
-                if section_title in sections_for_calc:
-                    section_info = sections_for_calc[section_title]
-                    field_id = value.get('field_id')
+                section_title = value.get('section_title') or value.get('section_display_name') or value.get('section_name', '')
+                if not section_title or section_title not in sections_for_calc:
+                    continue  # Skip values without a valid section
+                section_info = sections_for_calc[section_title]
+                field_id = value.get('field_id')
 
+                if field_id in field_map:
+                    field = field_map[field_id]
+                    value['calculation_formula'] = field.get('calculation_formula')
+                    value['field_label'] = field.get('label', value.get('field_label', ''))
+                    value['data_type'] = field.get('data_type', value.get('data_type', 'string'))
+                    # Also add field_name and field_display_name for calculations
+                    if 'field_name' not in value:
+                        value['field_name'] = field.get('field_name') or field.get('name', '')
+                    if 'field_display_name' not in value:
+                        value['field_display_name'] = field.get('field_display_name') or field.get('label', '')
+                    print(f"DEBUG: Merged formula for field_id {field_id}: '{value.get('calculation_formula')}'")
+                else:
+                    print(f"DEBUG: WARNING: field_id {field_id} not found in field_map!")
 
-                    if field_id in field_map:
-                        field = field_map[field_id]
-                        value['calculation_formula'] = field.get('calculation_formula')
-                        value['field_label'] = field.get('label', value.get('field_label', ''))
-                        value['data_type'] = field.get('data_type', value.get('data_type', 'string'))
-                        print(f"DEBUG: Merged formula for field_id {field_id}: '{value.get('calculation_formula')}'")
-                    else:
-                        print(f"DEBUG: WARNING: field_id {field_id} not found in field_map!")
-
-                    if section_info['type'] == 'line_item':
-                        ordinal = value.get('value_ordinal', 0) or 0
-                        if section_info['line_item_rows'] is None:
-                            section_info['line_item_rows'] = {}
-                        if ordinal not in section_info['line_item_rows']:
-                            section_info['line_item_rows'][ordinal] = []
-                        section_info['line_item_rows'][ordinal].append(value)
-                    else:
-                        section_info['fields'].append(value)
+                if section_info['type'] == 'line_item':
+                    ordinal = value.get('value_ordinal', 0) or 0
+                    if section_info['line_item_rows'] is None:
+                        section_info['line_item_rows'] = {}
+                    if ordinal not in section_info['line_item_rows']:
+                        section_info['line_item_rows'][ordinal] = []
+                    section_info['line_item_rows'][ordinal].append(value)
+                else:
+                    section_info['fields'].append(value)
 
 
             for section_title, section_info in sections_for_calc.items():
@@ -597,8 +639,23 @@ def view_invoice(invoice_id):
         from calculations import calculate_invoice_fields
         calc_sections = sections_for_calc if sections_for_calc else sections_data
         print(f"DEBUG: Calling calculate_invoice_fields with {len(invoice_values or [])} values and {len(calc_sections)} sections")
-        print(f"DEBUG: Sections in calc_sections: {list(calc_sections.keys())}")
+        print(f"DEBUG: Sections in calc_sections: {list(calc_sections.keys()) if isinstance(calc_sections, dict) else 'NOT A DICT!'}")
+        print(f"DEBUG: calc_sections type: {type(calc_sections)}")
+        
+        # Ensure calc_sections is a dictionary and has valid keys
+        if not isinstance(calc_sections, dict):
+            print(f"DEBUG: ERROR: calc_sections is not a dict! It's: {type(calc_sections)}")
+            calc_sections = sections_data  # Fallback to sections_data
+        # conerting the keys to lower case
+        calc_sections = {k.lower(): v for k, v in calc_sections.items()}
+        # Remove any None keys
+        if None in calc_sections:
+            print(f"DEBUG: WARNING: Removing None key from calc_sections")
+            del calc_sections[None]
+        
         for sec_name, sec_info in calc_sections.items():
+            if sec_name is None:
+                continue
             if sec_info.get('type') == 'line_item':
                 rows = sec_info.get('line_item_rows', [])
                 print(f"DEBUG: Section '{sec_name}' has {len(rows)} rows")
@@ -606,7 +663,7 @@ def view_invoice(invoice_id):
                     print(f"DEBUG:   Row {i} has {len(row)} values")
                     for val in row:
                         if val:
-                            print(f"DEBUG:     Value: field_id={val.get('field_id')}, label={val.get('field_label')}, formula={val.get('calculation_formula')}")
+                            print(f"DEBUG:     Value: field_id={val.get('field_id')}, name={val.get('field_name')}, label={val.get('field_label')}, formula={val.get('calculation_formula')}")
         calculated_values = calculate_invoice_fields(invoice_values or [], calc_sections)
         print(f"DEBUG: Calculated {len(calculated_values)} values: {calculated_values}")
 
@@ -966,10 +1023,17 @@ def edit_invoice(invoice_id):
 
             sections = {}
             for field in fields:
+                # Map field_display_name to label for template compatibility
+                if 'field_display_name' in field and 'label' not in field:
+                    field['label'] = field['field_display_name']
+                # Map section_display_name to title for line item headers
+                if 'section_display_name' in field and 'section_title' not in field:
+                    field['section_title'] = field['section_display_name']
                 section_id = field['section_id']
                 if section_id not in sections:
                     sections[section_id] = {
                         'type': field.get('section_type', 'normal'),
+                        'title': field.get('section_title') or field.get('section_display_name') or 'Untitled Section',
                         'fields': []
                     }
                 sections[section_id]['fields'].append(field)
@@ -979,6 +1043,22 @@ def edit_invoice(invoice_id):
                 section_type = section_data['type']
 
                 if section_type == 'line_item':
+                    # First, delete all existing line item values for this section
+                    # This ensures deleted rows are removed and prevents conflicts
+                    import pymysql
+                    with db.get_connection() as conn:
+                        with conn.cursor() as cursor:
+                            # Get all field IDs for this section
+                            field_ids = [f['field_id'] for f in section_data['fields']]
+                            if field_ids:
+                                placeholders = ','.join(['%s'] * len(field_ids))
+                                cursor.execute(f"""
+                                    DELETE FROM invoice_value 
+                                    WHERE invoice_id = %s 
+                                    AND field_id IN ({placeholders})
+                                """, (invoice_id,) + tuple(field_ids))
+                                conn.commit()
+                                print(f"DEBUG EDIT -- Deleted existing line item values for section {section_id}")
 
                     line_item_keys = [k for k in request.form.keys() if k.startswith(f'line_item_{section_id}_')]
                     print(f"DEBUG EDIT -- Section {section_id}: Found {len(line_item_keys)} line item form keys")
@@ -1011,33 +1091,33 @@ def edit_invoice(invoice_id):
                             field_id = field['field_id']
                             data_type = field['data_type']
 
-                    val_string = None
-                    val_number = None
-                    val_date = None
-                    val_boolean = None
+                            val_string = None
+                            val_number = None
+                            val_date = None
+                            val_boolean = None
 
+                            value = row_data.get(field_id)
 
-                    value = row_data.get(field_id)
-
-
-                    if value is not None and str(value).strip():
-                        value_str = str(value).strip()
-                        if data_type == 'string':
-                            val_string = value_str
-                        elif data_type == 'number':
-                            try:
-                                val_number = float(value_str)
-                            except ValueError:
-                                pass
-                        elif data_type == 'date':
-                            val_date = value_str
-                        elif data_type == 'boolean':
-                            val_boolean = 1 if value_str.lower() in ('true', '1', 'on', 'yes') else 0
-                        print(f"DEBUG EDIT -- Saving field {field_id} (row {row_num}): string={val_string}, number={val_number}, date={val_date}, boolean={val_boolean}")
-                        db.execute_proc('sp_save_invoice_value',
-                                        (invoice_id, field_id, val_string, val_number, val_date, val_boolean, row_num),
-                                        fetch=False)
-                        print(f"DEBUG EDIT -- Saved field {field_id} for row {row_num}")
+                            # Save the value even if it's empty (to clear previous values)
+                            if value is not None:
+                                value_str = str(value).strip() if value else ''
+                                if data_type == 'string':
+                                    val_string = value_str if value_str else None
+                                elif data_type == 'number':
+                                    try:
+                                        val_number = float(value_str) if value_str else None
+                                    except ValueError:
+                                        val_number = None
+                                elif data_type == 'date':
+                                    val_date = value_str if value_str else None
+                                elif data_type == 'boolean':
+                                    val_boolean = 1 if value_str.lower() in ('true', '1', 'on', 'yes') else (0 if value_str else None)
+                                
+                                print(f"DEBUG EDIT -- Saving field {field_id} (row {row_num}): string={val_string}, number={val_number}, date={val_date}, boolean={val_boolean}")
+                                db.execute_proc('sp_save_invoice_value',
+                                                (invoice_id, field_id, val_string, val_number, val_date, val_boolean, row_num),
+                                                fetch=False)
+                                print(f"DEBUG EDIT -- Saved field {field_id} for row {row_num}")
                 else:
 
                     for field in section_data['fields']:
@@ -1200,11 +1280,17 @@ def edit_invoice(invoice_id):
 
 
                 for field in fields:
+                    # Map field_display_name to label for template compatibility
+                    if 'field_display_name' in field and 'label' not in field:
+                        field['label'] = field['field_display_name']
+                    # Map section_display_name to title for line item headers
+                    if 'section_display_name' in field and 'section_title' not in field:
+                        field['section_title'] = field['section_display_name']
                     section_id = field.get('section_id')
                     if section_id:
                         if section_id not in sections_data:
                             sections_data[section_id] = {
-                                'title': field.get('section_title', '') or 'Untitled Section',
+                                'title': field.get('section_title', '') or field.get('section_display_name', '') or 'Untitled Section',
                                 'type': field.get('section_type', 'normal') or 'normal',
                                 'fields': []
                             }
