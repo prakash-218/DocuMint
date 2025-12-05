@@ -9,119 +9,138 @@
 {% endblock %}
 
 {% block content %}
+
+{% if current_org_role == 'owner' and pending_requests %}
+<section class="dashboard-section">
+    <div class="card" style="border-left: 4px solid var(--color-warning);">
+        <div class="card-header">
+            <h2 class="card-title" style="color: var(--color-warning-dark);">
+                <i data-lucide="user-plus" style="vertical-align: middle; margin-right: 8px;"></i>
+                Pending Access Requests
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>User Email</th>
+                            <th>Date Requested</th>
+                            <th>Assign Role</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in pending_requests %}
+                        <tr>
+                            <td><strong>{{ req.email }}</strong></td>
+                            <td>{{ req.joined_at }}</td>
+                            <td>
+                                <form id="approve-form-{{ req.user_id }}" action="{{ url_for('settings_bp.approve_member') }}" method="POST">
+                                    <input type="hidden" name="user_id" value="{{ req.user_id }}">
+                                    <select name="role" class="form-select" style="padding: 4px 8px; font-size: 13px;">
+                                        <option value="viewer">Viewer (Read Only)</option>
+                                        <option value="member" selected>Member</option>
+                                        <option value="owner">Owner</option>
+                                    </select>
+                                </form>
+                            </td>
+                            <td>
+                                <div style="display: flex; gap: 10px;">
+                                    <button type="submit" form="approve-form-{{ req.user_id }}" name="action" value="approve" class="btn btn-sm btn-success">
+                                        Approve
+                                    </button>
+                                    <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" style="display:inline;">
+                                        <input type="hidden" name="user_id" value="{{ req.user_id }}">
+                                        <button type="submit" name="action" value="reject" class="btn btn-sm btn-danger" onclick="return confirm('Reject this request?');">
+                                            Reject
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if current_org_role == 'owner' and active_members %}
+<section class="dashboard-section">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Team Management</h2>
+        </div>
+        <div class="card-body">
+            <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for member in active_members %}
+                        <tr>
+                            <td>{{ member.email }}</td>
+                            <td><span class="badge badge-secondary">{{ member.role|upper }}</span></td>
+                            <td>
+                                {% if member.status == 'active' %}
+                                    <span class="badge badge-success">Active</span>
+                                {% else %}
+                                    <span class="badge badge-danger">{{ member.status|title }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if member.user_id != current_user.user_id %}
+                                    <form action="{{ url_for('settings_bp.approve_member') }}" method="POST">
+                                        <input type="hidden" name="user_id" value="{{ member.user_id }}">
+                                        {% if member.status == 'active' %}
+                                            <button type="submit" name="action" value="deactivate" class="btn btn-sm btn-danger" onclick="return confirm('Deactivate this user?');">Deactivate</button>
+                                        {% else %}
+                                            <button type="submit" name="action" value="reactivate" class="btn btn-sm btn-success">Reactivate</button>
+                                        {% endif %}
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+
 <section class="dashboard-section">
     <h2 class="section-title">Financial Overview</h2>
-    <div class="stats-grid">
-    <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="This Month Revenue Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value">{{ stats.revenue_this_month or 0 | currency }}</div>
-        <div class="stat-label">This Month Revenue</div>
-        {% if stats.revenue_last_month and stats.revenue_last_month > 0 %}
-        <div class="stat-change {% if stats.revenue_this_month > stats.revenue_last_month %}positive{% else %}negative{% endif %}">
-            {% set change_pct = ((stats.revenue_this_month - stats.revenue_last_month) / stats.revenue_last_month * 100) | round(1) %}
-            {% if change_pct > 0 %}+{% endif %}{{ change_pct }}% vs last month
-        </div>
-        {% endif %}
-    </div>
-    <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="This Month Invoices Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value">{{ stats.invoices_created_this_month or 0 }}</div>
-        <div class="stat-label">Invoices Created</div>
-        <div class="stat-change" style="color: var(--text-tertiary); font-size: 0.7rem; margin-top: 4px;">
-            This month
-        </div>
-    </div>
-    <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="Money Received This Month Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value" style="color: var(--color-success);">{{ stats.money_received_this_month or 0 | currency }}</div>
-        <div class="stat-label">Money Received</div>
-        <div class="stat-change" style="color: var(--text-tertiary); font-size: 0.7rem; margin-top: 4px;">
-            Paid this month
-        </div>
-    </div>
-    <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="Pending Money This Month Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value" style="color: var(--color-warning);">{{ stats.pending_money_this_month or 0 | currency }}</div>
-        <div class="stat-label">Pending Money</div>
-        <div class="stat-change" style="color: var(--text-tertiary); font-size: 0.7rem; margin-top: 4px;">
-            Awaiting payment
-        </div>
-    </div>
-</div>
-</section>
-
+    </section>
 
 <section class="dashboard-section">
-    <h2 class="section-title">Analytics</h2>
-    <div class="charts-grid">
-    <div class="card">
-        <div class="card-header">
-            <h2 class="card-title">Revenue Over Time</h2>
-            <button class="card-menu" aria-label="Menu" data-tooltip="Revenue Over Time Chart Options">
-                <i data-lucide="more-horizontal" class="nav-icon"></i>
-            </button>
-        </div>
-        <div class="card-body">
-            <canvas id="revenueChart" style="max-height: 300px;"></canvas>
-        </div>
-    </div>
-    
-    <div class="card">
-        <div class="card-header">
-            <h2 class="card-title">Invoice Status Distribution</h2>
-            <button class="card-menu" aria-label="Menu" data-tooltip="Invoice Status Distribution Chart Options">
-                <i data-lucide="more-horizontal" class="nav-icon"></i>
-            </button>
-        </div>
-        <div class="card-body">
-            <canvas id="statusChart" style="max-height: 300px;"></canvas>
-        </div>
-    </div>
-</div>
-</section>
-
-<section class="dashboard-section">
-    <div class="card">
-        <div class="card-header">
-            <h2 class="card-title">Revenue by Status</h2>
-            <button class="card-menu" aria-label="Menu" data-tooltip="Revenue by Status Chart Options">
-                <i data-lucide="more-horizontal" class="nav-icon"></i>
-            </button>
-        </div>
-        <div class="card-body">
-            <canvas id="revenueStatusChart" style="max-height: 300px;"></canvas>
-        </div>
-    </div>
-</section>
-
-<section class="dashboard-section">
-    <h2 class="section-title">Recent Activity</h2>
     <div class="card">
         <div class="card-header">
             <h2 class="card-title">Recent Invoices</h2>
-            <button class="card-menu" aria-label="Menu" data-tooltip="Recent Invoices Options">
-                <i data-lucide="more-horizontal" class="nav-icon"></i>
-            </button>
+            
+            {% if current_org_role in ['owner', 'member'] %}
+            <a href="{{ url_for('invoices_bp.create_invoice') }}" class="btn btn-sm btn-primary">
+                <i data-lucide="plus" style="width: 14px;"></i> New Invoice
+            </a>
+            {% endif %}
         </div>
-    <div class="card-body">
-        {% if recent_invoices %}
-        <div class="table-container">
+        <div class="card-body">
+            <div class="table-container">
             <table class="table">
                 <thead>
                     <tr>
                         <th>Invoice ID</th>
                         <th>Customer</th>
-                        <th>Template</th>
-                        <th>Issue Date</th>
-                        <th>Due Date</th>
                         <th>Status</th>
                         <th>Amount</th>
                         <th>Actions</th>
@@ -132,29 +151,24 @@
                     <tr>
                         <td>{{ invoice.invoice_id[:8] }}...</td>
                         <td>{{ invoice.customer_name }}</td>
-                        <td>{{ invoice.template_name or 'N/A' }}</td>
-                        <td>{{ invoice.issue_date or 'N/A' }}</td>
-                        <td>{{ invoice.due_date or 'N/A' }}</td>
-                        <td>
-                            <span class="badge badge-{{ 'success' if invoice.status == 'paid' else 'warning' if invoice.status == 'pending' else 'info' }}">
-                                {{ invoice.status or 'draft' }}
-                            </span>
-                        </td>
-                        <td>{{ invoice.total_amount or 0 | currency }}</td>
+                        <td><span class="badge badge-info">{{ invoice.status }}</span></td>
+                        <td>{{ invoice.total_amount | currency }}</td>
                         <td>
                             <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-secondary">View</a>
+                            
+                            {% if current_org_role in ['owner', 'member'] and invoice.status == 'draft' %}
+                                <a href="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-primary">Edit</a>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        {% else %}
-        <p>No invoices yet. <a href="{{ url_for('invoices_bp.create_invoice') }}">Create your first invoice</a></p>
-        {% endif %}
+        </div>
     </div>
-</div>
 </section>
+
 {% endblock %}
 
 {% block extra_js %}

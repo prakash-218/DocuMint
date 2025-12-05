@@ -5,7 +5,7 @@ Authentication and authorization module using JWT.
 import jwt
 import bcrypt
 from functools import wraps
-from flask import request, session, g, redirect, url_for
+from flask import render_template, request, session, g, redirect, url_for
 from datetime import datetime, timedelta
 import os
 from db import db, DatabaseError
@@ -56,7 +56,9 @@ def get_current_user():
             'user_id': session.get('user_id'),
             'email': session.get('email'),
             'org_id': session.get('org_id'),
-            'org_name': session.get('org_name')
+            'org_name': session.get('org_name'),
+            'status': session.get('status'),
+            'role': session.get('role')
         }
     return None
 
@@ -76,19 +78,26 @@ def require_auth(f):
 
 
 def require_org(f):
-    """Decorator to require organization context"""
+    """Decorator to require organization context and ACTIVE status"""
     @wraps(f)
     @require_auth
     def decorated_function(*args, **kwargs):
         user = get_current_user()
+        
         if not user or not user.get('org_id'):
             return redirect(url_for('settings_bp.select_org'))
-
+        
+        org_status = session.get('org_status')
+        org_name = session.get('org_name')
+        if org_status and org_status != 'active':
+            # Render the "Access Status" page instead of the requested route
+            return render_template('errors/org_status.html', 
+                                 status=org_status, 
+                                 org_name=session.get('org_name'))
 
         g.current_org_id = user['org_id']
         return f(*args, **kwargs)
     return decorated_function
-
 
 def authenticate_user(email: str, password: str) -> dict:
     """
@@ -184,7 +193,7 @@ def register_user(email: str, password: str, org_name: str, org_domain: str) -> 
             raise DatabaseError(f"Failed to create user - invalid result: {user_result}")
 
 
-        db.execute_proc('sp_assign_user_to_org', (user_id, org_id, 'owner'), fetch=False)
+        db.execute_proc('sp_assign_user_to_org', (user_id, org_id, 'owner','active'), fetch=False)
 
         return {
             'user_id': user_id,

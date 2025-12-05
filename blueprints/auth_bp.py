@@ -44,11 +44,11 @@ def login():
 
             if orgs:
                 session['user_organizations'] = orgs
-
                 if len(orgs) > 0:
-                    session['org_id'] = orgs[0]['org_id']
-                    session['org_name'] = orgs[0]['name']
-
+                    first_org = orgs[0]
+                    session['org_id'] = first_org['org_id']
+                    session['org_name'] = first_org['name']
+                    session['org_status'] = first_org.get('status', 'active')
 
             token = generate_token(user_result['user_id'], user_result['email'], session.get('org_id'))
             session['token'] = token
@@ -334,7 +334,7 @@ def register_org():
                     user_id = user_result[0].get('user_id')
 
 
-                db.execute_proc('sp_assign_user_to_org', (user_id, existing_org_id, 'member'), fetch=False)
+                db.execute_proc('sp_assign_user_to_org', (user_id, existing_org_id, 'member','pending'), fetch=False)
 
 
                 org_result = db.execute_proc('sp_get_user_organizations', (user_id,))
@@ -417,7 +417,7 @@ def register_org():
                     return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
 
                 new_org_id = org_result[0].get('org_id')
-                db.execute_proc('sp_assign_user_to_org', (user_id, new_org_id, 'owner'), fetch=False)
+                db.execute_proc('sp_assign_user_to_org', (user_id, new_org_id, 'owner','active'), fetch=False)
 
 
                 orgs = db.execute_proc('sp_get_user_organizations', (user_id,))

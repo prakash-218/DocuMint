@@ -40,6 +40,12 @@ def select_org():
             if org:
                 session['org_id'] = org_id
                 session['org_name'] = org['name']
+                session['org_status'] = org.get('status', 'active')
+
+                if org.get('status') != 'active':
+                    return render_template('errors/org_status.html', 
+                                         status=org.get('status'), 
+                                         org_name=org['name'])
 
                 orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
                 if orgs:
@@ -118,7 +124,7 @@ def create_organization():
         new_org_id = org_result[0].get('org_id')
 
 
-        db.execute_proc('sp_assign_user_to_org', (user['user_id'], new_org_id, 'owner'), fetch=False)
+        db.execute_proc('sp_assign_user_to_org', (user['user_id'], new_org_id, 'owner','active'), fetch=False)
 
 
         orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
@@ -180,7 +186,7 @@ def join_organization():
                             return redirect(url_for('settings_bp.index'))
 
 
-                db.execute_proc('sp_assign_user_to_org', (user['user_id'], selected_org_id, 'member'), fetch=False)
+                db.execute_proc('sp_assign_user_to_org', (user['user_id'], selected_org_id, 'member','pending'), fetch=False)
 
 
                 orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
@@ -283,4 +289,43 @@ def edit_organization(org_id):
     except DatabaseError as e:
         flash(f'Error loading organization: {str(e)}', 'error')
         return redirect(url_for('settings_bp.index'))
+    
+
+@settings_bp.route('/members/approve', methods=['POST'])
+@require_org
+def approve_member():
+    """Approve, Reject, or Deactivate a member"""
+    org_id = g.current_org_id
+    user_id = request.form.get('user_id')
+    role = request.form.get('role') 
+    action = request.form.get('action')
+
+    if not user_id or not action:
+        flash('Invalid request', 'error')
+        return redirect(url_for('settings_bp.members'))
+
+    try:
+        if action == 'approve':
+            if not role:
+                flash('Role is required', 'error')
+                return redirect(url_for('settings_bp.members'))
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'active', role), fetch=False)
+            flash('Member approved', 'success')
+            
+        elif action == 'reject':
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'rejected', 'viewer'), fetch=False)
+            flash('User rejected and removed', 'info')
+            
+        elif action == 'deactivate':
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'deactivated', 'viewer'), fetch=False)
+            flash('Member deactivated. They can no longer access this organization.', 'warning')
+            
+        elif action == 'reactivate':
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'active', 'member'), fetch=False)
+            flash('Member reactivated successfully', 'success')
+
+    except DatabaseError as e:
+        flash(f'Error updating member: {str(e)}', 'error')
+
+    return redirect(request.referrer or url_for('dashboard_bp.index'))
 
