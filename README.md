@@ -1,251 +1,352 @@
-# Multi-Tenant SaaS Invoicing System
+# DocuMint - Invoice Management System
 
-A comprehensive multi-tenant invoicing system built with Flask, MySQL, and server-side rendering. All database operations are handled through stored procedures, ensuring zero SQL in Python code.
+DocuMint is a comprehensive invoice management system built with Flask that allows organizations to create, manage, and track invoices with customizable templates. The system supports multi-organization workflows with role-based access control, customer portals, and automated invoice calculations.
 
-## Features
+## Hosted version
+ If you want to skip running the project locally, you can head to https://documint.up.railway.app/ to view the app.
+ for login credentials, you can check the bottom of this readme. (same credentials for local and hosted versions). The hosted app might be very slow as we have hosted in a free tier hosting.
 
-- **Multi-Tenant Architecture**: Organization-based tenant isolation
-- **Template Engine**: Dynamic invoice templates with customizable fields
-- **JWT Authentication**: Secure user authentication with organization management
-- **Custom Theming**: Light, Dark, and Branded theme support
-- **Responsive Design**: Modern UI with custom CSS (no frameworks)
-- **Stored Procedures Only**: All database operations via MySQL stored procedures
+## Technical Specifications
 
-## Tech Stack
+### Host Language
+- **Python 3.11+** (Python 3.12 recommended)
+  - Download: https://www.python.org/downloads/
+  - Installation guide: https://www.python.org/downloads/
 
-- **Backend**: Python 3, Flask
-- **Database**: MySQL 8.0+ (using pymysql)
-- **Frontend**: Jinja2 templates with custom CSS
-- **Authentication**: JWT tokens with bcrypt password hashing
+### Web Framework
+- **Flask 3.0.0**
+  - Documentation: https://flask.palletsprojects.com/
+  - Installation: Included in `requirements.txt`
 
-## Prerequisites
+### Database
+- **MySQL 8.0+**
+  - MySQL Download: https://dev.mysql.com/downloads/mysql/
+  - MySQL Installation Guide: https://dev.mysql.com/doc/refman/8.0/en/installing.html
+  - Expected installation directory:
+    - Windows: `C:\Program Files\MySQL\MySQL Server 8.0\` (default)
+    - macOS: `/usr/local/mysql/` (via Homebrew) or `/Applications/MySQL/`
+    - Linux: `/usr/bin/mysql` (via package manager)
 
-- Python 3.8+
-- MySQL 8.0+
-- pip (Python package manager)
+### Python Libraries and Dependencies
 
-## Installation
+All dependencies are listed in `requirements.txt`:
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd invoice-gen
-   ```
+- **Flask 3.0.0** - Web framework
+- **PyMySQL 1.1.0** - MySQL database connector
+  - Documentation: https://pymysql.readthedocs.io/
+- **PyJWT 2.8.0** - JSON Web Token implementation for authentication
+  - Documentation: https://pyjwt.readthedocs.io/
+- **bcrypt 4.1.2** - Password hashing library
+  - Documentation: https://github.com/pyca/bcrypt/
+- **python-dotenv 1.0.0** - Environment variable management
+  - Documentation: https://pypi.org/project/python-dotenv/
+- **xhtml2pdf 0.2.17** - PDF generation from HTML
+  - Documentation: https://xhtml2pdf.readthedocs.io/
+- **simpleeval 1.0.3** - Safe expression evaluation for invoice calculations
+  - Documentation: https://github.com/danthedeckie/simpleeval
+- **gunicorn 21.2.0** - Production WSGI HTTP server
+  - Documentation: https://gunicorn.org/
 
-2. **Create a virtual environment**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+### Additional System Dependencies (for PDF generation)
 
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+The application uses xhtml2pdf which requires Cairo libraries:
 
-4. **Set up environment variables**
-   Create a `.env` file in the root directory:
-   ```env
-   DB_HOST=localhost
-   DB_PORT=3306
-   DB_USER=root
-   DB_PASSWORD=your_password
-   DB_NAME=invoice_db
-   SECRET_KEY=your-secret-key-here
-   JWT_SECRET=your-jwt-secret-here
-   FLASK_ENV=development
-   FLASK_DEBUG=True
-   ```
+- **Windows**: Cairo libraries are typically bundled with Python packages
+- **macOS**: Install via Homebrew: `brew install cairo pango`
+- **Linux (Ubuntu/Debian)**: `sudo apt-get install libcairo2 libcairo2-dev libpango1.0-dev libpangocairo-1.0-0 pkg-config`
 
-5. **Create the database**
+## Installation and Setup
+
+### Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+1. **Python 3.11 or higher**
+   - Verify installation: `python --version` or `python3 --version`
+   - Python download page: https://www.python.org/downloads/
+
+2. **MySQL Server 8.0 or higher**
+   - Verify installation: `mysql --version`
+   - MySQL download page: https://dev.mysql.com/downloads/mysql/
+
+3. **Git** (for cloning the repository)
+   - Download: https://git-scm.com/downloads
+
+### Step 1: Clone the Repository
+
+```bash
+git clone <repository-url>
+cd DocuMint
+```
+
+### Step 2: Set Up Python Virtual Environment
+
+It's recommended to use a virtual environment to isolate project dependencies:
+
+**Windows:**
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+**macOS/Linux:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### Step 3: Install Python Dependencies
+
+With your virtual environment activated, install all required packages:
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Step 4: Set Up MySQL Database
+
+1. **Start MySQL Server**
+   - Windows: MySQL should run as a service automatically, or start it from Services
+   - macOS: `brew services start mysql` or use MySQL Workbench
+   - Linux: `sudo systemctl start mysql` or `sudo service mysql start`
+
+2. **Create the Database**
+
+   Log into MySQL as root:
    ```bash
    mysql -u root -p
-   CREATE DATABASE invoice_db;
    ```
 
-6. **Initialize the database schema**
-   ```bash
-   mysql -u root -p invoice_db < schema.sql
+   Then create the database:
+   ```sql
+   CREATE DATABASE invoice_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   EXIT;
    ```
 
-7. **Create stored procedures**
+3. **Initialize Database Schema and Procedures**
+
+   The project includes SQL files that need to be executed:
+   - `data_dump.sql` - Creates all database tables, procedures and triggers
+   
+   **Import SQL files**
    ```bash
-   mysql -u root -p invoice_db < procedures.sql
+   mysql -u root -p invoice_db < data_dump.sql
    ```
+
+### Step 5: Configure Environment Variables
+
+Create a `.env` file in the project root directory with the following variables:
+
+```env
+# Database Configuration
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_mysql_password
+DB_NAME=invoice_db
+
+# Application Security
+SECRET_KEY=your-secret-key-change-in-production
+JWT_SECRET=your-jwt-secret-key-change-in-production
+
+# Flask Environment
+FLASK_ENV=development
+FLASK_DEBUG=True
+```
+
+**Important Security Notes:**
+- Replace `your_mysql_password` with your actual MySQL root password
+- Generate strong random strings for `SECRET_KEY` and `JWT_SECRET` (you can use Python: `python -c "import secrets; print(secrets.token_hex(32))"`)
+
 
 ## Running the Application
 
-1. **Activate the virtual environment** (if not already activated)
-   ```bash
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+### Development Mode
 
-2. **Run the Flask application**
-   ```bash
-   python app.py
-   ```
+To run the application in development mode with auto-reload:
 
-3. **Access the application**
-   Open your browser and navigate to `http://localhost:5000`
+```bash
+python app.py
+```
 
-## Usage
+The application will be available at: `http://localhost:5000`
 
-### First Time Setup
+### Using Docker (Alternative)
 
-1. **Register a new account**
-   - Navigate to the registration page
-   - Enter your email, password, organization name, and domain
-   - This will create both your user account and organization
+If you prefer Docker, the project includes a `Dockerfile`:
 
-2. **Login**
-   - Use your email and password to log in
-   - You'll be automatically assigned to your organization
+```bash
+docker build -t documint .
+docker run -p 5000:5000 --env-file .env documint
+```
 
-### Creating Templates
-
-1. Go to **Templates** in the sidebar
-2. Click **Create Template**
-3. Enter template name and currency
-4. Add sections and fields:
-   - Click **Add Section** to create a new section
-   - Within each section, click **Add Field** to add fields
-   - Choose field type: String, Number, Date, or Boolean
-   - Mark fields as required if needed
-
-### Creating Customers
-
-1. Go to **Customers** in the sidebar
-2. Click **Create Customer**
-3. Enter customer name and optional tax ID
-
-### Creating Invoices
-
-1. Go to **Invoices** in the sidebar
-2. Click **Create Invoice**
-3. Select a customer and template
-4. Fill in the dynamic form fields based on your template
-5. Set issue date and due date
-6. Submit to create the invoice
-
-### Managing Invoices
-
-- **View**: Click on any invoice to view details
-- **Add Payments**: Record payments on the invoice view page
-- **Filter**: Use status filters (All, Draft, Pending, Paid) to filter invoices
-
-### Dashboard
-
-The dashboard displays:
-- Total revenue
-- Total invoices count
-- Pending invoices
-- Overdue invoices
-- Revenue this month vs last month
-- Recent invoices list
-
-## Architecture
-
-### Database Layer
-
-All database operations are performed through MySQL stored procedures. The Python code never contains raw SQL statements. Key procedures include:
-
-- `sp_create_organization` - Create new organization
-- `sp_create_user` - Create new user
-- `sp_authenticate_user` - Authenticate user
-- `sp_create_template` - Create invoice template
-- `sp_create_invoice` - Create invoice (auto-resolves latest template version)
-- `sp_get_dashboard_stats` - Get dashboard statistics
-- And many more...
-
-### Application Structure
+## Project Structure
 
 ```
-invoice-gen/
-├── app.py                 # Main Flask application
+DocuMint/
+├── app.py                 # Main Flask application entry point
+├── auth.py                # Authentication and authorization logic
 ├── config.py              # Configuration management
-├── db.py                  # Database connection and procedure execution
-├── auth.py                # Authentication and authorization
-├── schema.sql             # Database schema
-├── procedures.sql         # Stored procedures
-├── blueprints/            # Flask blueprints
-│   ├── auth_bp.py
-│   ├── dashboard_bp.py
-│   ├── invoices_bp.py
-│   ├── customers_bp.py
-│   ├── templates_bp.py
-│   └── settings_bp.py
-├── templates/             # Jinja2 templates
-│   ├── base.html
-│   ├── auth/
-│   ├── dashboard.html
-│   ├── invoices/
-│   ├── customers/
-│   ├── templates/
-│   └── settings/
-└── static/               # Static files
-    ├── css/
-    │   ├── variables.css
-    │   └── main.css
-    └── js/
-        └── theme-switcher.js
+├── db.py                  # Database connection and stored procedure wrapper
+├── calculations.py        # Invoice calculation engine
+├── wsgi.py                # WSGI entry point for production
+├── requirements.txt       # Python dependencies
+├── schema.sql             # Database schema definitions
+├── procedures.sql         # MySQL stored procedures
+├── blueprints/            # Flask blueprints (modular routes)
+│   ├── auth_bp.py         # Authentication routes
+│   ├── dashboard_bp.py    # Dashboard routes
+│   ├── invoices_bp.py     # Invoice management routes
+│   ├── customers_bp.py    # Customer management routes
+│   ├── templates_bp.py    # Template management routes
+│   ├── settings_bp.py     # Settings and organization management
+│   └── customer_portal_bp.py  # Customer-facing portal
+├── templates/             # Jinja2 HTML templates
+│   ├── auth/              # Login, registration templates
+│   ├── invoices/          # Invoice views and forms
+│   ├── customers/         # Customer management templates
+│   ├── templates/         # Template management templates
+│   └── settings/          # Settings and organization templates
+├── static/                # Static assets
+│   ├── css/               # Stylesheets
+│   └── js/                # JavaScript files
+├── scripts/               # Utility scripts
+│   ├── setup_database.py  # Database initialization
+│   ├── generate_demo_data.py      # Demo data generator
+│   └── generate_realistic_data.py  # Realistic data generator
+└── Dockerfile             # Docker configuration for deployment
 ```
-
-## Theming
-
-The application supports three themes:
-
-- **Light**: Default light theme
-- **Dark**: Dark mode for low-light environments
-- **Branded**: Purple-themed branded appearance
-
-Switch themes using the theme switcher in the header. Your preference is saved in localStorage.
-
-## Security Features
-
-- Password hashing with bcrypt
-- JWT token-based authentication
-- Organization-based data isolation
-- Input validation in stored procedures
-- CSRF protection (Flask default)
-
-## Development
-
-### Adding New Stored Procedures
-
-1. Add the procedure to `procedures.sql`
-2. Use `db.execute_proc()` in your Python code to call it
-3. Never write raw SQL in Python files
-
-### Adding New Routes
-
-1. Create or update a blueprint in `blueprints/`
-2. Use `@require_auth` or `@require_org` decorators for protected routes
-3. Use stored procedures for all database operations
 
 ## Troubleshooting
 
 ### Database Connection Issues
 
-- Verify MySQL is running
-- Check `.env` file has correct database credentials
-- Ensure database exists: `mysql -u root -p -e "SHOW DATABASES;"`
+- **Error: "Access denied for user"**
+  - Verify MySQL username and password in `.env` file
+  - Ensure MySQL user has proper permissions: `GRANT ALL PRIVILEGES ON invoice_db.* TO 'your_user'@'localhost';`
 
-### Stored Procedure Errors
+- **Error: "Unknown database 'invoice_db'"**
+  - Create the database: `CREATE DATABASE invoice_db;`
+  - Or update `DB_NAME` in `.env` to match your database name
 
-- Verify procedures are created: `mysql -u root -p invoice_db -e "SHOW PROCEDURE STATUS;"`
-- Re-run `procedures.sql` if needed
+### PDF Generation Issues
 
-### Authentication Issues
+- **Error: "Cairo library not found"**
+  - Install system dependencies (see "Additional System Dependencies" above)
+  - On Windows, ensure you're using a compatible Python distribution
 
-- Clear browser cookies/session
-- Verify JWT_SECRET is set in `.env`
-- Check password hashing is working
+### Port Already in Use
 
-## License
+- **Error: "Address already in use"**
+  - Change the port in `app.py`: `app.run(debug=True, host='0.0.0.0', port=5001)`
+  - Or stop the process using port 5000
 
-[Add your license here]
+## Test User Accounts
 
-## Contributing
+**TechFlow Organization:**
+- `michael.chen@techflow.com` - Owner, password: `demo12345`
+- `sarah.martinez@techflow.com` - Member, password: `demo12345`
+- `david.kim@techflow.com` - Viewer, password: `demo12345`
 
-[Add contribution guidelines here]
+**Nexus Organization:**
+- `emily.rodriguez@nexus.com` - Owner, password: `demo12345`
+- `james.anderson@nexus.com` - Member, password: `demo12345`
+- `priya.sharma@nexus.com` - Viewer, password: `demo12345`
 
+### User Roles and Permissions
+
+The system supports three role levels:
+
+1. **Owner**
+   - Full access to all features
+   - Can create, edit, and delete invoices
+   - Can manage invoice templates
+   - Can manage organization settings
+   - Can add/remove users from organization
+   - Can view audit logs
+
+2. **Member**
+   - Can create and edit invoices
+   - Can view templates
+   - Cannot delete invoices
+   - Cannot manage templates or organization settings
+   - Cannot manage users
+
+3. **Viewer**
+   - Read-only access
+   - Can view invoices and templates
+   - Cannot create, edit, or delete anything
+
+### Testing Different Roles
+
+To test different permission levels:
+
+1. Log in with an owner account to create templates and set up the organization
+2. Log in with a member account to test invoice creation and editing
+3. Log in with a viewer account to verify read-only restrictions
+
+## Role-Based Access Control (RBAC) Matrix
+
+The following table provides a comprehensive overview of permissions for each role in the DocuMint system:
+
+| Feature / Action | Owner | Member | Viewer | Customer |
+|-----------------|:-----:|:------:|:------:|:--------:|
+| **Authentication & Access** |
+| Login to System | ✅ | ✅ | ✅ | ❌ |
+| Login to Customer Portal | ❌ | ❌ | ❌ | ✅ |
+| View Dashboard | ✅ | ✅ | ✅ | ✅ (Customer Portal) |
+| Switch Organizations | ✅ | ✅ | ✅ | ❌ |
+| **Invoice Management** |
+| Create Invoice | ✅ | ✅ | ❌ | ❌ |
+| Edit Invoice | ✅ | ✅ | ❌ | ❌ |
+| Delete Invoice | ✅ | ❌ | ❌ | ❌ |
+| View Invoices | ✅ | ✅ | ✅ | ✅ (Own Only) |
+| Finalize Invoice | ✅ | ✅ | ❌ | ❌ |
+| View Invoice PDF | ✅ | ✅ | ✅ | ✅ (Own Only) |
+| Download Invoice PDF | ✅ | ✅ | ✅ | ✅ (Own Only) |
+| Update Invoice Status | ✅ | ✅ | ❌ | ❌ |
+| **Template Management** |
+| Create Template | ✅ | ❌ | ❌ | ❌ |
+| Edit Template | ✅ | ❌ | ❌ | ❌ |
+| Delete Template | ✅ | ❌ | ❌ | ❌ |
+| View Templates | ✅ | ✅ | ✅ | ❌ |
+| Archive Template | ✅ | ❌ | ❌ | ❌ |
+| Create Template Version | ✅ | ❌ | ❌ | ❌ |
+| **Customer Management** |
+| Create Customer | ✅ | ❌ | ❌ | ❌ |
+| Edit Customer | ✅ | ❌ | ❌ | ❌ |
+| Delete Customer | ✅ | ❌ | ❌ | ❌ |
+| View Customers | ✅ | ✅ | ✅ | ❌ |
+| Archive Customer | ✅ | ❌ | ❌ | ❌ |
+| **Organization Management** |
+| View Organization Settings | ✅ | ❌ | ❌ | ❌ |
+| Edit Organization Details | ✅ | ❌ | ❌ | ❌ |
+| Manage Organization Members | ✅ | ❌ | ❌ | ❌ |
+| Add Users to Organization | ✅ | ❌ | ❌ | ❌ |
+| Remove Users from Organization | ✅ | ❌ | ❌ | ❌ |
+| Change User Roles | ✅ | ❌ | ❌ | ❌ |
+| View Pending Member Requests | ✅ | ❌ | ❌ | ❌ |
+| Approve/Reject Member Requests | ✅ | ❌ | ❌ | ❌ |
+| **Audit & Reporting** |
+| View Audit Logs | ✅ | ❌ | ❌ | ❌ |
+| Export Audit Logs | ✅ | ❌ | ❌ | ❌ |
+| View Dashboard Statistics | ✅ | ✅ | ✅ | ❌ |
+| View Revenue Reports | ✅ | ✅ | ✅ | ❌ |
+| **Customer Portal Features** |
+| View Own Invoices | ❌ | ❌ | ❌ | ✅ |
+| Filter Own Invoices | ❌ | ❌ | ❌ | ✅ |
+| View Invoice Details | ❌ | ❌ | ❌ | ✅ |
+| Download Own Invoice PDF | ❌ | ❌ | ❌ | ✅ |
+
+### Permission Legend
+
+- ✅ **Allowed** - User has permission to perform this action
+- ❌ **Denied** - User does not have permission to perform this action
+
+### Role Summary
+
+- **Owner**: Full administrative access with all permissions enabled
+- **Member**: Can create and edit invoices, view templates and customers, but cannot delete or manage system settings
+- **Viewer**: Read-only access to view invoices, templates, and customers
+- **Customer**: Limited access to view and download their own invoices through the customer portal
