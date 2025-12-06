@@ -8,10 +8,17 @@
     <div class="card-header">
         <div class="flex-between">
             <h2 class="card-title">Invoice Information</h2>
-            <div>
+            <div style="display: flex; align-items: center; gap: var(--spacing-md);">
                 <span class="badge badge-{{ 'success' if invoice.status == 'paid' else 'warning' if invoice.status == 'pending' else 'info' }}">
                     {{ invoice.status or 'draft' }}
                 </span>
+                <a href="{{ url_for('customer_portal_bp.export_pdf', invoice_id=invoice.invoice_id) }}" 
+                   class="btn btn-secondary btn-sm" 
+                   target="_blank"
+                   title="Download as PDF">
+                    <i data-lucide="download" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                    Download PDF
+                </a>
             </div>
         </div>
     </div>
