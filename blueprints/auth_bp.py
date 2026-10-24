@@ -4,10 +4,16 @@ Authentication blueprint - login, register, logout
 
 from flask import Blueprint, request, render_template, redirect, url_for, session, flash
 from db import db, DatabaseError
-from auth import authenticate_user, register_user, verify_password, generate_token, hash_password, require_auth
+from auth import register_user, verify_password, generate_token, hash_password, require_auth
 import traceback
 
 auth_bp = Blueprint('auth_bp', __name__)
+
+
+def _is_verified_existing_user(email):
+    """The existing_user flag comes from the client, so only trust it for an
+    email whose password was checked in verify_existing_user this session."""
+    return bool(email) and session.get('verified_registration_email') == email.lower()
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -45,7 +51,7 @@ def login():
             if orgs:
                 session['user_organizations'] = orgs
                 if len(orgs) > 0:
-                    first_org = orgs[0]
+                    first_org = next((o for o in orgs if o.get('status') == 'active'), orgs[0])
                     session['org_id'] = first_org['org_id']
                     session['org_name'] = first_org['name']
                     session['org_status'] = first_org.get('status', 'active')
@@ -150,6 +156,8 @@ def verify_existing_user():
                 flash('Incorrect password. Please try again.', 'error')
                 return render_template('auth/verify_existing_user.html', email=email, domain=domain)
 
+            session['verified_registration_email'] = email.lower()
+
 
             try:
                 orgs = db.execute_proc('sp_find_organizations_by_domain', (domain,))
@@ -225,6 +233,10 @@ def register_org():
         flash('Please start registration from the beginning', 'error')
         return redirect(url_for('auth_bp.register'))
 
+    if existing_user and not _is_verified_existing_user(email):
+        flash('Please verify your password to continue', 'error')
+        return redirect(url_for('auth_bp.verify_existing_user', email=email, domain=domain))
+
 
     if not domain and '@' in email:
         email_parts = email.split('@')
@@ -237,7 +249,6 @@ def register_org():
         org_name = request.form.get('org_name')
         org_domain = request.form.get('org_domain')
         existing_org_id = request.form.get('org_id') or org_id
-        existing_user = request.form.get('existing_user') == 'true' or existing_user
 
 
         if not existing_user:
@@ -519,7 +530,7 @@ def register_org():
     return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=org_id, existing_org=existing_org, existing_user=existing_user)
 
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])
 @require_auth
 def logout():
     """Logout"""

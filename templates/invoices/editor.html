@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% from "invoices/_items.html" import items_editor, items_summary %}
+{% set t = doc['type'] %}
+{% set editing = invoice is defined and invoice %}
+
+{% block title %}{{ ('Edit ' ~ (invoice | doc_number)) if editing else ('New ' ~ t.label | lower) }}{% endblock %}
+{% block page_title %}{{ ('Edit ' ~ (invoice | doc_number)) if editing else ('New ' ~ t.label | lower) }}{% endblock %}
+{% block page_description %}
+<p class="header-description">
+    {% if project %}<a href="{{ url_for('projects_bp.view_project', project_id=project.project_id) }}">{{ project | project_label }} · {{ project.title }}</a> · {% endif %}
+    {{ template_name }}
+    {% if not editing %} · <a href="{{ url_for('invoices_bp.create_invoice', doc_type=t.key, project_id=project.project_id if project else None) }}">Change</a>{% endif %}
+</p>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) if editing else (url_for('projects_bp.view_project', project_id=project.project_id) if project else url_for('invoices_bp.list_invoices', type=t.key if t.key in ('quote', 'proforma') else None)) }}"
+   class="btn btn-ghost"><span class="btn-label">Cancel</span><i data-lucide="x" class="show-mobile-icon"></i></a>
+<button type="submit" form="docForm" class="btn btn-primary"><i data-lucide="check"></i><span class="btn-label">{{ 'Save' if editing else 'Create' }}</span></button>
+{% endblock %}
+
+{% block content %}
+<form id="docForm" method="POST" data-editor data-currency="{{ doc['currency'] }}"
+      action="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id) if editing else url_for('invoices_bp.create_invoice', doc_type=t.key) }}">
+    <input type="hidden" name="doc_type" value="{{ t.key }}">
+    <input type="hidden" name="suggested_number" value="{{ doc['suggested_number'] }}">
+    {% if not editing %}<input type="hidden" name="template_id" value="{{ selected_template_id }}">{% endif %}
+    {% if project %}<input type="hidden" name="project_id" value="{{ project.project_id }}">{% endif %}
+
+    <div class="invoice-layout">
+        <div class="stack">
+            <section class="card">
+                <div class="card-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="customer_id" class="form-label">Customer</label>
+                            {% if editing %}
+                            <div class="form-static">{{ invoice.customer_name }}</div>
+                            {% elif project %}
+                            <input type="hidden" id="customer_id" name="customer_id" value="{{ project.customer_id }}">
+                            <div class="form-static">{{ project.customer_name }}</div>
+                            {% else %}
+                            <select id="customer_id" name="customer_id" class="form-select" required>
+                                <option value="">Select a customer</option>
+                                {% for c in customers %}<option value="{{ c.customer_id }}">{{ c.name }}</option>{% endfor %}
+                            </select>
+                            {% endif %}
+                        </div>
+                        <div class="form-group">
+                            <label for="doc_number" class="form-label">Number</label>
+                            <input type="text" id="doc_number" name="doc_number" class="form-input" value="{{ doc['number'] }}"
+                                   {% if doc['number'] and not doc['suggested_number'] %}required{% endif %}>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="issue_date" class="form-label">Date</label>
+                            <input type="date" id="issue_date" name="issue_date" class="form-input" value="{{ (invoice.issue_date if editing else today) or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="due_date" class="form-label">{{ 'Valid until' if t.key == 'quote' else 'Due date' }}</label>
+                            <input type="date" id="due_date" name="due_date" class="form-input" value="{{ (invoice.due_date if editing else '') or '' }}">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {{ items_editor(sections_data) }}
+
+            {% include "invoices/_document_form.html" %}
+        </div>
+
+        <aside>
+            <div class="card">
+                <div class="card-header"><h2 class="card-title">Summary</h2></div>
+                <div class="card-body">{{ items_summary(sections_data) }}</div>
+            </div>
+            <div class="card">
+                <div class="card-body">{% include "invoices/_document_settings.html" %}</div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">{{ 'Save changes' if editing else 'Create ' ~ t.label | lower }}</button>
+        </aside>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+{% endblock %}

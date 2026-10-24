@@ -1,14 +1,15 @@
-{% extends "base.html" %}
+{% extends "header.html" %}
 
-{% block title %}500 - Server Error{% endblock %}
+{% block title %}Something went wrong{% endblock %}
 
 {% block content %}
-<div class="card" style="text-align: center; padding: var(--spacing-3xl);">
-    <h1 style="font-size: var(--font-size-4xl); margin-bottom: var(--spacing-lg);">500</h1>
-    <p style="font-size: var(--font-size-lg); color: var(--text-secondary); margin-bottom: var(--spacing-xl);">
-        Internal server error
-    </p>
-    <a href="{{ url_for('dashboard_bp.index') }}" class="btn btn-primary">Go to Dashboard</a>
+<div class="card">
+    <div class="card-body text-center" style="padding: var(--spacing-2xl) var(--spacing-xl);">
+        <span class="empty-icon" style="margin: 0 auto var(--spacing-md);"><i data-lucide="triangle-alert"></i></span>
+        <p class="text-tertiary" style="margin-bottom: var(--spacing-xs);">Error 500</p>
+        <h2>Something went wrong</h2>
+        <p class="text-secondary">An unexpected error occurred. It's been logged; please try again in a moment.</p>
+        <a href="{{ url_for('index') }}" class="btn btn-primary">Go home</a>
+    </div>
 </div>
 {% endblock %}
-

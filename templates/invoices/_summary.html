@@ -1,0 +1,56 @@
+{# Money summary + payment history. Expects: invoice, summary, payments #}
+{% set t = doc_type_info(invoice.doc_type) %}
+{% set cur = invoice.currency_code %}
+<div class="card">
+    <div class="card-body">
+        <dl class="summary-list">
+            {% if summary.tax_lines %}
+            <div><dt>Value before tax</dt><dd>{{ summary.taxable | currency(cur) }}</dd></div>
+            <div><dt>Tax</dt><dd>{{ summary.tax_total | currency(cur) }}</dd></div>
+            {% endif %}
+            <div><dt>{{ t.short }} total</dt><dd>{{ summary.total | currency(cur) }}</dd></div>
+            {% if summary.advance %}
+            <div class="balance"><dt>Advance requested ({{ '%g' | format(summary.advance.percent) }}%)</dt><dd>{{ summary.advance.amount | currency(cur) }}</dd></div>
+            {% endif %}
+            {% if t.takes_payments %}
+            <div><dt>Paid</dt><dd>{{ summary.paid | currency(cur) }}</dd></div>
+            <div class="balance"><dt>Balance due</dt><dd>{{ summary.balance | currency(cur) }}</dd></div>
+            {% endif %}
+        </dl>
+        {% if t.takes_payments %}
+        {% set pct = ((summary.paid / summary.total * 100) if summary.total else 0) | round | int %}
+        <div class="meter" role="progressbar" aria-valuenow="{{ [pct, 100] | min }}" aria-valuemin="0" aria-valuemax="100" aria-label="Paid">
+            <span style="width: {{ [pct, 100] | min }}%;"></span>
+        </div>
+        <p class="text-tertiary" style="margin: 0;">{{ [pct, 100] | min }}% paid</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if t.takes_payments %}
+<div class="card">
+    <div class="card-header"><h2 class="card-title">Payments</h2></div>
+    <div class="card-body">
+        {% if payments %}
+        <ul class="timeline">
+            {% for payment in payments %}
+            <li>
+                <span class="dot"><i data-lucide="check"></i></span>
+                <div>
+                    <div>{{ payment.method or 'Payment' }}</div>
+                    <div class="when">{{ payment.payment_date | date }}{% if payment.reference_number %} · Ref {{ payment.reference_number }}{% endif %}</div>
+                    {% if payment.received_amount %}
+                    <div class="when">Credited {{ payment.received_amount | currency(payment.received_currency) }}
+                        {% if payment.amount %}@ {{ '%.2f' | format(payment.received_amount / payment.amount) }}{% endif %}</div>
+                    {% endif %}
+                </div>
+                <strong class="num">{{ payment.amount | currency(cur) }}</strong>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-tertiary" style="margin: 0;">No payments recorded yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}

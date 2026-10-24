@@ -1,9 +1,9 @@
-{% extends "base.html" %}
+{% extends "auth/_layout.html" %}
 
-{% block title %}Setup Organization - Invoice System{% endblock %}
+{% block title %}Setup Organization{% endblock %}
 
-{% block auth_content %}
-<div style="max-width: 600px; margin: 50px auto; padding: var(--spacing-xl);">
+{% block auth_form %}
+<div>
     <div class="card">
         <div class="card-header">
             <h2 class="card-title">Complete Your Registration</h2>
@@ -56,42 +56,36 @@
                     <label for="org_domain" class="form-label">Organization Domain</label>
                     <input type="text" id="org_domain" name="org_domain" class="form-input" required 
                            placeholder="example.com" value="{{ domain or '' }}">
-                    <small style="color: var(--text-tertiary); font-size: var(--font-size-sm);">
-                        Domain extracted from your email
-                    </small>
                 </div>
                 
                 <div style="margin-top: var(--spacing-lg); padding-top: var(--spacing-lg); border-top: 1px solid var(--border-color);">
                     <h3 style="font-size: 16px; font-weight: 600; margin-bottom: var(--spacing-md); color: var(--text-primary);">Organization Address</h3>
-                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: var(--spacing-md);">
-                        This address will appear on your invoices
-                    </p>
                     
                     <div class="form-group">
                         <label for="street_address" class="form-label">Street Address</label>
                         <input type="text" id="street_address" name="street_address" class="form-input" 
-                               placeholder="123 Main Street">
+                               >
                     </div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
                         <div class="form-group">
                             <label for="city" class="form-label">City</label>
-                            <input type="text" id="city" name="city" class="form-input" placeholder="New York">
+                            <input type="text" id="city" name="city" class="form-input" >
                         </div>
                         <div class="form-group">
                             <label for="state" class="form-label">State/Province</label>
-                            <input type="text" id="state" name="state" class="form-input" placeholder="NY">
+                            <input type="text" id="state" name="state" class="form-input" >
                         </div>
                     </div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
                         <div class="form-group">
                             <label for="zip_code" class="form-label">ZIP/Postal Code</label>
-                            <input type="text" id="zip_code" name="zip_code" class="form-input" placeholder="10001">
+                            <input type="text" id="zip_code" name="zip_code" class="form-input" >
                         </div>
                         <div class="form-group">
                             <label for="country" class="form-label">Country</label>
-                            <input type="text" id="country" name="country" class="form-input" placeholder="USA">
+                            <input type="text" id="country" name="country" class="form-input" value="India">
                         </div>
                     </div>
                 </div>

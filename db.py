@@ -1,161 +1,133 @@
 """
-Database connection and stored procedure execution module.
-All database operations must go through stored procedures.
+Database access (PostgreSQL via SQLAlchemy).
+
+DATABASE_URL picks the database (Railway's Postgres sets it). Operations live in
+store/procs.py as named functions; db.execute_proc('sp_name', args) runs one in
+its own transaction and returns rows the way callers expect:
+    no rows -> None, one result set -> list of dicts, several -> list of lists.
 """
 
-import pymysql
-from pymysql.cursors import DictCursor
-from contextlib import contextmanager
+import logging
 import os
-from typing import List, Dict, Any, Optional, Tuple
-from dotenv import load_dotenv
-
-
-
 import pathlib
-env_path = pathlib.Path(__file__).parent / '.env'
-load_dotenv(dotenv_path=env_path)
+import time
+import uuid
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
+
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, event
+from sqlalchemy.exc import DataError, DBAPIError, IntegrityError, OperationalError
+
+load_dotenv(dotenv_path=pathlib.Path(__file__).parent / '.env')
+logger = logging.getLogger(__name__)
+
+DEFAULT_URL = 'postgresql+psycopg://postgres:dev@127.0.0.1:5434/documint'
 
 
 class DatabaseError(Exception):
-    """Custom exception for database errors"""
-    pass
+    """A database operation failed; the message is safe to show (business rules) or log."""
+
+
+def database_url() -> str:
+    url = os.getenv('DATABASE_URL') or DEFAULT_URL
+    # Railway / Heroku style URLs -> the psycopg 3 driver
+    if url.startswith('postgres://'):
+        url = 'postgresql://' + url[len('postgres://'):]
+    if url.startswith('postgresql://'):
+        url = 'postgresql+psycopg://' + url[len('postgresql://'):]
+    return url
+
+
+def _plain(value):
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    return value
 
 
 class Database:
-    """Database connection pool manager"""
-
     def __init__(self):
-        self.pool = None
-        self._initialize_pool()
+        self._engine = None
+        self._observers = []
 
-    def _initialize_pool(self):
-        """Initialize connection pool from environment variables"""
+    @property
+    def engine(self):
+        if self._engine is None:
+            self._engine = create_engine(database_url(), pool_pre_ping=True, pool_size=5, max_overflow=5,
+                                         pool_recycle=1800, future=True)
+            if os.getenv('SLOW_QUERY_MS'):
+                _log_slow_queries(self._engine, int(os.getenv('SLOW_QUERY_MS')))
+        return self._engine
 
-        load_dotenv()
+    def reset(self):
+        """Forget the engine (tests switch databases)."""
+        if self._engine is not None:
+            self._engine.dispose()
+        self._engine = None
 
-        self.pool = pymysql.connections.Connection(
-            host=os.getenv('DB_HOST', 'localhost'),
-            port=int(os.getenv('DB_PORT', 3306)),
-            user=os.getenv('DB_USER', 'root'),
-            password=os.getenv('DB_PASSWORD', ''),
-            database=os.getenv('DB_NAME', 'invoice_generator'),
-            charset='utf8mb4',
-            cursorclass=DictCursor,
-            autocommit=False
-        )
+    def add_row_observer(self, fn):
+        """fn(results) is called with every operation's rows (e.g. to remember document types)."""
+        self._observers.append(fn)
 
-    @contextmanager
-    def get_connection(self):
-        """Get a database connection from the pool"""
+    def execute_proc(self, proc_name: str, args: tuple = None, fetch: bool = True) -> Optional[List[Any]]:
+        from store.procs import PROCS, ProcError
+        fn = PROCS.get(proc_name)
+        if fn is None:
+            raise DatabaseError(f'Unknown operation {proc_name}')
+        args = tuple(args or ())
         try:
+            with self.engine.begin() as conn:
+                sets = fn(conn, *args) or []
+        except ProcError as e:
+            raise DatabaseError(str(e)) from e
+        except IntegrityError as e:
+            constraint = getattr(getattr(e.orig, 'diag', None), 'constraint_name', '') or ''
+            if getattr(e.orig, 'sqlstate', '') == '23505':     # unique violation
+                raise DatabaseError(f'Duplicate entry ({constraint})') from e
+            raise DatabaseError(f'Constraint failed ({constraint})') from e
+        except DataError as e:
+            # e.g. an id from the URL that isn't a UUID: behaves like "not found", no stack trace
+            logger.info('Bad input to %s: %s', proc_name, str(e.orig).splitlines()[0])
+            raise DatabaseError(f'Invalid value for {proc_name}') from e
+        except OperationalError as e:
+            logger.exception('Database unavailable in %s', proc_name)
+            raise DatabaseError(f'Database connection error: {e.orig}') from e
+        except DBAPIError as e:
+            logger.exception('Database error in %s', proc_name)
+            raise DatabaseError(f'Database error in {proc_name}: {e.orig}') from e
 
-
-            if self.pool is None or not self.pool.open:
-                self._initialize_pool()
-            yield self.pool
-        except Exception as e:
-            if self.pool:
-                self.pool.rollback()
-            raise DatabaseError(f"Database connection error: {str(e)}")
-        finally:
-
-            pass
-
-    def execute_proc(self, proc_name: str, args: tuple = None, fetch: bool = True) -> Optional[List[Dict[str, Any]]]:
-        """
-        Execute a stored procedure and return results.
-
-        Args:
-            proc_name: Name of the stored procedure
-            args: Tuple of arguments to pass to the procedure
-            fetch: Whether to fetch results (True) or just execute (False)
-
-        Returns:
-            List of dictionaries (rows) if fetch=True, None otherwise
-            For procedures returning multiple result sets, returns a list of result sets
-        """
-        if args is None:
-            args = ()
-
-        with self.get_connection() as conn:
+        results = [[{k: _plain(v) for k, v in row.items()} for row in rows] for rows in sets]
+        results = [rows for rows in results if rows]
+        for observe in self._observers:
             try:
-                cursor = conn.cursor()
-                cursor.callproc(proc_name, args)
-
-                if not fetch:
-                    conn.commit()
-                    cursor.close()
-                    return None
-
-
-                results = []
-                while True:
-                    result = cursor.fetchall()
-                    if result:
-                        results.append(result)
-                    if not cursor.nextset():
-                        break
-
-                conn.commit()
-                cursor.close()
-
-
-                if len(results) == 0:
-                    return None
-                elif len(results) == 1:
-                    return results[0]
-                else:
-                    return results
-
-            except pymysql.Error as e:
-                conn.rollback()
-                error_msg = str(e)
-
-                if hasattr(e, 'args') and len(e.args) > 1:
-                    error_code = e.args[0]
-                    error_msg = e.args[1]
-                raise DatabaseError(f"Stored procedure error in {proc_name} (Code: {getattr(e, 'args', [None])[0] if hasattr(e, 'args') and len(e.args) > 0 else 'Unknown'}): {error_msg}")
-            except Exception as e:
-                conn.rollback()
-                import traceback
-                raise DatabaseError(f"Unexpected error executing {proc_name}: {str(e)}\n{traceback.format_exc()}")
+                observe(results)
+            except Exception:
+                pass
+        if not fetch or not results:
+            return None
+        return results[0] if len(results) == 1 else results
 
     def execute_proc_single(self, proc_name: str, args: tuple = None) -> Optional[Dict[str, Any]]:
-        """
-        Execute a stored procedure and return a single row.
-
-        Args:
-            proc_name: Name of the stored procedure
-            args: Tuple of arguments to pass to the procedure
-
-        Returns:
-            Single dictionary (row) or None if no results
-        """
         results = self.execute_proc(proc_name, args, fetch=True)
-        if results and len(results) > 0:
-            return results[0]
-        return None
+        return results[0] if results else None
 
-    def execute_proc_with_id(self, proc_name: str, args: tuple = None) -> Optional[str]:
-        """
-        Execute a stored procedure that returns an ID (common pattern).
-        The procedure should return the ID as the first column of the first row.
+    def ping(self) -> bool:
+        from sqlalchemy import text
+        with self.engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+        return True
 
-        Args:
-            proc_name: Name of the stored procedure
-            args: Tuple of arguments to pass to the procedure
 
-        Returns:
-            ID string or None
-        """
-        result = self.execute_proc_single(proc_name, args)
-        if result:
+def _log_slow_queries(engine, threshold_ms):
+    @event.listens_for(engine, 'before_cursor_execute')
+    def _start(conn, cursor, statement, params, context, executemany):
+        conn.info.setdefault('t0', []).append(time.perf_counter())
 
-            return list(result.values())[0] if result else None
-        return None
-
+    @event.listens_for(engine, 'after_cursor_execute')
+    def _end(conn, cursor, statement, params, context, executemany):
+        ms = (time.perf_counter() - conn.info['t0'].pop()) * 1000
+        if ms >= threshold_ms:
+            logger.warning('slow query %.0f ms: %s', ms, ' '.join(statement.split())[:300])
 
 
 db = Database()
-

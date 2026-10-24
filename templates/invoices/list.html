@@ -1,85 +1,84 @@
 {% extends "base.html" %}
+{% from "_macros.html" import status_badge, empty_state %}
+{% set new_type = doc_type_info(group_info.new_type) %}
 
-{% block title %}Invoices - Invoice System{% endblock %}
-{% block page_title %}Invoices{% endblock %}
+{% block title %}{{ group_info.title }}{% endblock %}
+{% block page_title %}{{ group_info.title }}{% endblock %}
 
-{% block content %}
-<div class="list-header">
-    <div class="list-header-left">
-        <h2 class="list-title">Invoices <span class="list-count">{{ invoices|length if invoices else 0 }}</span></h2>
-        <div class="list-filters">
-            <a href="{{ url_for('invoices_bp.list_invoices') }}" class="filter-btn {% if not request.args.get('status') %}active{% endif %}">All</a>
-            <a href="{{ url_for('invoices_bp.list_invoices', status='draft') }}" class="filter-btn {% if request.args.get('status') == 'draft' %}active{% endif %}">Draft</a>
-            <a href="{{ url_for('invoices_bp.list_invoices', status='pending') }}" class="filter-btn {% if request.args.get('status') == 'pending' %}active{% endif %}">Pending</a>
-            <a href="{{ url_for('invoices_bp.list_invoices', status='paid') }}" class="filter-btn {% if request.args.get('status') == 'paid' %}active{% endif %}">Paid</a>
-        </div>
-    </div>
-    <div class="list-header-right">
-        <a href="{{ url_for('invoices_bp.create_invoice') }}" class="btn btn-primary">
-            <i data-lucide="plus" class="nav-icon"></i>
-            Create Invoice
-        </a>
-    </div>
-</div>
-
-{% if invoices %}
-<div class="table-container">
-    <table class="table list-table">
-        <thead>
-            <tr>
-                <th>Items</th>
-                <th>Customer</th>
-                <th>Status</th>
-                <th>Total</th>
-                <th>Due Date</th>
-                <th style="width: 100px;">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for invoice in invoices %}
-            <tr class="list-row">
-                <td>
-                    <div class="list-item-content">
-                        <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="item-id">
-                            INV-{{ invoice.invoice_id[:8] }}
-                        </a>
-                        <span class="item-description">{{ invoice.template_name or 'Invoice' }}</span>
-                    </div>
-                </td>
-                <td>{{ invoice.customer_name }}</td>
-                <td>
-                    <span class="badge badge-{{ 'success' if invoice.status == 'paid' else 'warning' if invoice.status == 'pending' else 'info' }}">
-                        {{ invoice.status or 'draft' }}
-                    </span>
-                </td>
-                <td>{{ invoice.total_amount or 0 | currency }}</td>
-                <td>{{ invoice.due_date or 'N/A' }}</td>
-                <td>
-                    <div class="table-actions">
-                    <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-secondary">View</a>
-                        {% if (invoice.status or 'draft') == 'draft' %}
-                        <a href="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-primary">Edit</a>
-                        {% endif %}
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% else %}
-<div class="empty-state">
-    <p>No invoices found. <a href="{{ url_for('invoices_bp.create_invoice') }}">Create your first invoice</a></p>
-</div>
+{% block header_actions %}
+{% if current_org_role in ('owner', 'admin', 'member') %}
+<a href="{{ url_for('invoices_bp.create_invoice', doc_type=group_info.new_type) }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New {{ new_type.short | lower }}</span></a>
 {% endif %}
 {% endblock %}
 
-{% block extra_js %}
-<script>
-    // Initialize Lucide icons
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-</script>
-{% endblock %}
+{% block content %}
+{% set link_type = None if group == 'invoices' else group %}
+<div class="list-header">
+    <nav class="segmented" aria-label="Filter by status">
+        {% for key, label in tabs %}
+        <a href="{{ url_for('invoices_bp.list_invoices', type=link_type, status=None if key == 'all' else key, q=query or None) }}"
+           class="{{ 'active' if status_filter == key }}" {% if status_filter == key %}aria-current="page"{% endif %}>
+            {{ label }} <span class="count">{{ counts[key] }}</span>
+        </a>
+        {% endfor %}
+    </nav>
+    <form method="GET" class="search-input" role="search">
+        {% if link_type %}<input type="hidden" name="type" value="{{ link_type }}">{% endif %}
+        {% if status_filter != 'all' %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+        <i data-lucide="search"></i>
+        <label for="q" class="sr-only">Search</label>
+        <input type="search" id="q" name="q" value="{{ query }}" class="form-input" placeholder="Search customer or number">
+    </form>
+</div>
 
+<div class="card">
+{% if invoices %}
+    <div class="table-container" style="border: 0; box-shadow: none;">
+        <table class="table" data-sortable>
+            <thead>
+                <tr>
+                    <th>Number</th>
+                    <th class="hide-mobile">Customer</th>
+                    <th class="hide-mobile">{{ 'Date' if group == 'quote' else 'Issued' }}</th>
+                    <th class="hide-mobile">{{ 'Valid until' if group == 'quote' else 'Due' }}</th>
+                    <th>Status</th>
+                    <th class="num">Total</th>
+                    {% if group == 'invoices' %}<th class="num hide-mobile">Balance</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for invoice in invoices %}
+                {% set balance = [(invoice.total_amount or 0) - (invoice.paid_amount or 0), 0] | max %}
+                <tr data-href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}">
+                    <td>
+                        <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="cell-primary" style="color: inherit;">{{ invoice | doc_number }}</a>
+                        <span class="cell-secondary">
+                            <span class="show-mobile">{{ invoice.customer_name }}</span>
+                            <span class="hide-mobile">{{ invoice.doc_type | doc_label if group == 'invoices' else (invoice.template_name or '') }}</span>
+                        </span>
+                    </td>
+                    <td class="hide-mobile">{{ invoice.customer_name }}</td>
+                    <td class="num hide-mobile" style="white-space: nowrap;" data-sort="{{ invoice.issue_date or '' }}">{{ invoice.issue_date | date or '—' }}</td>
+                    <td class="num hide-mobile" style="white-space: nowrap;" data-sort="{{ invoice.due_date or '' }}">{{ invoice.due_date | date or '—' }}</td>
+                    <td>{{ status_badge(invoice) }}</td>
+                    <td class="num" data-sort="{{ invoice.total_amount or 0 }}">{{ invoice.total_amount | currency(invoice.currency_code) }}</td>
+                    {% if group == 'invoices' %}
+                    <td class="num hide-mobile" data-sort="{{ balance }}">
+                        {% if invoice.status in ('paid', 'draft', None) or balance == 0 %}<span class="text-tertiary">—</span>{% else %}{{ balance | currency(invoice.currency_code) }}{% endif %}
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% elif query or status_filter != 'all' %}
+    {{ empty_state('search-x', 'Nothing matches', 'Try a different filter or search term.') }}
+{% else %}
+    {{ empty_state(new_type.icon, 'No ' ~ group_info.title | lower ~ ' yet',
+                   'Create one from any of your templates.',
+                   url_for('invoices_bp.create_invoice', doc_type=group_info.new_type) if current_org_role in ('owner', 'admin', 'member') else None,
+                   'New ' ~ new_type.short | lower) }}
+{% endif %}
+</div>
+{% endblock %}

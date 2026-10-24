@@ -1,39 +1,29 @@
 {% extends "header.html" %}
 
-{% block title %}Access Status - Invoice System{% endblock %}
+{% block title %}Access status{% endblock %}
 
 {% block content %}
-<div style="max-width: 500px; margin: 100px auto; padding: 2rem;">
-    <div class="card" style="text-align: center; padding: 40px;">
-        <div style="margin-bottom: 20px;">
-            {% if status == 'pending' %}
-                <i data-lucide="clock" style="width: 64px; height: 64px; color: #EAB308;"></i>
-            {% elif status == 'rejected' %}
-                <i data-lucide="x-circle" style="width: 64px; height: 64px; color: #EF4444;"></i>
-            {% else %}
-                <i data-lucide="lock" style="width: 64px; height: 64px; color: #6B7280;"></i>
-            {% endif %}
-        </div>
+<div class="card">
+    <div class="card-body text-center" style="padding: var(--spacing-2xl) var(--spacing-xl);">
+        {% if status == 'pending' %}
+            <span class="empty-icon" style="margin: 0 auto var(--spacing-md); background: var(--warning-soft); color: var(--warning-ink);"><i data-lucide="clock"></i></span>
+            <h2>Waiting for approval</h2>
+            <p class="text-secondary">Your request to join <strong>{{ org_name }}</strong> has been sent. An owner of the organization needs to approve it before you can get in.</p>
+        {% elif status == 'rejected' %}
+            <span class="empty-icon" style="margin: 0 auto var(--spacing-md); background: var(--critical-soft); color: var(--critical-ink);"><i data-lucide="circle-x"></i></span>
+            <h2>Request declined</h2>
+            <p class="text-secondary">Your request to join <strong>{{ org_name }}</strong> wasn't approved. Contact an owner of the organization if you think this is a mistake.</p>
+        {% else %}
+            <span class="empty-icon" style="margin: 0 auto var(--spacing-md); background: var(--neutral-soft); color: var(--neutral-ink);"><i data-lucide="lock"></i></span>
+            <h2>Access deactivated</h2>
+            <p class="text-secondary">Your access to <strong>{{ org_name }}</strong> has been deactivated. Contact an owner of the organization to restore it.</p>
+        {% endif %}
 
-        <h2 style="font-size: 24px; font-weight: bold; margin-bottom: 15px;">
-            {% if status == 'pending' %}Status Under Review{% endif %}
-            {% if status == 'rejected' %}Access Denied{% endif %}
-            {% if status == 'deactivated' %}Account Deactivated{% endif %}
-        </h2>
-
-        <p style="color: #6B7280; margin-bottom: 30px; line-height: 1.6;">
-            {% if status == 'pending' %}
-                Your request to join <strong>{{ org_name }}</strong> has been sent. 
-                <br>You cannot access the dashboard until an organization Owner approves your request.
-            {% else %}
-                You do not have permission to access <strong>{{ org_name }}</strong>.
-                <br>Please contact the administrator.
-            {% endif %}
-        </p>
-
-        <div style="display: flex; gap: 15px; justify-content: center;">
-            <a href="{{ url_for('auth_bp.logout') }}" class="btn btn-secondary">Logout</a>
-            <a href="{{ url_for('settings_bp.select_org') }}" class="btn btn-primary">Switch Organization</a>
+        <div class="btn-group" style="justify-content: center; margin-top: var(--spacing-md);">
+            <form method="POST" action="{{ url_for('auth_bp.logout') }}">
+                <button type="submit" class="btn btn-secondary">Log out</button>
+            </form>
+            <a href="{{ url_for('settings_bp.select_org') }}" class="btn btn-primary">Switch organization</a>
         </div>
     </div>
 </div>

@@ -1,9 +1,9 @@
-{% extends "base.html" %}
+{% extends "auth/_layout.html" %}
 
-{% block title %}Register - Invoice System{% endblock %}
+{% block title %}Register{% endblock %}
 
-{% block auth_content %}
-<div style="max-width: 500px; margin: 50px auto; padding: var(--spacing-xl);">
+{% block auth_form %}
+<div>
     <div class="card">
         <div class="card-header">
             <h2 class="card-title">Create Account</h2>
@@ -15,9 +15,6 @@
                     <label for="email" class="form-label">Email</label>
                     <input type="email" id="email" name="email" class="form-input" required autofocus 
                            placeholder="you@company.com">
-                    <small style="color: var(--text-tertiary); font-size: var(--font-size-sm); margin-top: 4px; display: block;">
-                        We'll check if an organization with your domain already exists
-                    </small>
                 </div>
                 
                 <div class="form-group">

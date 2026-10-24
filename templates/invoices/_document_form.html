@@ -1,0 +1,43 @@
+{# Type-specific details for the create / edit forms. Expects doc (see _document_form_context).
+   Grouped fields (dispatch, shipping, export, letter text) fold away until needed. #}
+{% set v = doc['values'] %}
+{% set details = v.details or {} %}
+{% set t = doc['type'] %}
+
+{% macro detail_input(f) %}
+<div class="form-group">
+    <label for="detail_{{ f.key }}" class="form-label">{{ f.label }}</label>
+    {% if f.kind == 'textarea' %}
+    <textarea id="detail_{{ f.key }}" name="detail_{{ f.key }}" class="form-textarea" rows="{{ 5 if f.key == 'terms' else 3 }}"
+              placeholder="{{ f.placeholder }}">{{ details.get(f.key, '') }}</textarea>
+    {% else %}
+    <input type="{{ 'date' if f.kind == 'date' else 'text' }}" id="detail_{{ f.key }}" name="detail_{{ f.key }}"
+           class="form-input" value="{{ details.get(f.key, '') }}" placeholder="{{ f.placeholder }}">
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% set plain = t.details | selectattr('group', 'equalto', '') | list %}
+{% if plain or doc['groups'] %}
+<section class="card">
+    <div class="card-header"><h2 class="card-title">Details</h2></div>
+    <div class="card-body">
+        {% set short = plain | rejectattr('kind', 'equalto', 'textarea') | list %}
+        {% if short %}
+        <div class="form-row">{% for f in short %}{{ detail_input(f) }}{% endfor %}</div>
+        {% endif %}
+        {% for f in plain if f.kind == 'textarea' %}{{ detail_input(f) }}{% endfor %}
+
+        {% for key, label in doc['groups'] %}
+        {% set fields = t.details | selectattr('group', 'equalto', key) | list %}
+        {% set filled = fields | selectattr('key', 'in', details.keys() | list) | list %}
+        <details class="fold" {% if filled or (key == 'export' and doc['export']) %}open{% endif %}>
+            <summary>{{ label }}</summary>
+            {% set short = fields | rejectattr('kind', 'equalto', 'textarea') | list %}
+            {% if short %}<div class="form-row">{% for f in short %}{{ detail_input(f) }}{% endfor %}</div>{% endif %}
+            {% for f in fields if f.kind == 'textarea' %}{{ detail_input(f) }}{% endfor %}
+        </details>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}

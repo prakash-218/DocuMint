@@ -1,74 +1,58 @@
 {% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
 
-{% block title %}Customers - Invoice System{% endblock %}
+{% block title %}Customers{% endblock %}
 {% block page_title %}Customers{% endblock %}
 
-{% block content %}
-<div class="list-header">
-    <div class="list-header-left">
-        <h2 class="list-title">Customers <span class="list-count">{{ customers|length if customers else 0 }}</span></h2>
-    </div>
-    <div class="list-header-right" style="display: flex; gap: var(--spacing-md); align-items: center;">
-        <a href="{{ url_for('customers_bp.list_customers', include_archived='true' if not include_archived else 'false') }}" 
-           class="btn btn-secondary btn-sm">
-            {% if include_archived %}Hide Archived{% else %}Show Archived{% endif %}
-        </a>
-        <a href="{{ url_for('customers_bp.create_customer') }}" class="btn btn-primary">
-            <i data-lucide="plus" class="nav-icon"></i>
-            Create Customer
-        </a>
-    </div>
-</div>
-
-{% if customers %}
-<div class="table-container">
-    <table class="table list-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Tax ID</th>
-                <th>Invoices</th>
-                <th>Created</th>
-                <th style="width: 100px;">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for customer in customers %}
-            <tr class="list-row" {% if customer.is_archived %}style="opacity: 0.6;"{% endif %}>
-                <td>
-                    <div class="list-item-content">
-                        <a href="{{ url_for('customers_bp.view_customer', customer_id=customer.customer_id) }}" class="item-id">
-                            {{ customer.name }}
-                        </a>
-                        {% if customer.is_archived %}
-                        <span class="badge badge-warning" style="margin-left: var(--spacing-xs);">Archived</span>
-                        {% endif %}
-                    </div>
-                </td>
-                <td>{{ customer.tax_id or 'N/A' }}</td>
-                <td>{{ customer.invoice_count or 0 }}</td>
-                <td>{{ customer.created_at.strftime('%Y-%m-%d') if customer.created_at else 'N/A' }}</td>
-                <td>
-                    <a href="{{ url_for('customers_bp.view_customer', customer_id=customer.customer_id) }}" class="btn btn-sm btn-secondary">View</a>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% else %}
-<div class="empty-state">
-    <p>No customers yet. <a href="{{ url_for('customers_bp.create_customer') }}">Create your first customer</a></p>
-</div>
+{% block header_actions %}
+{% if current_org_role in ('owner', 'admin') %}
+<a href="{{ url_for('customers_bp.create_customer') }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New customer</span></a>
 {% endif %}
 {% endblock %}
 
-{% block extra_js %}
-<script>
-    // Initialize Lucide icons
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-</script>
-{% endblock %}
+{% block content %}
+<div class="list-header">
+    <nav class="segmented" aria-label="Filter">
+        <a href="{{ url_for('customers_bp.list_customers', q=query or None) }}" class="{{ 'active' if not include_archived }}">Active</a>
+        <a href="{{ url_for('customers_bp.list_customers', include_archived='true', q=query or None) }}" class="{{ 'active' if include_archived }}">All</a>
+    </nav>
+    <form method="GET" class="search-input" role="search">
+        {% if include_archived %}<input type="hidden" name="include_archived" value="true">{% endif %}
+        <i data-lucide="search"></i>
+        <label for="q" class="sr-only">Search</label>
+        <input type="search" id="q" name="q" value="{{ query }}" class="form-input" placeholder="Search name, city or GSTIN">
+    </form>
+</div>
 
+<div class="card">
+{% if customers %}
+    <div class="table-container" style="border: 0; box-shadow: none;">
+        <table class="table" data-sortable>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th class="hide-mobile">GSTIN / Tax ID</th>
+                    <th class="num">Documents</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in customers %}
+                <tr data-href="{{ url_for('customers_bp.view_customer', customer_id=c.customer_id) }}" {% if c.is_archived %}class="row-muted"{% endif %}>
+                    <td>
+                        <a href="{{ url_for('customers_bp.view_customer', customer_id=c.customer_id) }}" class="cell-primary" style="color: inherit;">{{ c.name }}</a>
+                        <span class="cell-secondary">{{ [c.city, c.country] | select | join(', ') or '—' }}{% if c.is_archived %} · Archived{% endif %}</span>
+                    </td>
+                    <td class="hide-mobile">{{ c.tax_id or '—' }}</td>
+                    <td class="num">{{ c.invoice_count or 0 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% elif query %}
+    {{ empty_state('search-x', 'No customers match', 'Try another name or city.') }}
+{% else %}
+    {{ empty_state('users', 'No customers yet', '', url_for('customers_bp.create_customer') if current_org_role in ('owner', 'admin') else None, 'New customer') }}
+{% endif %}
+</div>
+{% endblock %}

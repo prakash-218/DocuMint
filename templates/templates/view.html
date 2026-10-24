@@ -1,114 +1,213 @@
 {% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% set info = t.info %}
+{% set cur = info.currency_code %}
 
-{% block title %}Template - Invoice System{% endblock %}
-{% block page_title %}Template Details{% endblock %}
+{% block title %}{{ info.name }}{% endblock %}
+{% block page_title %}{{ info.name }}{% endblock %}
+{% block page_description %}<p class="header-description">Template · v{{ info.version }} · {{ info.currency_code }} · {{ t.field_count }} fields</p>{% endblock %}
+
+{% block header_actions %}
+{% set editable = not info.is_archived %}
+{% if editable and current_org_role in ('owner', 'admin', 'member') %}
+<details class="menu">
+    <summary class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">Use this template</span></summary>
+    <div class="menu-panel">
+        {% for key, dt in DOC_TYPES.items() %}
+        <a href="{{ url_for('invoices_bp.create_invoice', doc_type=key, template_id=template_id) }}"><i data-lucide="{{ dt.icon }}"></i>New {{ dt.label | lower }}</a>
+        {% endfor %}
+    </div>
+</details>
+{% endif %}
+{% if editable and current_org_role in ('owner', 'admin') %}
+<a href="{{ url_for('templates_bp.edit_layout', template_id=template_id) }}" class="btn btn-secondary"><i data-lucide="files"></i><span class="btn-label">Pages &amp; printing</span></a>
+<a href="{{ url_for('templates_bp.edit_template', template_id=template_id) }}" class="btn btn-secondary"><i data-lucide="pencil"></i><span class="btn-label">Edit fields</span></a>
+{% endif %}
+{% endblock %}
 
 {% block content %}
-<div class="card mb-lg">
-    <div class="card-header">
-        <div class="flex-between flex flex-grow">
-            <div>
-                <h2 class="card-title">
-                    {% if template_info %}
-                        {{ template_info.name }} - v{{ template_info.version }}
-                        {% if template_info.is_archived %}
-                            <span class="badge badge-warning" style="margin-left: var(--spacing-sm);">Archived</span>
-                        {% elif template_info.version == template_info.latest_version %}
-                            <span class="badge badge-success" style="margin-left: var(--spacing-sm);">Latest</span>
-                        {% else %}
-                            <span class="badge badge-warning" style="margin-left: var(--spacing-sm);">v{{ template_info.latest_version }} available</span>
-                        {% endif %}
-                    {% else %}
-                        Template Details
-                    {% endif %}
-                </h2>
+{% if info.is_archived %}
+<div class="alert alert-warning"><span>This template is archived. Existing documents still use it, but it can't be picked for new ones.</span></div>
+{% endif %}
+{% set broken = t.formulas | selectattr('error') | list %}
+{% if broken %}
+<div class="alert alert-error"><span>{{ broken | length }} formula{{ '' if broken | length == 1 else 's' }} won't calculate. See the Formulas panel.</span></div>
+{% endif %}
+
+<div class="invoice-layout">
+    <div>
+        <article class="card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Preview</h2>
+                    <p class="card-subtitle">With sample values</p>
+                </div>
             </div>
-            <div class="card-title card-actions">
-                {% if template_info and not template_info.is_archived and template_info.version == template_info.latest_version %}
-                <a href="{{ url_for('templates_bp.edit_template', template_id=template_id) }}" class="btn btn-primary left-space">
-                    
-                    Edit Template
-                </a>
-                {% endif %}
-                {% if template_info %}
-                    {% if template_info.is_archived %}
-                    <form method="POST" action="{{ url_for('templates_bp.unarchive_template', template_id=template_id) }}" 
-                          style="display: inline;" class="left-space">
-                        <button type="submit" class="btn btn-success">
-                            Unarchive
-                        </button>
-                    </form>
+            <div class="card-body">
+                {% for title, section in t.sections.items() %}
+                <section class="invoice-section">
+                    <h3 class="invoice-section-title" style="display: flex; align-items: center; gap: 8px;">
+                        {{ title }}
+                        <span class="badge {{ 'badge-info' if section.type == 'line_item' else 'badge-secondary' }}">{{ 'Cost break-up' if section.breakup else ('Line items' if section.type == 'line_item' else 'Fields') }}</span>
+                    </h3>
+                    {% if section.type == 'line_item' %}
+                    <div style="overflow-x: auto;">
+                        <table class="invoice-items preview-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 36px;">#</th>
+                                    {% for f in (section.line_item_rows[0] if section.line_item_rows else []) %}
+                                    <th class="{{ 'num' if f.data_type == 'number' else '' }} {{ 'calc' if f.calculation_formula }}">
+                                        {{ f.field_label }}{% if f.is_required %}<span class="req" title="Required">*</span>{% endif %}
+                                        <span class="col-kind">
+                                            {% if f.calculation_formula %}calculated{% elif f.data_type == 'number' and f.is_currency %}{{ cur }} amount{% elif f.data_type == 'number' %}number{% elif f.data_type == 'date' %}date{% elif f.data_type == 'boolean' %}yes / no{% else %}text{% endif %}
+                                        </span>
+                                    </th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in section.line_item_rows %}
+                                <tr>
+                                    <td class="text-tertiary">{{ loop.index }}</td>
+                                    {% for value in row %}
+                                    <td class="{{ 'num' if value.data_type == 'number' else '' }} {{ 'calc' if value.calculation_formula }}">
+                                        {%- if value.data_type == 'number' -%}
+                                            {{ value.val_number | currency(cur) if value.is_currency else value.val_number | number }}
+                                        {%- else -%}{{ value.val_string or '' }}{%- endif -%}
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                     {% else %}
-                    <form method="POST" action="{{ url_for('templates_bp.archive_template', template_id=template_id) }}" 
-                          style="display: inline;" 
-                          class="left-space"
-                          onsubmit="return confirm('Are you sure you want to archive this template? Archived templates cannot be used for new invoices, but existing invoices will remain accessible.');">
-                        <button type="submit" class="btn btn-warning">
-                            Archive
-                        </button>
-                    </form>
+                    <div class="invoice-totals" style="margin-left: auto;">
+                        {% for value in section.fields %}
+                        {% set is_total = t.total_field and value.field_id == t.total_field.field_id %}
+                        <div class="{{ 'grand' if is_total }}">
+                            <span class="{{ '' if is_total else 'label' }}">{{ value.field_label }}{% if is_total %} <span class="badge badge-success" style="vertical-align: middle;">Document total</span>{% endif %}</span>
+                            <span class="{{ 'calc-text' if value.calculation_formula }}">
+                                {%- if value.data_type == 'number' -%}{{ value.val_number | currency(cur) if value.is_currency else value.val_number | number }}
+                                {%- else -%}{{ value.val_string or '—' }}{%- endif -%}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
                     {% endif %}
+                </section>
+                {% else %}
+                <p class="text-tertiary">This template has no fields yet.</p>
+                {% endfor %}
+
+                {% if t.summary.breakups %}
+                <p class="form-text" style="margin-top: 0;">Cost break-up lines explain an item's price and are never added to the total.</p>
+                {% endif %}
+            </div>
+        </article>
+    </div>
+
+    <aside>
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Formulas</h2></div>
+            <div class="card-body">
+                {% if t.formulas %}
+                <ul class="formula-list">
+                    {% for f in t.formulas %}
+                    <li>
+                        <div class="flex-between" style="flex-wrap: nowrap; align-items: baseline;">
+                            <strong>{{ f.label }}</strong>
+                            <span class="text-tertiary" style="font-size: var(--font-size-xs);">{{ f.section }}</span>
+                        </div>
+                        <div class="text-secondary">= {{ f.plain }}</div>
+                        <code>{{ f.formula }}</code>
+                        {% if f.error %}<div class="badge badge-danger" style="margin-top: 4px;">{{ f.error }}</div>{% endif %}
+                        {% if f.is_total %}<div class="badge badge-success" style="margin-top: 4px;">Document total</div>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-tertiary" style="margin: 0;">No calculated fields.</p>
+                {% endif %}
+                {% if not t.total_field %}
+                <p class="form-text" style="color: var(--warning-ink);">No document total selected. Choose one in Edit.</p>
                 {% endif %}
             </div>
         </div>
-    </div>
-    <div class="card-body">
-        {% if sections %}
-            {% for section in sections %}
-            <div style="margin-bottom: var(--spacing-xl);">
-                <h3 style="margin-bottom: var(--spacing-md); color: var(--color-primary); border-bottom: 2px solid var(--border-color); padding-bottom: var(--spacing-sm);">
-                    {{ section.title }}
-                    <span class="badge badge-info" style="margin-left: var(--spacing-sm);">
-                        {{ section.section_type or 'normal' }}
-                    </span>
-                </h3>
-                
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--spacing-md);">
-                    {% for field in section.fields %}
-                    <div class="card-nested" style="padding: var(--spacing-md); border-radius: var(--border-radius-lg); border: 1px solid var(--border-color);">
-                        <div style="margin-bottom: var(--spacing-sm);">
-                            <strong>{{ field.label }}</strong>
-                            {% if field.get('field_name') %}
-                            <span style="color: var(--color-text-secondary); font-size: 0.85em; margin-left: var(--spacing-xs);">
-                                ({{ field.field_name }})
-                            </span>
-                            {% endif %}
-                        </div>
-                        <div style="margin-top: var(--spacing-xs); margin-bottom: var(--spacing-xs);">
-                            <span class="badge badge-info">{{ field.data_type }}</span>
-                            {% if field.is_required %}
-                            <span class="badge badge-warning">Required</span>
-                            {% endif %}
-                            {% if field.is_currency %}
-                            <span class="badge badge-success">Currency</span>
-                            {% endif %}
-                        </div>
-                        {% if field.calculation_formula %}
-                        <div style="margin-top: var(--spacing-sm); padding: var(--spacing-sm); background-color: var(--color-bg-secondary); border-radius: var(--border-radius); border-left: 3px solid var(--color-primary);">
-                            <div style="font-size: 0.85em; color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
-                                <strong>Formula:</strong>
-                            </div>
-                            <code style="font-size: 0.9em; color: var(--color-primary); word-break: break-all;">{{ field.calculation_formula }}</code>
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Pages</h2>
+                {% if current_org_role in ('owner', 'admin') and not info.is_archived %}<a href="{{ url_for('templates_bp.edit_layout', template_id=template_id) }}" class="btn btn-ghost btn-xs">Edit</a>{% endif %}
             </div>
-            {% endfor %}
-        {% else %}
-        <p>No fields defined for this template.</p>
-        {% endif %}
-    </div>
+            <div class="card-body">
+                <ul class="timeline">
+                    {% for pg in t.layout.pages %}
+                    <li style="grid-template-columns: 28px 1fr;">
+                        <span class="dot" style="background: var(--accent-soft); color: var(--accent-ink);"><i data-lucide="{{ 'file-text' if pg.kind == 'document' else ('package' if pg.kind == 'packing' else 'file-plus') }}"></i></span>
+                        <div>
+                            <div>{{ pg.title or 'Main document' }}</div>
+                            <div class="when">
+                                {{ 'All document types' if not pg.doc_types else (pg.doc_types | map('doc_label') | join(', ')) }}
+                                · {{ 'in the same PDF' if pg.with_document else 'separate PDF' }}
+                                {% if pg.copies %} · {{ pg.copies | length }} cop{{ 'y' if pg.copies | length == 1 else 'ies' }}{% endif %}
+                            </div>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Used by</h2>
+                <span class="text-tertiary">{{ t.documents | length }} document{{ '' if t.documents | length == 1 else 's' }}</span>
+            </div>
+            <div class="card-body">
+                {% if t.documents %}
+                <ul class="timeline">
+                    {% for d in t.documents[:6] %}
+                    <li style="grid-template-columns: 1fr auto;">
+                        <div style="min-width: 0;">
+                            <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}">{{ d | doc_number }}</a>
+                            <div class="when">{{ d.doc_type | doc_label }} · {{ d.customer_name }}</div>
+                        </div>
+                        <span>{{ status_badge(d) }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-tertiary" style="margin: 0;">Not used yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Versions</h2></div>
+            <div class="card-body">
+                <dl class="summary-list">
+                    {% for v in t.versions %}
+                    <div><dt>v{{ v.version }}{% if loop.first %} <span class="badge badge-success">Current</span>{% endif %}</dt><dd class="text-tertiary" style="font-weight: 400;">{{ v.created_at | date }}</dd></div>
+                    {% endfor %}
+                </dl>
+                {% if current_org_role in ('owner', 'admin') %}
+                <div class="btn-group" style="margin-top: var(--spacing-sm);">
+                    {% if not info.is_archived %}
+                    <form method="POST" action="{{ url_for('templates_bp.archive_template', template_id=template_id) }}"
+                          data-confirm="Archive {{ info.name }}? It can't be used for new documents; existing ones are unaffected.">
+                        <button type="submit" class="btn btn-ghost btn-sm"><i data-lucide="archive"></i>Archive</button>
+                    </form>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('templates_bp.unarchive_template', template_id=template_id) }}">
+                        <button type="submit" class="btn btn-secondary btn-sm"><i data-lucide="archive-restore"></i>Unarchive</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </aside>
 </div>
 {% endblock %}
-
-{% block extra_js %}
-<script>
-    // Initialize Lucide icons
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-</script>
-{% endblock %}
-

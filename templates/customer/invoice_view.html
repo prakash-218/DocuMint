@@ -1,169 +1,24 @@
 {% extends "customer/base.html" %}
+{% from "_macros.html" import invoice_number %}
 
-{% block title %}Invoice {{ invoice.invoice_id[:8] }} - Customer Portal{% endblock %}
-{% block page_title %}Invoice Details{% endblock %}
+{% block title %}{{ (invoice | doc_number) }}{% endblock %}
+{% block page_title %}{{ (invoice | doc_number) }}{% endblock %}
+{% block page_description %}<p class="header-description">From {{ invoice.organization_name }}</p>{% endblock %}
 
-{% block content %}
-<div class="card mb-lg">
-    <div class="card-header">
-        <div class="flex-between">
-            <h2 class="card-title">Invoice Information</h2>
-            <div style="display: flex; align-items: center; gap: var(--spacing-md);">
-                <span class="badge badge-{{ 'success' if invoice.status == 'paid' else 'warning' if invoice.status == 'pending' else 'info' }}">
-                    {{ invoice.status or 'draft' }}
-                </span>
-                <a href="{{ url_for('customer_portal_bp.export_pdf', invoice_id=invoice.invoice_id) }}" 
-                   class="btn btn-secondary btn-sm" 
-                   target="_blank"
-                   title="Download as PDF">
-                    <i data-lucide="download" style="width: 14px; height: 14px; margin-right: 4px;"></i>
-                    Download PDF
-                </a>
-            </div>
-        </div>
-    </div>
-    <div class="card-body">
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-lg);">
-            <div>
-                <strong>Invoice ID:</strong><br>
-                <code>{{ invoice.invoice_id }}</code>
-            </div>
-            <div>
-                <strong>Template:</strong><br>
-                {{ invoice.template_name or 'N/A' }}
-            </div>
-            <div>
-                <strong>Currency:</strong><br>
-                {{ invoice.currency_code }}
-            </div>
-            <div>
-                <strong>Issue Date:</strong><br>
-                {{ invoice.issue_date or 'N/A' }}
-            </div>
-            <div>
-                <strong>Due Date:</strong><br>
-                {{ invoice.due_date or 'N/A' }}
-            </div>
-        </div>
-    </div>
-</div>
-
-{% if sections_data %}
-<div class="card mb-lg">
-    <div class="card-header">
-        <h2 class="card-title">Invoice Details</h2>
-    </div>
-    <div class="card-body">
-        {% for section_title, section_info in sections_data.items() %}
-            <div style="margin-bottom: var(--spacing-xl);">
-                <h3 style="margin-bottom: var(--spacing-md); color: var(--color-primary);">
-                    {{ section_title }}
-                    {% if section_info.type == 'line_item' %}
-                        <span class="badge badge-info">Line Item</span>
-                    {% endif %}
-                </h3>
-                
-                {% if section_info.type == 'line_item' %}
-                    {# Display as table for line items #}
-                    {% if section_info.line_item_headers and section_info.line_item_rows %}
-                    <div class="table-container">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    {% for header in section_info.line_item_headers %}
-                                        <th>{{ header }}</th>
-                                    {% endfor %}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for row in section_info.line_item_rows %}
-                                    <tr>
-                                        {% for value in row %}
-                                            <td>
-                                                {% if value %}
-                                                    {% if value.data_type == 'number' %}
-                                                        {% if value.is_currency %}
-                                                            {{ value.val_number | currency if value.val_number else 'N/A' }}
-                                                        {% else %}
-                                                            {{ value.val_number | number if value.val_number else 'N/A' }}
-                                                        {% endif %}
-                                                    {% elif value.data_type == 'date' %}
-                                                        {{ value.val_date or 'N/A' }}
-                                                    {% elif value.data_type == 'boolean' %}
-                                                        {{ 'Yes' if value.val_boolean else 'No' }}
-                                                    {% else %}
-                                                        {{ value.val_string or 'N/A' }}
-                                                    {% endif %}
-                                                {% else %}
-                                                    N/A
-                                                {% endif %}
-                                            </td>
-                                        {% endfor %}
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <p>No line item data available.</p>
-                    {% endif %}
-                {% else %}
-                    {# Display as fields for normal sections #}
-                    {% for value in section_info.fields %}
-                        <div class="card-nested" style="margin-bottom: var(--spacing-md); padding: var(--spacing-md); border-radius: var(--border-radius-lg); border: 1px solid var(--border-color);">
-                            <strong>{{ value.field_label }}:</strong>
-                            {% if value.data_type == 'number' %}
-                                {% if value.is_currency %}
-                                    {{ value.val_number | currency if value.val_number else 'N/A' }}
-                                {% else %}
-                                    {{ value.val_number | number if value.val_number else 'N/A' }}
-                                {% endif %}
-                            {% elif value.data_type == 'date' %}
-                                {{ value.val_date or 'N/A' }}
-                            {% elif value.data_type == 'boolean' %}
-                                {{ 'Yes' if value.val_boolean else 'No' }}
-                            {% else %}
-                                {{ value.val_string or 'N/A' }}
-                            {% endif %}
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-
-{% if payments %}
-<div class="card mb-lg">
-    <div class="card-header">
-        <h2 class="card-title">Payment History</h2>
-    </div>
-    <div class="card-body">
-        <div class="table-container">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Amount</th>
-                        <th>Method</th>
-                        <th>Reference</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for payment in payments %}
-                    <tr>
-                        <td>{{ payment.payment_date }}</td>
-                        <td>{{ payment.amount | currency }}</td>
-                        <td>{{ payment.method or 'N/A' }}</td>
-                        <td>{{ payment.reference_number or 'N/A' }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endif %}
+{% block header_actions %}
+<a href="{{ url_for('customer_portal_bp.dashboard') }}" class="btn btn-ghost"><i data-lucide="arrow-left"></i><span class="btn-label">All invoices</span></a>
+<a href="{{ url_for('customer_portal_bp.export_pdf', invoice_id=invoice.invoice_id) }}" class="btn btn-primary" target="_blank" rel="noopener">
+    <i data-lucide="download"></i><span class="btn-label">Download PDF</span>
+</a>
 {% endblock %}
 
+{% block content %}
+<div class="invoice-layout">
+    <div>
+        {% include "invoices/_document.html" %}
+    </div>
+    <aside>
+        {% include "invoices/_summary.html" %}
+    </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
+
+{% block title %}Projects{% endblock %}
+{% block page_title %}Projects{% endblock %}
+
+
+{% block header_actions %}
+{% if current_org_role in ('owner', 'admin', 'member') %}
+<a href="{{ url_for('projects_bp.create_project', customer_id=customer_id) }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New project</span></a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if ungrouped and current_org_role in ('owner', 'admin', 'member') %}
+<div class="alert alert-info flex-between">
+    <span>{{ ungrouped }} set{{ '' if ungrouped == 1 else 's' }} of linked documents not in a project yet.</span>
+    <form method="POST" action="{{ url_for('projects_bp.group_linked') }}">
+        <button type="submit" class="btn btn-secondary btn-sm"><i data-lucide="layers"></i>Group them into projects</button>
+    </form>
+</div>
+{% endif %}
+
+<div class="list-header">
+    <nav class="segmented" aria-label="Filter by status">
+        {% for key, label in [('open', 'Open'), ('completed', 'Completed'), ('cancelled', 'Cancelled'), ('all', 'All')] %}
+        <a href="{{ url_for('projects_bp.list_projects', status=key, customer_id=customer_id) }}" class="{{ 'active' if status == key }}" {% if status == key %}aria-current="page"{% endif %}>
+            {{ label }} <span class="count">{{ counts.values() | sum if key == 'all' else counts.get(key, 0) }}</span>
+        </a>
+        {% endfor %}
+    </nav>
+    <form method="GET">
+        <input type="hidden" name="status" value="{{ status }}">
+        <label for="customer_filter" class="sr-only">Customer</label>
+        <select id="customer_filter" name="customer_id" class="form-select" onchange="this.form.submit()">
+            <option value="">All customers</option>
+            {% for c in customers %}<option value="{{ c.customer_id }}" {% if c.customer_id == customer_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+        </select>
+    </form>
+</div>
+
+<div class="card">
+{% if projects %}
+    <div class="table-container" style="border: 0; box-shadow: none;">
+        <table class="table" data-sortable>
+            <thead>
+                <tr>
+                    <th>Project</th>
+                    <th class="hide-mobile">Customer</th>
+                    <th class="num">Documents</th>
+                    <th class="num hide-mobile">Files</th>
+                    <th class="num hide-mobile">Last activity</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for j in projects %}
+                <tr data-href="{{ url_for('projects_bp.view_project', project_id=j.project_id) }}">
+                    <td>
+                        <a href="{{ url_for('projects_bp.view_project', project_id=j.project_id) }}" class="cell-primary" style="color: inherit;">{{ j.title }}</a>
+                        <span class="cell-secondary">{{ j | project_label }}{% if j.reference %} · {{ j.reference }}{% endif %}<span class="show-mobile"> · {{ j.customer_name }}</span></span>
+                    </td>
+                    <td class="hide-mobile">{{ j.customer_name }}</td>
+                    <td class="num">{{ j.document_count }}</td>
+                    <td class="num hide-mobile">{{ j.file_count or '—' }}</td>
+                    <td class="num hide-mobile" data-sort="{{ j.last_issue_date or j.created_at }}">{{ (j.last_issue_date or j.created_at) | date }}</td>
+                    <td><span class="badge badge-{{ {'open': 'info', 'completed': 'success', 'cancelled': 'secondary'}[j.status] }}">{{ statuses[j.status] }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% elif status != 'all' or customer_id %}
+    {{ empty_state('search-x', 'No projects here', 'Try another status or customer.') }}
+{% else %}
+    {{ empty_state('briefcase', 'No projects yet', 'Start one for a new enquiry, or convert a quotation: the proforma and invoice made from it are grouped into a project automatically.',
+                   url_for('projects_bp.create_project') if current_org_role in ('owner', 'admin', 'member') else None, 'New project') }}
+{% endif %}
+</div>
+{% endblock %}

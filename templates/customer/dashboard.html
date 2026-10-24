@@ -1,52 +1,65 @@
 {% extends "customer/base.html" %}
+{% from "_macros.html" import status_badge, invoice_number, empty_state %}
 
-{% block title %}My Invoices - Customer Portal{% endblock %}
-{% block page_title %}My Invoices{% endblock %}
+{% block title %}My documents{% endblock %}
+{% block page_title %}My documents{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-body">
-        {% if invoices %}
-        <div class="table-container">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Invoice ID</th>
-                        <th>Template</th>
-                        <th>Issue Date</th>
-                        <th>Due Date</th>
-                        <th>Status</th>
-                        <th>Total</th>
-                        <th>Paid</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for invoice in invoices %}
-                    <tr>
-                        <td>{{ invoice.invoice_id[:8] }}...</td>
-                        <td>{{ invoice.template_name or 'N/A' }}</td>
-                        <td>{{ invoice.issue_date or 'N/A' }}</td>
-                        <td>{{ invoice.due_date or 'N/A' }}</td>
-                        <td>
-                            <span class="badge badge-{{ 'success' if invoice.status == 'paid' else 'warning' if invoice.status == 'pending' else 'info' }}">
-                                {{ invoice.status or 'draft' }}
-                            </span>
-                        </td>
-                        <td>{{ invoice.total_amount or 0 | currency }}</td>
-                        <td>{{ invoice.paid_amount or 0 | currency }}</td>
-                        <td>
-                            <a href="{{ url_for('customer_portal_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-secondary">View</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <p>No invoices found.</p>
-        {% endif %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label"><i data-lucide="wallet"></i>Outstanding</div>
+        <div class="stat-value">{{ stats.outstanding | money_totals if stats.outstanding else 'Nothing due' }}</div>
+    </div>
+    <div class="stat-card {{ 'stat-alert' if stats.overdue }}">
+        <div class="stat-label"><i data-lucide="alarm-clock"></i>Overdue invoices</div>
+        <div class="stat-value">{{ stats.overdue }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label"><i data-lucide="circle-check"></i>Paid to date</div>
+        <div class="stat-value">{{ stats.paid | money_totals if stats.paid else '—' }}</div>
     </div>
 </div>
-{% endblock %}
 
+<div class="card">
+    {% if invoices %}
+    <div class="table-container" style="border: 0; box-shadow: none;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Document</th>
+                    <th class="hide-mobile">Date</th>
+                    <th class="hide-mobile">Due</th>
+                    <th>Status</th>
+                    <th class="num">Total</th>
+                    <th class="num hide-mobile">Balance</th>
+                    <th><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for invoice in invoices %}
+                <tr data-href="{{ url_for('customer_portal_bp.view_invoice', invoice_id=invoice.invoice_id) }}">
+                    <td>
+                        <span class="cell-primary">{{ (invoice | doc_number) }}</span>
+                        <span class="cell-secondary">{{ invoice.doc_type | doc_label }}</span>
+                    </td>
+                    <td class="num hide-mobile">{{ invoice.issue_date | date or '—' }}</td>
+                    <td class="num hide-mobile">{{ invoice.due_date | date or '—' }}</td>
+                    <td>{{ status_badge(invoice) }}</td>
+                    <td class="num">{{ invoice.total_amount | currency(invoice.currency_code) }}</td>
+                    {% set balance = [(invoice.total_amount or 0) - (invoice.paid_amount or 0), 0] | max %}
+                    <td class="num hide-mobile">{% if invoice.doc_type not in ('invoice', 'export_invoice') or invoice.status == 'paid' or balance == 0 %}<span class="text-tertiary">—</span>{% else %}{{ balance | currency(invoice.currency_code) }}{% endif %}</td>
+                    <td>
+                        <div class="table-actions">
+                            <a href="{{ url_for('customer_portal_bp.export_pdf', invoice_id=invoice.invoice_id) }}" class="btn btn-ghost btn-xs" target="_blank" rel="noopener" title="Download PDF" aria-label="Download PDF"><i data-lucide="download"></i></a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    {{ empty_state('receipt', 'No documents yet') }}
+    {% endif %}
+</div>
+{% endblock %}

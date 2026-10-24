@@ -1,0 +1,113 @@
+{#
+  An extra page of a document: chosen sections (e.g. a cost break-up or a
+  specification table), the notes/scope and/or the terms, under a short header.
+  Expects: invoice, sections_data, summary, profile, fonts, page, copies
+#}
+{% set t = doc_type_info(invoice.doc_type) %}
+{% set cur = invoice.currency_code %}
+{% set d = invoice.details | fromjson %}
+{% macro cell(value) -%}
+    {%- if not value -%}&nbsp;
+    {%- elif value.data_type == 'number' -%}
+        {%- if value.val_number is none -%}&nbsp;{%- elif value.is_currency -%}{{ value.val_number | currency(cur) }}{%- else -%}{{ value.val_number | number }}{%- endif -%}
+    {%- elif value.data_type == 'date' -%}{{ value.val_date | date }}
+    {%- else -%}{{ value.val_string | multiline if value.val_string else '&nbsp;' | safe }}{%- endif -%}
+{%- endmacro %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>{{ page.title or 'Annexure' }} · {{ invoice | doc_number }}</title>
+<style>
+    @page { size: a4 portrait; margin: 1.2cm 1.5cm 1.4cm 1.5cm;
+            @frame footer { -pdf-frame-content: footer; bottom: 0.6cm; margin-left: 1.5cm; margin-right: 1.5cm; height: 0.6cm; } }
+    body { font-family: {{ fonts.regular or 'Helvetica' }}; font-size: 9.5pt; color: #111; line-height: 1.3; }
+    table { width: 100%; border-collapse: collapse; }
+    td { vertical-align: top; padding: 2pt 5pt; }
+    .grid td { border: 0.6pt solid #222; }
+    .head { background-color: #f2f2f2; font-weight: bold; }
+    .num { text-align: right; }
+    .center { text-align: center; }
+    .muted { color: #555; }
+    h1 { font-size: 13pt; margin: 0 0 2pt; }
+    h2 { font-size: 10.5pt; margin: 12pt 0 4pt; }
+    p { margin: 0 0 5pt; }
+</style>
+</head>
+<body>
+{% for copy in copies %}
+<table>
+    <tr>
+        <td style="width: 60%; padding-left: 0;">
+            <h1>{{ page.title or 'Annexure' }}</h1>
+            <span class="muted">to {{ t.label }} {{ invoice | doc_number }} dated {{ invoice.issue_date | date }}</span>
+        </td>
+        <td class="num" style="padding-right: 0;">
+            <b>{{ invoice.organization_name }}</b><br>
+            <span class="muted">For: {{ invoice.customer_name }}</span>
+            {% if copy %}<br><b>{{ copy }}</b>{% endif %}
+        </td>
+    </tr>
+</table>
+<hr>
+
+{% for title, section in sections_data.items() if section.name in page.sections and not section.breakup %}
+<h2>{{ title }}</h2>
+{% if section.type == 'line_item' %}
+<table class="grid">
+    <tr>
+        <td class="head center" width="7%">SL</td>
+        {% for h in section.line_item_headers %}<td class="head">{{ h }}</td>{% endfor %}
+    </tr>
+    {% for row in section.line_item_rows %}
+    <tr>
+        <td class="center">{{ loop.index }}</td>
+        {% for value in row %}<td class="{{ 'num' if value.data_type == 'number' else '' }}">{{ cell(value) }}</td>{% endfor %}
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<table class="grid">
+    {% for value in section.fields %}
+    <tr><td class="head" width="35%">{{ value.field_label }}</td><td>{{ cell(value) }}</td></tr>
+    {% endfor %}
+</table>
+{% endif %}
+{% endfor %}
+
+{% set want_breakup = sections_data.values() | selectattr('breakup') | selectattr('name', 'in', page.sections) | list %}
+{% if want_breakup and summary.breakups %}
+<h2>Cost break-up</h2>
+{% for group in summary.breakups %}
+<table class="grid" style="margin-bottom: 6pt;">
+    <tr><td colspan="2" class="head">Item {{ group.item_no }}{% if group.item %}: {{ (group.item.description or '').splitlines()[0] }}{% endif %}</td></tr>
+    {% for part in group.parts %}
+    <tr><td width="72%">{{ part.description | multiline }}</td><td class="num">{{ part.amount | currency(cur) }}</td></tr>
+    {% endfor %}
+    <tr><td class="num"><b>Total</b></td><td class="num"><b>{{ group.total | currency(cur) }}</b></td></tr>
+</table>
+{% endfor %}
+{% endif %}
+
+{% if page.include_notes and d.notes %}
+<h2>Notes &amp; scope</h2>
+<p>{{ d.notes | notes }}</p>
+{% endif %}
+
+{% if page.include_terms and d.terms %}
+<h2>Terms &amp; conditions</h2>
+<ul style="margin-top: 0;">{% for line in d.terms.splitlines() if line.strip() %}<li>{{ line }}</li>{% endfor %}</ul>
+{% endif %}
+
+<table style="margin-top: 18pt;">
+    <tr><td class="num" style="padding-right: 0;">
+        <b>For {{ invoice.organization_name | upper }}</b><br>
+        {% if profile.stamp %}<img src="{{ profile.stamp }}" style="height: 40pt;">{% else %}<br><br>{% endif %}
+        <br>Authorised Signatory
+    </td></tr>
+</table>
+{% if not loop.last %}<pdf:nextpage />{% endif %}
+{% endfor %}
+<div id="footer" style="font-size: 7.5pt; color: #888; text-align: center;">{{ invoice.organization_name }} · {{ page.title or 'Annexure' }} · {{ t.label }} {{ invoice | doc_number }} · Page <pdf:pagenumber> of <pdf:pagecount></div>
+</body>
+</html>

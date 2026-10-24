@@ -5,8 +5,30 @@ Customers blueprint - CRUD operations for customers
 from flask import Blueprint, request, render_template, redirect, url_for, flash, g
 from db import db, DatabaseError
 from auth import require_org, get_current_org_role
+from access import get_org_customer
+from documents import load_json
 
 customers_bp = Blueprint('customers_bp', __name__)
+
+
+def _custom_defs(org_id):
+    """The org's customer custom-field definitions (from the business profile)."""
+    from document_service import get_org_profile
+    from layout import custom_field_defs
+    return custom_field_defs(get_org_profile(org_id)[1], 'customer')
+
+
+def _save_email_domains(customer_id, org_id, form):
+    import re
+    domains = [d.strip().lstrip('@').lower() for d in re.split(r'[,\s]+', form.get('email_domains') or '') if d.strip()]
+    db.execute_proc('sp_update_customer_email_domains', (customer_id, org_id, ', '.join(dict.fromkeys(domains))), fetch=False)
+
+
+def _save_custom(customer_id, org_id, form, defs):
+    import json
+    values = {f['key']: (form.get(f'custom_{f["key"]}') or '').strip() for f in defs}
+    values = {k: v for k, v in values.items() if v}
+    db.execute_proc('sp_update_customer_custom', (customer_id, org_id, json.dumps(values)), fetch=False)
 
 
 @customers_bp.route('/')
@@ -18,11 +40,18 @@ def list_customers():
 
     try:
         include_archived = request.args.get('include_archived', 'false').lower() == 'true'
-        customers = db.execute_proc('sp_list_customers', (org_id, include_archived))
-        return render_template('customers/list.html', customers=customers or [], include_archived=include_archived, current_org_role=current_role)
-    except DatabaseError as e:
+        customers = db.execute_proc('sp_list_customers', (org_id, include_archived)) or []
+        query = (request.args.get('q') or '').strip()
+        if query:
+            q = query.lower()
+            customers = [c for c in customers if any(q in (c.get(k) or '').lower() for k in ('name', 'city', 'country', 'tax_id'))]
+        customers.sort(key=lambda c: (bool(c.get('is_archived')), (c.get('name') or '').lower()))
+        return render_template('customers/list.html', customers=customers, include_archived=include_archived,
+                               query=query, current_org_role=current_role)
+    except DatabaseError:
         flash('Error loading customers', 'error')
-        return render_template('customers/list.html', customers=[], current_org_role=current_role)
+        return render_template('customers/list.html', customers=[], include_archived=False, query='',
+                               current_org_role=current_role)
 
 
 @customers_bp.route('/create', methods=['GET', 'POST'])
@@ -30,8 +59,8 @@ def list_customers():
 def create_customer():
     """Create a new customer"""
     current_role = get_current_org_role()
-    if current_role != 'owner':
-        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to create customers.', 'error')
+    if current_role not in ('owner', 'admin'):
+        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to create customers.', 'error')
         return redirect(url_for('customers_bp.list_customers'))
     
     org_id = g.current_org_id
@@ -47,13 +76,17 @@ def create_customer():
 
         if not name:
             flash('Customer name is required', 'error')
-            return render_template('customers/create.html')
+            return render_template('customers/create.html', custom_defs=_custom_defs(org_id), custom_values={})
 
         try:
 
             result = db.execute_proc('sp_create_customer', (org_id, name, tax_id, street_address, city, state, zip_code, country, None))
             if result and len(result) > 0:
                 customer_id = result[0].get('customer_id')
+                _save_email_domains(customer_id, org_id, request.form)
+                defs = _custom_defs(org_id)
+                if defs:
+                    _save_custom(customer_id, org_id, request.form, defs)
                 flash('Customer created successfully', 'success')
                 return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
             else:
@@ -61,7 +94,7 @@ def create_customer():
         except DatabaseError as e:
             flash(f'Error creating customer: {str(e)}', 'error')
 
-    return render_template('customers/create.html')
+    return render_template('customers/create.html', custom_defs=_custom_defs(org_id), custom_values={})
 
 
 @customers_bp.route('/<customer_id>')
@@ -70,32 +103,7 @@ def view_customer(customer_id):
     """View customer details"""
     current_role = get_current_org_role()
     try:
-        result = db.execute_proc('sp_get_customer_details', (customer_id,))
-
-        if not result:
-            flash('Customer not found', 'error')
-            return redirect(url_for('customers_bp.list_customers'))
-
-
-        customer = None
-        contacts = []
-
-        if isinstance(result, list):
-
-            if len(result) > 0:
-                if isinstance(result[0], list):
-
-                    if len(result) >= 1 and len(result[0]) > 0:
-                        customer = result[0][0]
-                    if len(result) >= 2:
-                        contacts = result[1]
-                elif isinstance(result[0], dict):
-
-                    customer = result[0]
-                    if len(result) > 1:
-                        contacts = result[1:]
-        elif isinstance(result, dict):
-            customer = result
+        customer, contacts = get_org_customer(customer_id, g.current_org_id)
 
         if not customer:
             flash('Customer not found', 'error')
@@ -115,7 +123,19 @@ def view_customer(customer_id):
         except Exception:
             pass
 
+        import projects
+        from documents import balance_of, sum_by_currency
+        docs = [d for d in db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
+                if d.get('customer_id') == customer_id]
+        unpaid = [d for d in docs if d.get('doc_type') in ('invoice', 'export_invoice') and d.get('status') == 'pending']
         return render_template('customers/view.html',
+                             docs=docs,
+                             outstanding=sum_by_currency(unpaid, balance_of),
+                             projects=projects.list_projects(g.current_org_id, customer_id),
+                             files=projects.list_attachments(g.current_org_id, customer_id=customer_id),
+                             file_kinds=projects.DOCUMENT_KINDS,
+                             custom_defs=_custom_defs(g.current_org_id),
+                             custom_values=load_json(customer.get('custom')),
                              customer=customer,
                              contacts=contacts or [],
                              customer_user=customer_user,
@@ -130,8 +150,8 @@ def view_customer(customer_id):
 def create_portal_account(customer_id):
     """Create a customer portal account (admin action)"""
     current_role = get_current_org_role()
-    if current_role != 'owner':
-        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to create portal accounts.', 'error')
+    if current_role not in ('owner', 'admin'):
+        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to create portal accounts.', 'error')
         return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
     
     org_id = g.current_org_id
@@ -147,6 +167,11 @@ def create_portal_account(customer_id):
     if len(password) < 8:
         flash('Password must be at least 8 characters', 'error')
         return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+
+    customer, _ = get_org_customer(customer_id, org_id)
+    if not customer:
+        flash('Customer not found', 'error')
+        return redirect(url_for('customers_bp.list_customers'))
 
     try:
         from auth import hash_password
@@ -188,8 +213,8 @@ def create_portal_account(customer_id):
 def edit_customer(customer_id):
     """Edit customer details"""
     current_role = get_current_org_role()
-    if current_role != 'owner':
-        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to edit customers.', 'error')
+    if current_role not in ('owner', 'admin'):
+        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to edit customers.', 'error')
         return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
     
     org_id = g.current_org_id
@@ -238,7 +263,8 @@ def edit_customer(customer_id):
 
         if not name:
             flash('Customer name is required', 'error')
-            return render_template('customers/edit.html', customer=customer)
+            return render_template('customers/edit.html', customer=customer, custom_defs=_custom_defs(org_id),
+                                   custom_values=load_json(customer.get('custom')))
 
         try:
             db.execute_proc('sp_update_customer', (
@@ -251,13 +277,18 @@ def edit_customer(customer_id):
                 zip_code,
                 country
             ), fetch=False)
+            _save_email_domains(customer_id, org_id, request.form)
+            defs = _custom_defs(org_id)
+            if defs:
+                _save_custom(customer_id, org_id, request.form, defs)
 
             flash('Customer updated successfully', 'success')
             return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
         except DatabaseError as e:
             flash(f'Error updating customer: {str(e)}', 'error')
 
-    return render_template('customers/edit.html', customer=customer)
+    return render_template('customers/edit.html', customer=customer, custom_defs=_custom_defs(org_id),
+                           custom_values=load_json(customer.get('custom')))
 
 
 @customers_bp.route('/<customer_id>/delete', methods=['POST'])
@@ -265,8 +296,8 @@ def edit_customer(customer_id):
 def delete_customer(customer_id):
     """Delete a customer"""
     current_role = get_current_org_role()
-    if current_role != 'owner':
-        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to delete customers.', 'error')
+    if current_role not in ('owner', 'admin'):
+        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to delete customers.', 'error')
         return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
     
     org_id = g.current_org_id
@@ -311,8 +342,8 @@ def delete_customer(customer_id):
 def archive_customer(customer_id):
     """Archive a customer"""
     current_role = get_current_org_role()
-    if current_role != 'owner':
-        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to archive customers.', 'error')
+    if current_role not in ('owner', 'admin'):
+        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to archive customers.', 'error')
         return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
     
     org_id = g.current_org_id
@@ -331,8 +362,8 @@ def archive_customer(customer_id):
 def unarchive_customer(customer_id):
     """Unarchive a customer"""
     current_role = get_current_org_role()
-    if current_role != 'owner':
-        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to unarchive customers.', 'error')
+    if current_role not in ('owner', 'admin'):
+        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to unarchive customers.', 'error')
         return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
     
     org_id = g.current_org_id

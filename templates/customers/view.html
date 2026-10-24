@@ -1,146 +1,144 @@
 {% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% from "projects/_files.html" import files_card %}
+{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
 
-{% block title %}Customer {{ customer.name }} - Invoice System{% endblock %}
-{% block page_title %}Customer Details{% endblock %}
+{% block title %}{{ customer.name }}{% endblock %}
+{% block page_title %}{{ customer.name }}{% endblock %}
+{% block page_description %}<p class="header-description">{{ [customer.city, customer.country] | select | join(', ') }}{% if customer.is_archived %} · Archived{% endif %}</p>{% endblock %}
 
-{% block content %}
-<div class="card mb-lg">
-    <div class="card-header">
-        <div class="flex-between">
-            <div>
-                <h2 class="card-title">{{ customer.name }}</h2>
-                {% if customer.is_archived %}
-                <span class="badge badge-warning" style="margin-top: var(--spacing-xs); display: inline-block;">Archived</span>
-                {% endif %}
-            </div>
-            <div style="display: flex; gap: var(--spacing-sm);">
-                {% if not customer.is_archived %}
-                <a href="{{ url_for('customers_bp.edit_customer', customer_id=customer.customer_id) }}" class="btn btn-primary btn-sm">
-                    Edit
-                </a>
-                {% endif %}
-                {% if customer.is_archived %}
-                <form method="POST" action="{{ url_for('customers_bp.unarchive_customer', customer_id=customer.customer_id) }}" 
-                      style="display: inline;">
-                    <button type="submit" class="btn btn-success btn-sm">
-                        Unarchive
-                    </button>
-                </form>
-                {% else %}
-                <form method="POST" action="{{ url_for('customers_bp.archive_customer', customer_id=customer.customer_id) }}" 
-                      style="display: inline;" 
-                      onsubmit="return confirm('Are you sure you want to archive this customer? Archived customers cannot be used for new invoices, but existing invoices will remain accessible.');">
-                    <button type="submit" class="btn btn-warning btn-sm">
-                        Archive
-                    </button>
-                </form>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="card-body">
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-lg);">
-            <div>
-                <strong>Customer ID:</strong><br>
-                <code>{{ customer.customer_id }}</code>
-            </div>
-            <div>
-                <strong>Tax ID:</strong><br>
-                {{ customer.tax_id or 'N/A' }}
-            </div>
-            <div>
-                <strong>Created:</strong><br>
-                {{ customer.created_at.strftime('%Y-%m-%d') if customer.created_at else 'N/A' }}
-            </div>
-        </div>
-        
-        {% if customer.street_address or customer.city or customer.state or customer.zip_code or customer.country %}
-        <div style="margin-top: var(--spacing-lg); padding-top: var(--spacing-lg); border-top: 1px solid var(--border-color);">
-            <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: var(--spacing-md); color: var(--text-primary);">Address</h3>
-            <div style="color: var(--text-secondary); line-height: 1.6;">
-                {% if customer.street_address %}{{ customer.street_address }}<br>{% endif %}
-                {% if customer.city or customer.state or customer.zip_code %}
-                    {% if customer.city %}{{ customer.city }}{% endif %}{% if customer.city and customer.state %}, {% endif %}{% if customer.state %}{{ customer.state }}{% endif %} {% if customer.zip_code %}{{ customer.zip_code }}{% endif %}<br>
-                {% endif %}
-                {% if customer.country %}{{ customer.country }}{% endif %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
-</div>
-
-{% if contacts %}
-<div class="card mb-lg">
-    <div class="card-header">
-        <h2 class="card-title">Contacts</h2>
-    </div>
-    <div class="card-body">
-        <div class="table-container">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for contact in contacts %}
-                    <tr>
-                        <td>{{ contact.full_name or 'N/A' }}</td>
-                        <td>{{ contact.email }}</td>
-                        <td>{{ contact.role or 'N/A' }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
+{% block header_actions %}
+{% if can_edit and not customer.is_archived %}
+<a href="{{ url_for('projects_bp.create_project', customer_id=customer.customer_id) }}" class="btn btn-secondary"><i data-lucide="briefcase"></i><span class="btn-label">New project</span></a>
 {% endif %}
-
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title">Customer Portal Access</h2>
-    </div>
-    <div class="card-body">
-        {% if customer_user %}
-        <div class="alert alert-success">
-            <p><strong>Portal account exists:</strong> {{ customer_user.email }}</p>
-            <p>Customer can login at <a href="{{ url_for('customer_portal_bp.login') }}" target="_blank">/customer/login</a></p>
-        </div>
-        {% else %}
-        <p style="margin-bottom: var(--spacing-md);">
-            Create a portal account to allow this customer to view their invoices online.
-        </p>
-        <form method="POST" action="{{ url_for('customers_bp.create_portal_account', customer_id=customer.customer_id) }}">
-            <div class="form-group">
-                <label for="email" class="form-label">Email Address *</label>
-                <input type="email" id="email" name="email" class="form-input" required 
-                       placeholder="customer@example.com">
-                <small class="form-text">This will be the customer's login email</small>
-            </div>
-            <div class="form-group">
-                <label for="password" class="form-label">Initial Password *</label>
-                <input type="password" id="password" name="password" class="form-input" required 
-                       minlength="8" placeholder="At least 8 characters">
-                <small class="form-text">Customer can change this after first login</small>
-            </div>
-            <!-- <div class="form-group">
-                <label>
-                    <input type="checkbox" name="send_invitation" class="form-checkbox">
-                    Send invitation email (requires email configuration)
-                </label>
-                <small class="form-text" style="display: block; margin-top: var(--spacing-xs);">
-                    If checked, an invitation email will be sent. Currently, this feature requires email service setup.
-                </small>
-            </div> -->
-            <div class="form-group">
-                <button type="submit" class="btn btn-primary">Create Portal Account</button>
-            </div>
-        </form>
-        {% endif %}
-    </div>
-</div>
+{% if current_org_role in ('owner', 'admin') %}
+<a href="{{ url_for('customers_bp.edit_customer', customer_id=customer.customer_id) }}" class="btn btn-secondary"><i data-lucide="pencil"></i><span class="btn-label">Edit</span></a>
+{% endif %}
 {% endblock %}
 
+{% block content %}
+<div class="invoice-layout">
+    <div class="stack">
+        <section class="card">
+            <div class="card-header"><h2 class="card-title">Documents</h2><span class="text-tertiary">{{ docs | length }}</span></div>
+            {% if docs %}
+            <div class="table-container" style="border: 0; box-shadow: none;">
+                <table class="table">
+                    <thead><tr><th>Number</th><th class="num hide-mobile">Date</th><th>Status</th><th class="num">Total</th></tr></thead>
+                    <tbody>
+                        {% for d in docs %}
+                        <tr data-href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}">
+                            <td>
+                                <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}" class="cell-primary" style="color: inherit;">{{ d | doc_number }}</a>
+                                <span class="cell-secondary">{{ d.doc_type | doc_label }}</span>
+                            </td>
+                            <td class="num hide-mobile">{{ d.issue_date | date or '—' }}</td>
+                            <td>{{ status_badge(d) }}</td>
+                            <td class="num">{{ d.total_amount | currency(d.currency_code) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body"><p class="text-tertiary" style="margin: 0;">No documents yet.</p></div>
+            {% endif %}
+        </section>
+
+        <section class="card">
+            <div class="card-header"><h2 class="card-title">Projects</h2></div>
+            {% if projects %}
+            <ul class="pick-list">
+                {% for j in projects %}
+                <li>
+                    <a href="{{ url_for('projects_bp.view_project', project_id=j.project_id) }}">
+                        <span class="pick-main">
+                            <span class="pick-title">{{ j.title }}</span>
+                            <span class="pick-sub">{{ j | project_label }} · {{ j.document_count }} document{{ '' if j.document_count == 1 else 's' }}</span>
+                        </span>
+                        <span class="badge badge-{{ {'open': 'info', 'completed': 'success', 'cancelled': 'secondary'}[j.status] }}">{{ j.status }}</span>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="card-body"><p class="text-tertiary" style="margin: 0;">No projects yet.</p></div>
+            {% endif %}
+        </section>
+
+        <div id="files">
+        {{ files_card(files, {'customer_id': customer.customer_id}, file_kinds, can_edit, projects=projects, show_where=True) }}
+        </div>
+    </div>
+
+    <aside>
+        <div class="card">
+            <div class="card-body">
+                <dl class="kv">
+                    {% for cur, amount in outstanding.items() %}
+                    <dt>{{ 'Outstanding' if loop.first else '' }}</dt><dd>{{ amount | currency(cur) }}</dd>
+                    {% else %}
+                    <dt>Outstanding</dt><dd class="text-tertiary">Nothing due</dd>
+                    {% endfor %}
+                </dl>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Details</h2></div>
+            <div class="card-body">
+                <dl class="details-list">
+                    <dt>GSTIN / Tax ID</dt><dd>{{ customer.tax_id or '—' }}</dd>
+                    {% if customer.email_domains %}<dt>Email domains</dt><dd>{{ customer.email_domains }}</dd>{% endif %}
+                    <dt>Address</dt>
+                    <dd>
+                        {% if customer.street_address %}{{ customer.street_address }}<br>{% endif %}
+                        {{ [customer.city, customer.state, customer.zip_code] | select | join(', ') }}
+                        {% if customer.country %}<br>{{ customer.country }}{% endif %}
+                    </dd>
+                    {% for f in custom_defs if custom_values.get(f.key) %}
+                    <dt>{{ f.label }}</dt><dd>{{ custom_values.get(f.key) }}</dd>
+                    {% endfor %}
+                    {% for contact in contacts %}
+                    <dt>{{ contact.role or 'Contact' }}</dt><dd>{{ contact.full_name or '' }}<br>{{ contact.email }}</dd>
+                    {% endfor %}
+                </dl>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Customer portal</h2></div>
+            <div class="card-body">
+                {% if customer_user %}
+                <p style="margin: 0;">{{ customer_user.email }} can sign in at
+                    <a href="{{ url_for('customer_portal_bp.login') }}" target="_blank" rel="noopener">{{ url_for('customer_portal_bp.login', _external=True) }}</a></p>
+                {% elif current_org_role in ('owner', 'admin') %}
+                <details class="fold" style="border: 0; margin: 0; padding: 0;">
+                    <summary>Give portal access</summary>
+                    <form method="POST" action="{{ url_for('customers_bp.create_portal_account', customer_id=customer.customer_id) }}">
+                        <div class="form-group">
+                            <label for="portal_email" class="form-label">Email</label>
+                            <input type="email" id="portal_email" name="email" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="portal_password" class="form-label">Password</label>
+                            <input type="password" id="portal_password" name="password" class="form-input" required minlength="8" placeholder="At least 8 characters">
+                        </div>
+                        <button type="submit" class="btn btn-secondary btn-block">Create login</button>
+                    </form>
+                </details>
+                {% else %}
+                <p class="text-tertiary" style="margin: 0;">No portal login.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if current_org_role in ('owner', 'admin') %}
+        <form method="POST" action="{{ url_for('customers_bp.unarchive_customer' if customer.is_archived else 'customers_bp.archive_customer', customer_id=customer.customer_id) }}"
+              {% if not customer.is_archived %}data-confirm="Archive {{ customer.name }}? They'll be hidden from lists; their documents are kept."{% endif %}>
+            <button type="submit" class="btn btn-ghost btn-block"><i data-lucide="{{ 'archive-restore' if customer.is_archived else 'archive' }}"></i>{{ 'Restore customer' if customer.is_archived else 'Archive customer' }}</button>
+        </form>
+        {% endif %}
+    </aside>
+</div>
+{% endblock %}

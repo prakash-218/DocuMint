@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Business profile{% endblock %}
+{% block page_title %}Business profile{% endblock %}
+
+
+{% macro text(name, label, placeholder='', help='') %}
+<div class="form-group">
+    <label for="{{ name }}" class="form-label">{{ label }}</label>
+    <input type="text" id="{{ name }}" name="{{ name }}" class="form-input" value="{{ profile.get(name, '') }}" placeholder="{{ placeholder }}">
+    {% if help %}<p class="form-text">{{ help }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<form method="POST" enctype="multipart/form-data" class="panel-medium" style="max-width: 880px;">
+    <section class="card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">{{ org.name }}</h2>
+                <p class="card-subtitle">
+                    {{ [org.street_address, org.city, org.state, org.zip_code, org.country] | select | join(', ') or 'No address yet' }}
+                    · <a href="{{ url_for('settings_bp.edit_organization', org_id=org.org_id) }}">Edit name &amp; address</a>
+                </p>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="form-row">
+                {{ text('gstin', 'GSTIN', '33ABCDE1234F1Z5', 'With a GSTIN set, new documents pick CGST+SGST, IGST or LUT automatically.') }}
+                {{ text('pan', 'PAN') }}
+                {{ text('state_code', 'State code', '33') }}
+            </div>
+            <div class="form-row">
+                {{ text('iec_code', 'IEC code', '', 'Import Export Code, printed on export invoices') }}
+                {{ text('lut_number', 'LUT number') }}
+                {{ text('ad_code', 'Authorised dealer code') }}
+            </div>
+            <div class="form-row">
+                {{ text('phone', 'Phone') }}
+                {{ text('email', 'Email') }}
+                {{ text('website', 'Website') }}
+            </div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header"><h2 class="card-title">Bank details</h2></div>
+        <div class="card-body">
+            <div class="form-row">
+                {{ text('bank_name', 'Bank name') }}
+                {{ text('bank_account', 'Account number') }}
+                {{ text('bank_ifsc', 'IFSC code') }}
+            </div>
+            <div class="form-row">
+                {{ text('bank_branch', 'Branch') }}
+                {{ text('bank_swift', 'SWIFT code', '', 'For payments from abroad') }}
+            </div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header"><h2 class="card-title">Documents</h2></div>
+        <div class="card-body">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="default_currency" class="form-label">Main currency</label>
+                    <select id="default_currency" name="default_currency" class="form-select">
+                        {% for c in currencies %}<option {% if (profile.default_currency or 'INR') == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+                    </select>
+                    <p class="form-text">Dashboard totals are shown in this currency.</p>
+                </div>
+                <div class="form-group">
+                    <label for="default_gst_rate" class="form-label">Default GST rate (%)</label>
+                    <input type="number" step="0.01" id="default_gst_rate" name="default_gst_rate" class="form-input" value="{{ '%g' | format(profile.default_gst_rate or 18) }}">
+                </div>
+                <div class="form-group">
+                    <label for="fy_start_month" class="form-label">Financial year starts</label>
+                    <select id="fy_start_month" name="fy_start_month" class="form-select">
+                        {% for m in range(1, 13) %}
+                        <option value="{{ m }}" {% if (profile.fy_start_month or 4) == m %}selected{% endif %}>{{ ['January','February','March','April','May','June','July','August','September','October','November','December'][m - 1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="advance_basis" class="form-label">Proforma advance usually on</label>
+                    <select id="advance_basis" name="advance_basis" class="form-select">
+                        <option value="pre_tax" {% if profile.advance_basis != 'total' %}selected{% endif %}>Value before tax</option>
+                        <option value="total" {% if profile.advance_basis == 'total' %}selected{% endif %}>Total including tax</option>
+                    </select>
+                </div>
+            </div>
+
+            <h3 style="margin: var(--spacing-md) 0 var(--spacing-sm);">Numbering</h3>
+            <p class="form-text" style="margin: 0 0 var(--spacing-md);">
+                Tokens: <span class="kbd">{num}</span> or <span class="kbd">{num:03}</span> for zero-padding,
+                <span class="kbd">{fy}</span> financial year (26-27), <span class="kbd">{yyyy}</span>.
+                Each type restarts at 1 every financial year. Set "next" to continue an existing series.
+            </p>
+            <label style="display: flex; gap: 8px; align-items: center; margin-bottom: var(--spacing-md); font-size: var(--font-size-sm);">
+                <input type="checkbox" name="separate_export_series" class="form-checkbox" {% if profile.separate_export_series %}checked{% endif %}>
+                Number export invoices separately (by default they continue the tax-invoice series)
+            </label>
+            <div class="table-container" style="box-shadow: none;">
+                <table class="table">
+                    <thead><tr><th>Document</th><th>Format</th><th>Next number</th><th>Preview</th></tr></thead>
+                    <tbody>
+                        {% for s in series %}
+                        <tr>
+                            <td>{{ s.label }}</td>
+                            <td><input type="text" name="format_{{ s.key }}" value="{{ s.format }}" class="form-input" style="min-width: 160px;"></td>
+                            <td>
+                                {% if s.shared %}<span class="text-tertiary">Shares the Tax Invoice series</span>
+                                {% else %}<input type="number" min="1" name="next_{{ s.key }}" value="{{ s.next }}" class="form-input" style="width: 90px;">{% endif %}
+                            </td>
+                            <td class="item-id" style="font-size: var(--font-size-sm);">{{ s.preview }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Custom fields</h2>
+                <p class="card-subtitle">Anything else you need on your documents. Ticked fields are printed.</p>
+            </div>
+        </div>
+        <div class="card-body">
+            <h3 style="margin: 0 0 var(--spacing-xs);">About your organization</h3>
+            <p class="form-text" style="margin: 0 0 var(--spacing-sm);">e.g. MSME / Udyam no., CIN, vendor registration no. Printed under your address.</p>
+            <table class="table cf-table" data-prefix="orgcf" data-value="1">
+                <thead><tr><th>Label</th><th>Value</th><th class="center" style="width: 70px;">Print</th><th style="width: 40px;"></th></tr></thead>
+                <tbody>
+                    {% for f in (profile.custom_fields or []) + [{}] %}
+                    <tr>
+                        <td><input type="hidden" name="orgcf_key_{{ loop.index }}" value="{{ f.key or '' }}"><input type="text" name="orgcf_label_{{ loop.index }}" value="{{ f.label or '' }}" class="form-input" placeholder="MSME No."></td>
+                        <td><input type="text" name="orgcf_value_{{ loop.index }}" value="{{ f.value or '' }}" class="form-input" placeholder="UDYAM-TN-00-0000000"></td>
+                        <td class="center"><input type="checkbox" name="orgcf_print_{{ loop.index }}" class="form-checkbox" {% if f.print or not f.label %}checked{% endif %}></td>
+                        <td><button type="button" class="btn btn-ghost btn-xs cf-remove" aria-label="Remove">×</button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <button type="button" class="btn btn-secondary btn-sm cf-add" data-target="orgcf" style="margin-top: var(--spacing-sm);"><i data-lucide="plus"></i>Add field</button>
+
+            <h3 style="margin: var(--spacing-xl) 0 var(--spacing-xs);">On every customer</h3>
+            <p class="form-text" style="margin: 0 0 var(--spacing-sm);">e.g. Vendor code, Plant, PAN, EIN. Each customer gets these fields; ticked ones print in the consignee block.</p>
+            <table class="table cf-table" data-prefix="custcf">
+                <thead><tr><th>Label</th><th class="center" style="width: 70px;">Print</th><th style="width: 40px;"></th></tr></thead>
+                <tbody>
+                    {% for f in (profile.customer_fields or []) + [{}] %}
+                    <tr>
+                        <td><input type="hidden" name="custcf_key_{{ loop.index }}" value="{{ f.key or '' }}"><input type="text" name="custcf_label_{{ loop.index }}" value="{{ f.label or '' }}" class="form-input" placeholder="Vendor code"></td>
+                        <td class="center"><input type="checkbox" name="custcf_print_{{ loop.index }}" class="form-checkbox" {% if f.print or not f.label %}checked{% endif %}></td>
+                        <td><button type="button" class="btn btn-ghost btn-xs cf-remove" aria-label="Remove">×</button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <button type="button" class="btn btn-secondary btn-sm cf-add" data-target="custcf" style="margin-top: var(--spacing-sm);"><i data-lucide="plus"></i>Add field</button>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header"><h2 class="card-title">Quotation defaults</h2></div>
+        <div class="card-body">
+            <div class="form-group">
+                <label for="quote_intro" class="form-label">Opening paragraph</label>
+                <textarea id="quote_intro" name="quote_intro" class="form-textarea" rows="3" placeholder="We thankfully acknowledge the receipt of your above enquiry…">{{ profile.quote_intro or '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="quote_terms" class="form-label">Terms &amp; conditions (one per line)</label>
+                <textarea id="quote_terms" name="quote_terms" class="form-textarea" rows="5" placeholder="Taxes: 18% GST&#10;Offer validity – 30 days">{{ profile.quote_terms or '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="quote_closing" class="form-label">Closing paragraph</label>
+                <textarea id="quote_closing" name="quote_closing" class="form-textarea" rows="3">{{ profile.quote_closing or '' }}</textarea>
+            </div>
+            <p class="form-text">Leave empty to use DocuMint's defaults. Every new quotation starts with these; you can edit them per quote.</p>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header"><h2 class="card-title">Logo, stamp &amp; signature</h2></div>
+        <div class="card-body">
+            <div class="form-row">
+                {% for name, label in [('logo', 'Logo'), ('stamp', 'Company stamp'), ('signature', 'Signature')] %}
+                <div class="form-group">
+                    <span class="form-label">{{ label }}</span>
+                    {% if profile.get(name) %}
+                    <img src="{{ profile.get(name) }}" alt="{{ label }}" style="max-height: 72px; max-width: 100%; display: block; margin-bottom: var(--spacing-sm); background: #fff; border-radius: var(--radius-sm); padding: 4px;">
+                    <label style="font-size: var(--font-size-xs);"><input type="checkbox" name="remove_{{ name }}" class="form-checkbox"> Remove</label>
+                    {% endif %}
+                    <input type="file" name="{{ name }}" accept="image/png,image/jpeg" class="form-input" style="padding-top: 6px;">
+                </div>
+                {% endfor %}
+            </div>
+            <div class="form-row">
+                {{ text('signatory_name', 'Signed by', 'Ramesh', 'Name printed under the signature on quotations') }}
+            </div>
+            <p class="form-text">PNG or JPEG, up to 300 KB. A PNG with a transparent background looks best for stamps and signatures.</p>
+        </div>
+    </section>
+
+    <div class="flex-between" style="margin-bottom: var(--spacing-2xl);">
+        <button type="submit" class="btn btn-primary btn-lg">Save profile</button>
+    </div>
+</form>
+
+<section class="card panel-medium" style="max-width: 880px;">
+    <div class="card-header">
+        <div>
+            <h2 class="card-title">Starter templates</h2>
+            <p class="card-subtitle">Quotation, export quotation, proforma, tax and export invoice. Existing templates are kept.</p>
+        </div>
+        <form method="POST" action="{{ url_for('settings_bp.starter_templates') }}">
+            <button type="submit" class="btn btn-secondary"><i data-lucide="layout-template"></i>Add starter templates</button>
+        </form>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Repeatable custom-field rows: "Add field" copies the last row with fresh numbered names
+document.querySelectorAll('.cf-add').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var table = document.querySelector('.cf-table[data-prefix="' + btn.dataset.target + '"] tbody');
+        var rows = table.querySelectorAll('tr');
+        var clone = rows[rows.length - 1].cloneNode(true);
+        var n = Date.now() % 100000;
+        clone.style.display = '';
+        clone.querySelectorAll('input').forEach(function (inp) {
+            inp.name = inp.name.replace(/_\d+$/, '_' + n);
+            if (inp.type === 'checkbox') inp.checked = true; else inp.value = '';
+        });
+        table.appendChild(clone);
+    });
+});
+// Removing a row blanks its label, which drops it on save
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.cf-remove');
+    if (!btn) return;
+    var row = btn.closest('tr');
+    row.querySelectorAll('input[type=text], input[type=hidden]').forEach(function (inp) { inp.value = ''; });
+    row.style.display = 'none';
+});
+</script>
+{% endblock %}

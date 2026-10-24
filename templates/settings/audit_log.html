@@ -1,88 +1,38 @@
 {% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
 
-{% block title %}Audit Log - Invoice System{% endblock %}
-{% block page_title %}Audit Log{% endblock %}
-{% block page_description %}
-<div class="header-description">
-    View system activity and changes for your organization
-</div>
-{% endblock %}
+{% block title %}Audit log{% endblock %}
+{% block page_title %}Audit log{% endblock %}
 
 {% block content %}
-<div class="card mb-lg">
-    <div class="card-header">
-        <h2 class="card-title">Audit Log</h2>
-        <div style="display: flex; gap: var(--spacing-md); align-items: center;">
-            <form method="GET" action="{{ url_for('settings_bp.audit_log') }}" style="display: flex; gap: var(--spacing-sm); align-items: center;">
-                <label for="table_name" style="font-size: 13px; color: var(--text-secondary);">Filter by:</label>
-                <select name="table_name" id="table_name" class="form-select" style="padding: 4px 8px; font-size: 13px;" onchange="this.form.submit()">
-                    <option value="">All Tables</option>
-                    <option value="user_organization" {% if table_filter == 'user_organization' %}selected{% endif %}>User Roles</option>
-                    <option value="invoice" {% if table_filter == 'invoice' %}selected{% endif %}>Invoices</option>
-                    <option value="payment" {% if table_filter == 'payment' %}selected{% endif %}>Payments</option>
-                    <option value="customer" {% if table_filter == 'customer' %}selected{% endif %}>Customers</option>
-                    <option value="template" {% if table_filter == 'template' %}selected{% endif %}>Templates</option>
-                </select>
-            </form>
-        </div>
-    </div>
-    <div class="card-body">
-        {% if audit_logs %}
-        <div class="table-container">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Timestamp</th>
-                        <th>Table</th>
-                        <th>Action</th>
-                        <th>Field</th>
-                        <th>Old Value</th>
-                        <th>New Value</th>
-                        <th>Details</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for log in audit_logs %}
-                    <tr>
-                        <td>{{ log.changed_at.strftime('%Y-%m-%d %H:%M:%S') if log.changed_at else 'N/A' }}</td>
-                        <td>
-                            <span class="badge badge-info">{{ log.table_name }}</span>
-                        </td>
-                        <td>
-                            <span class="badge badge-{{ 'success' if log.action_type == 'INSERT' else 'warning' if log.action_type == 'UPDATE' else 'danger' }}">
-                                {{ log.action_type }}
-                            </span>
-                        </td>
-                        <td>{{ log.field_name or 'N/A' }}</td>
-                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            {{ log.old_value or 'N/A' }}
-                        </td>
-                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            {{ log.new_value or 'N/A' }}
-                        </td>
-                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ log.additional_info or '' }}">
-                            {{ log.additional_info or 'N/A' }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <div class="empty-state">
-            <p>No audit log entries found.</p>
-        </div>
-        {% endif %}
-    </div>
+<div class="list-header">
+    <nav class="segmented" aria-label="Filter">
+        {% for key, label in [('', 'All'), ('invoice', 'Documents'), ('payment', 'Payments'), ('user_organization', 'Team'), ('customer', 'Customers'), ('template', 'Templates')] %}
+        <a href="{{ url_for('settings_bp.audit_log', table_name=key or None) }}" class="{{ 'active' if (table_filter or '') == key }}">{{ label }}</a>
+        {% endfor %}
+    </nav>
+</div>
+
+<div class="card">
+{% if audit_logs %}
+    <ul class="member-list audit-list">
+        {% for log in audit_logs %}
+        {% set e = log.entry %}
+        <li>
+            <span class="file-icon"><i data-lucide="{{ e.icon }}"></i></span>
+            <div class="pick-main" style="flex: 1;">
+                <span class="pick-title">
+                    {% if e.invoice_id %}<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=e.invoice_id) }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}
+                    {% if e.detail %}<span class="text-secondary"> · {{ e.detail }}</span>{% endif %}
+                </span>
+                {% if e.sub %}<span class="pick-sub">{{ e.sub }}</span>{% endif %}
+            </div>
+            <time class="text-tertiary audit-when" datetime="{{ log.changed_at }}">{{ log.changed_at.strftime('%d %b %Y, %H:%M') if log.changed_at else '' }}</time>
+        </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    {{ empty_state('history', 'Nothing here yet') }}
+{% endif %}
 </div>
 {% endblock %}
-
-{% block extra_js %}
-<script>
-    // Initialize Lucide icons
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-</script>
-{% endblock %}
-

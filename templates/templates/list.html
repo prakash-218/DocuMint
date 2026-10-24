@@ -1,84 +1,48 @@
 {% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
 
-{% block title %}Templates - Invoice System{% endblock %}
+{% block title %}Templates{% endblock %}
 {% block page_title %}Templates{% endblock %}
 
-{% block content %}
-<div class="list-header">
-    <div class="list-header-left">
-        <h2 class="list-title">Templates <span class="list-count">{{ templates|length if templates else 0 }}</span></h2>
-    </div>
-    <div class="list-header-right" style="display: flex; gap: var(--spacing-md); align-items: center;">
-        <a href="{{ url_for('templates_bp.list_templates', include_archived='true' if not include_archived else 'false') }}" 
-           class="btn btn-secondary btn-sm">
-            {% if include_archived %}Hide Archived{% else %}Show Archived{% endif %}
-        </a>
-        <a href="{{ url_for('templates_bp.create_template') }}" class="btn btn-primary">
-            <i data-lucide="plus" class="nav-icon"></i>
-            Create Template
-        </a>
-    </div>
-</div>
 
-{% if templates %}
-<div class="table-container">
-    <table class="table list-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Currency</th>
-                <th>Version</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th style="width: 100px;">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for template in templates %}
-            <tr class="list-row" {% if template.is_archived %}style="opacity: 0.6;"{% endif %}>
-                <td>
-                    <div class="list-item-content">
-                        <a href="{{ url_for('templates_bp.view_template', template_id=template.template_id) }}" class="item-id">
-                            {{ template.name }}
-                        </a>
-                        {% if template.is_archived %}
-                        <span class="badge badge-warning" style="margin-left: var(--spacing-xs);">Archived</span>
-                        {% endif %}
-                    </div>
-                </td>
-                <td>{{ template.currency_code }}</td>
-                <td>v{{ template.version }}</td>
-                <td>
-                    {% if template.is_archived %}
-                        <span class="badge badge-warning">Archived</span>
-                    {% elif template.version == template.latest_version %}
-                        <span class="badge badge-success">Latest</span>
-                    {% else %}
-                        <span class="badge badge-warning">v{{ template.latest_version }} available</span>
-                    {% endif %}
-                </td>
-                <td>{{ template.created_at.strftime('%Y-%m-%d') if template.created_at else 'N/A' }}</td>
-                <td>
-                    <a href="{{ url_for('templates_bp.view_template', template_id=template.template_id) }}" class="btn btn-sm btn-secondary">View</a>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% else %}
-<div class="empty-state">
-    <p>No templates yet. <a href="{{ url_for('templates_bp.create_template') }}">Create your first template</a></p>
-</div>
+{% block header_actions %}
+<a href="{{ url_for('templates_bp.list_templates', include_archived='false' if include_archived else 'true') }}" class="btn btn-ghost">
+    <i data-lucide="{{ 'eye-off' if include_archived else 'archive' }}"></i><span class="btn-label">{{ 'Hide archived' if include_archived else 'Show archived' }}</span>
+</a>
+{% if current_org_role in ('owner', 'admin') %}
+<a href="{{ url_for('templates_bp.create_template') }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New template</span></a>
 {% endif %}
 {% endblock %}
 
-{% block extra_js %}
-<script>
-    // Initialize Lucide icons
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-</script>
+{% block content %}
+{% if templates %}
+<div class="template-grid">
+    {% for tpl in templates %}
+    <a class="card template-card {{ 'archived' if tpl.is_archived }}" href="{{ url_for('templates_bp.view_template', template_id=tpl.template_id) }}">
+        <div class="flex-between" style="flex-wrap: nowrap; align-items: flex-start;">
+            <h3>{{ tpl.name }}</h3>
+            <span class="badge {{ 'badge-warning' if tpl.is_archived else 'badge-secondary' }}">{{ 'Archived' if tpl.is_archived else tpl.currency_code }}</span>
+        </div>
+        {% for sec in tpl.sections %}
+        <div>
+            <div class="text-tertiary" style="font-size: var(--font-size-xs); margin-bottom: 4px;">{{ sec.title }}{% if sec.type == 'line_item' %} · line items{% endif %}</div>
+            <div class="template-columns">{% for col in sec.columns %}<span>{{ col }}</span>{% endfor %}</div>
+        </div>
+        {% else %}
+        <p class="text-tertiary" style="margin: 0;">No fields yet</p>
+        {% endfor %}
+        <div class="meta">
+            <span>v{{ tpl.version }}</span>
+            <span>{{ 'Not used yet' if not tpl.used else 'Used by ' ~ tpl.used ~ ' document' ~ ('' if tpl.used == 1 else 's') }}</span>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    {{ empty_state('layout-template', 'No templates yet',
+                   'Templates define the columns and formulas of your documents. Start from the ready-made ones in Settings → Business profile, or build your own.',
+                   url_for('templates_bp.create_template') if current_org_role in ('owner', 'admin') else None, 'New template') }}
+</div>
+{% endif %}
 {% endblock %}
-

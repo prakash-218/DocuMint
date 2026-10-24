@@ -5,7 +5,8 @@ Settings blueprint - Organization settings and preferences
 import logging
 from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, jsonify
 from db import db, DatabaseError
-from auth import require_auth, require_org, hash_password
+from auth import require_auth, require_org
+from access import safe_referrer
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def index():
         # Fetch team management data for owners
         pending_requests = []
         active_members = []
-        if current_role == 'owner':
+        if current_role in ('owner', 'admin'):
             pending_requests = db.execute_proc('sp_get_pending_members', (org_id,))
             active_members = db.execute_proc('sp_get_org_members', (org_id,))
             if active_members:
@@ -112,7 +113,7 @@ def select_org():
                         logger.info("Token regenerated successfully")
                         
                         flash('Organization switched successfully', 'success')
-                        redirect_url = request.referrer or url_for('dashboard_bp.index')
+                        redirect_url = safe_referrer('dashboard_bp.index')
                         logger.info(f"Redirecting to: {redirect_url}")
                         return redirect(redirect_url)
                     except Exception as e:
@@ -394,19 +395,36 @@ def approve_member():
                 current_role = org.get('role')
                 break
     
-    if current_role != 'owner':
-        flash('Only owners can manage team members', 'error')
-        return redirect(request.referrer or url_for('settings_bp.index'))
+    if current_role not in ('owner', 'admin'):
+        flash('Only owners and admins can manage the team', 'error')
+        return redirect(safe_referrer('settings_bp.index'))
 
     if not user_id or not action:
         flash('Invalid request', 'error')
-        return redirect(request.referrer or url_for('settings_bp.index'))
+        return redirect(safe_referrer('settings_bp.index'))
+
+    if role and role not in ('owner', 'admin', 'member', 'viewer'):
+        flash('Invalid role', 'error')
+        return redirect(safe_referrer('settings_bp.index'))
+
+    # Admins manage members and viewers; only owners make or change owners
+    if current_role == 'admin':
+        target = next((m for m in db.execute_proc('sp_get_org_members', (org_id,)) or []
+                       if str(m.get('user_id')) == str(user_id)), None)
+        if role == 'owner' or (target and target.get('role') == 'owner'):
+            flash('Only an owner can make or change owners', 'error')
+            return redirect(safe_referrer('settings_bp.index'))
+
+    if str(user_id) == str(g.current_user['user_id']) and (
+            action in ('reject', 'deactivate') or (action == 'change_role' and role != current_role)):
+        flash('You cannot remove or demote yourself. Ask another owner to do it.', 'error')
+        return redirect(safe_referrer('settings_bp.index'))
 
     try:
         if action == 'approve':
             if not role:
                 flash('Role is required', 'error')
-                return redirect(request.referrer or url_for('settings_bp.index'))
+                return redirect(safe_referrer('settings_bp.index'))
             db.execute_proc('sp_update_member_status', (org_id, user_id, 'active', role), fetch=False)
             flash('Member approved', 'success')
             
@@ -425,7 +443,7 @@ def approve_member():
         elif action == 'change_role':
             if not role:
                 flash('Role is required', 'error')
-                return redirect(request.referrer or url_for('settings_bp.index'))
+                return redirect(safe_referrer('settings_bp.index'))
             # Get current member status to preserve it
             members = db.execute_proc('sp_get_org_members', (org_id,))
             current_member = next((m for m in (members or []) if m.get('user_id') == user_id), None)
@@ -436,7 +454,7 @@ def approve_member():
     except DatabaseError as e:
         flash(f'Error updating member: {str(e)}', 'error')
 
-    return redirect(request.referrer or url_for('settings_bp.index'))
+    return redirect(safe_referrer('settings_bp.index'))
 
 
 @settings_bp.route('/audit-log')
@@ -453,8 +471,8 @@ def audit_log():
                 current_role = org.get('role')
                 break
     
-    if current_role != 'owner':
-        flash('Only owners can view audit logs', 'error')
+    if current_role not in ('owner', 'admin'):
+        flash('Only owners and admins can view the audit log', 'error')
         return redirect(url_for('settings_bp.index'))
     
     try:
@@ -462,10 +480,14 @@ def audit_log():
         limit = request.args.get('limit', 100, type=int)
         offset = request.args.get('offset', 0, type=int)
         
-        audit_logs = db.execute_proc('sp_get_audit_log', (org_id, table_filter, limit, offset))
-        
+        audit_logs = db.execute_proc('sp_get_audit_log', (org_id, table_filter or None, limit, offset)) or []
+        from app_helpers import describe_audit
+        docs = {d['invoice_id']: d for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []}
+        for log in audit_logs:
+            log['entry'] = describe_audit(log, docs)
+
         return render_template('settings/audit_log.html',
-                             audit_logs=audit_logs or [],
+                             audit_logs=audit_logs,
                              current_org_role=current_role,
                              table_filter=table_filter)
     except DatabaseError as e:
@@ -475,3 +497,139 @@ def audit_log():
                              current_org_role=current_role,
                              table_filter=None)
 
+
+
+# ---------------------------------------------------------------- Business profile
+
+PROFILE_TEXT_FIELDS = (
+    'gstin', 'pan', 'iec_code', 'lut_number', 'ad_code', 'state_code', 'phone', 'email', 'website',
+    'bank_name', 'bank_account', 'bank_ifsc', 'bank_branch', 'bank_swift', 'signatory_name',
+    'quote_intro', 'quote_terms', 'quote_closing', 'footer_note',
+)
+PROFILE_IMAGES = ('logo', 'stamp', 'signature')
+MAX_IMAGE_BYTES = 300 * 1024
+CURRENCIES = ('INR', 'USD', 'EUR', 'GBP', 'AUD', 'CAD', 'SGD', 'AED')
+
+
+def _current_role(org_id):
+    for org in session.get('user_organizations') or []:
+        if str(org.get('org_id')) == str(org_id):
+            return org.get('role')
+    return None
+
+
+def _image_data_uri(upload):
+    """Read an uploaded PNG/JPEG into a data: URI (stored in the profile; PDFs embed it directly)."""
+    import base64
+    data = upload.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError(f'{upload.filename}: images must be under {MAX_IMAGE_BYTES // 1024} KB')
+    if data.startswith(b'\x89PNG'):
+        mime = 'image/png'
+    elif data.startswith(b'\xff\xd8'):
+        mime = 'image/jpeg'
+    else:
+        raise ValueError(f'{upload.filename}: use a PNG or JPEG image')
+    return f'data:{mime};base64,' + base64.b64encode(data).decode('ascii')
+
+
+@settings_bp.route('/profile', methods=['GET', 'POST'])
+@require_org
+def business_profile():
+    """Tax registrations, bank details, numbering and document defaults (owners only)."""
+    from documents import DOC_TYPES
+    from document_service import get_org_profile, save_org_profile, series_status, set_next_number
+
+    org_id = g.current_org_id
+    if _current_role(org_id) not in ('owner', 'admin'):
+        flash('Only organization owners can change the business profile', 'error')
+        return redirect(url_for('settings_bp.index'))
+
+    org, profile = get_org_profile(org_id)
+
+    if request.method == 'POST':
+        for key in PROFILE_TEXT_FIELDS:
+            value = (request.form.get(key) or '').strip()
+            if value:
+                profile[key] = value
+            else:
+                profile.pop(key, None)
+        profile['gstin'] = profile.get('gstin', '').upper() or None
+        if not profile['gstin']:
+            profile.pop('gstin')
+
+        currency = request.form.get('default_currency')
+        profile['default_currency'] = currency if currency in CURRENCIES else 'INR'
+        try:
+            profile['default_gst_rate'] = max(0.0, min(100.0, float(request.form.get('default_gst_rate') or 18)))
+            month = int(request.form.get('fy_start_month') or 4)
+            profile['fy_start_month'] = month if 1 <= month <= 12 else 4
+        except ValueError:
+            flash('GST rate and financial-year month must be numbers', 'error')
+            return redirect(url_for('settings_bp.business_profile'))
+        profile['advance_basis'] = 'total' if request.form.get('advance_basis') == 'total' else 'pre_tax'
+        profile['separate_export_series'] = bool(request.form.get('separate_export_series'))
+        from layout import defs_from_form
+        profile['custom_fields'] = defs_from_form(request.form, 'orgcf', with_value=True)
+        profile['customer_fields'] = defs_from_form(request.form, 'custcf', with_value=False)
+
+        formats = {}
+        for key in DOC_TYPES:
+            pattern = (request.form.get(f'format_{key}') or '').strip()
+            if pattern:
+                if '{num' not in pattern:
+                    flash(f'Number format for {DOC_TYPES[key].label} must contain {{num}}', 'error')
+                    return redirect(url_for('settings_bp.business_profile'))
+                formats[key] = pattern
+        profile['number_formats'] = formats
+
+        try:
+            for name in PROFILE_IMAGES:
+                upload = request.files.get(name)
+                if request.form.get(f'remove_{name}'):
+                    profile.pop(name, None)
+                elif upload and upload.filename:
+                    profile[name] = _image_data_uri(upload)
+        except ValueError as e:
+            flash(str(e), 'error')
+            return redirect(url_for('settings_bp.business_profile'))
+
+        try:
+            save_org_profile(org_id, profile)
+            from document_service import series_key
+            for key in DOC_TYPES:
+                raw = (request.form.get(f'next_{key}') or '').strip()
+                if raw and series_key(key, profile) == key:   # shared series are set via their owner
+                    set_next_number(org_id, key, profile, int(raw))
+        except (DatabaseError, ValueError) as e:
+            logger.exception("Failed to save business profile for %s", org_id)
+            flash(f'Could not save the profile: {e}', 'error')
+            return redirect(url_for('settings_bp.business_profile'))
+
+        flash('Business profile saved', 'success')
+        return redirect(url_for('settings_bp.business_profile'))
+
+    return render_template('settings/profile.html', org=org, profile=profile,
+                           series=series_status(org_id, profile), currencies=CURRENCIES)
+
+
+@settings_bp.route('/profile/starter-templates', methods=['POST'])
+@require_org
+def starter_templates():
+    from document_service import create_starter_templates
+
+    org_id = g.current_org_id
+    if _current_role(org_id) not in ('owner', 'admin'):
+        flash('Only organization owners can add templates', 'error')
+        return redirect(url_for('settings_bp.index'))
+    try:
+        created = create_starter_templates(org_id)
+    except DatabaseError:
+        logger.exception("Failed to create starter templates for %s", org_id)
+        flash('Could not create the starter templates', 'error')
+        return redirect(url_for('settings_bp.business_profile'))
+    if created:
+        flash(f'Added templates: {", ".join(created)}', 'success')
+    else:
+        flash('The starter templates already exist', 'info')
+    return redirect(url_for('templates_bp.list_templates'))

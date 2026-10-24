@@ -1,0 +1,368 @@
+"""
+Projects and customer documents.
+
+A project groups one customer's documents for a piece of work: the quotation and
+its revisions, the proforma, the tax / export invoice. Converting or revising a
+document keeps it in the source's project (starting one if needed), so a project builds
+itself as the work moves along.
+
+Customer documents are files from or about the customer - their PO, drawings,
+specs - attached to the customer and optionally to a project or one document. A PO
+uploaded to a project fills "Buyer's order no. / date" on the project's drafts.
+"""
+
+import logging
+import os
+import re
+from datetime import date
+from typing import Dict, Iterable, List, Optional, Set
+
+from db import db, DatabaseError
+
+logger = logging.getLogger(__name__)
+
+PROJECT_STATUSES = {'open': 'Open', 'completed': 'Completed', 'cancelled': 'Cancelled'}
+
+DOCUMENT_KINDS = {
+    'po': 'Purchase order',
+    'drawing': 'Drawing',
+    'specification': 'Specification',
+    'enquiry': 'Enquiry / RFQ',
+    'correspondence': 'Correspondence',
+    'report': 'Inspection / test report',
+    'our_quote': 'Our quotation (made earlier)',
+    'our_proforma': 'Our proforma (made earlier)',
+    'our_invoice': 'Our invoice (made earlier)',
+    'other': 'Other',
+}
+
+# Our own documents from before DocuMint, uploaded as files: which project stage they belong to
+EARLIER_KINDS = {'our_quote': 'quote', 'our_proforma': 'proforma', 'our_invoice': 'invoice'}
+
+MAX_FILE_BYTES = 10 * 1024 * 1024
+
+# Extension -> the content type we serve it as (never the browser-supplied one)
+FILE_TYPES = {
+    'pdf': 'application/pdf',
+    'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'webp': 'image/webp',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'csv': 'text/csv', 'txt': 'text/plain',
+    'dwg': 'application/acad', 'dxf': 'application/dxf',
+    'step': 'application/step', 'stp': 'application/step', 'igs': 'application/iges', 'iges': 'application/iges',
+    'zip': 'application/zip',
+    'eml': 'message/rfc822', 'msg': 'application/vnd.ms-outlook',
+}
+INLINE_TYPES = {'application/pdf', 'image/png', 'image/jpeg', 'image/webp'}   # opened in the browser
+_MAGIC = {'pdf': (b'%PDF',), 'png': (b'\x89PNG',), 'jpg': (b'\xff\xd8',), 'jpeg': (b'\xff\xd8',),
+          'webp': (b'RIFF',), 'zip': (b'PK',), 'docx': (b'PK',), 'xlsx': (b'PK',)}
+
+
+class UploadError(ValueError):
+    pass
+
+
+def project_label(project) -> str:
+    no = project.get('project_no') if isinstance(project, dict) else project
+    return f'PRJ-{int(no):03}' if no else ''
+
+
+# ---------------------------------------------------------------- Grouping
+
+def document_families(rows: Iterable[Dict]) -> List[Set[str]]:
+    """
+    Split documents into families of related ones: linked by conversion
+    (source_invoice_id) or being revisions of one quotation (same base number),
+    and always for the same customer. Pure; rows from sp_list_org_document_links.
+    """
+    rows = list(rows)
+    parent = {r['invoice_id']: r['invoice_id'] for r in rows}
+    customer = {r['invoice_id']: r.get('customer_id') for r in rows}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        if a in parent and b in parent and customer[a] == customer[b]:
+            parent[find(a)] = find(b)
+
+    by_quote_base: Dict[tuple, str] = {}
+    for r in rows:
+        if r.get('source_invoice_id'):
+            union(r['invoice_id'], r['source_invoice_id'])
+        if r.get('doc_type') == 'quote':
+            base = r.get('base_number') or r.get('doc_number')
+            if base:
+                key = (r.get('customer_id'), base)
+                if key in by_quote_base:
+                    union(r['invoice_id'], by_quote_base[key])
+                else:
+                    by_quote_base[key] = r['invoice_id']
+
+    groups: Dict[str, Set[str]] = {}
+    for r in rows:
+        groups.setdefault(find(r['invoice_id']), set()).add(r['invoice_id'])
+    return list(groups.values())
+
+
+def suggest_title(docs: List[Dict]) -> str:
+    """A project title from its documents: the quotation's subject, else the first document's number."""
+    order = {'quote': 0, 'proforma': 1, 'invoice': 2, 'export_invoice': 2}
+    docs = sorted(docs, key=lambda d: (order.get(d.get('doc_type'), 3), str(d.get('issue_date') or '')))
+    for d in docs:
+        subject = (d.get('subject') or '').strip()
+        if subject and subject.lower() != 'null':
+            return subject[:200]
+    first = docs[0] if docs else {}
+    number = first.get('base_number') or first.get('doc_number')
+    return f'Work from {number}' if number else 'New project'
+
+
+def _links(org_id) -> List[Dict]:
+    return db.execute_proc('sp_list_org_document_links', (org_id,)) or []
+
+
+def create_project(org_id, customer_id, title, reference=None, notes=None, user_id=None) -> str:
+    row = db.execute_proc_single('sp_create_project', (org_id, customer_id, (title or 'New project').strip()[:200],
+                                                   (reference or '').strip()[:100], (notes or '').strip(), user_id))
+    return row['project_id']
+
+
+def get_project(project_id, org_id) -> Optional[Dict]:
+    if not project_id:
+        return None
+    try:
+        return db.execute_proc_single('sp_get_project', (project_id, org_id))
+    except DatabaseError:
+        return None
+
+
+def project_of(invoice_id, org_id) -> Optional[str]:
+    row = db.execute_proc_single('sp_get_invoice_project', (invoice_id, org_id))
+    return (row or {}).get('project_id')
+
+
+def set_project(invoice_id, org_id, project_id):
+    db.execute_proc('sp_set_invoice_project', (invoice_id, org_id, project_id), fetch=False)
+
+
+def group_family(invoice_id, org_id, user_id=None, title=None) -> str:
+    """Put a document and everything related to it into one project (the family's existing project, or a new one)."""
+    rows = _links(org_id)
+    by_id = {r['invoice_id']: r for r in rows}
+    family = next((f for f in document_families(rows) if invoice_id in f), {invoice_id})
+    members = [by_id[i] for i in family if i in by_id]
+    project_id = next((m['project_id'] for m in members if m.get('project_id')), None)
+    if not project_id:
+        project_id = create_project(org_id, by_id[invoice_id]['customer_id'], title or suggest_title(members), user_id=user_id)
+    for m in members:
+        if not m.get('project_id'):
+            set_project(m['invoice_id'], org_id, project_id)
+    return project_id
+
+
+def group_all(org_id, user_id=None) -> int:
+    """Start projects for every family of linked documents (2 or more) that isn't fully in a project. Returns projects created."""
+    rows = _links(org_id)
+    by_id = {r['invoice_id']: r for r in rows}
+    created = 0
+    for family in document_families(rows):
+        members = [by_id[i] for i in family]
+        if len(members) < 2 or all(m.get('project_id') for m in members):
+            continue
+        project_id = next((m['project_id'] for m in members if m.get('project_id')), None)
+        if not project_id:
+            project_id = create_project(org_id, members[0]['customer_id'], suggest_title(members), user_id=user_id)
+            created += 1
+        for m in members:
+            if not m.get('project_id'):
+                set_project(m['invoice_id'], org_id, project_id)
+    return created
+
+
+def ungrouped_families(org_id) -> int:
+    """How many sets of linked documents (2 or more) still have a document outside a project."""
+    rows = _links(org_id)
+    in_project = {r['invoice_id'] for r in rows if r.get('project_id')}
+    return sum(1 for f in document_families(rows) if len(f) > 1 and f - in_project)
+
+
+def follow_source(source: Dict, new_id: str, org_id) -> Optional[str]:
+    """A converted / revised document joins its source's project; one is started if the source had none."""
+    try:
+        # the new document's source_invoice_id already ties it into the source's family
+        return group_family(source['invoice_id'], org_id)
+    except DatabaseError:
+        logger.exception("Could not add %s to the project of %s", new_id, source.get('invoice_id'))
+        return None
+
+
+def project_documents(project_id, org_id) -> List[Dict]:
+    """The project's documents (list rows, same shape as sp_list_invoices), in workflow order."""
+    ids = {r['invoice_id'] for r in _links(org_id) if r.get('project_id') == project_id}
+    if not ids:
+        return []
+    docs = [d for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or [] if d['invoice_id'] in ids]
+    order = {'quote': 0, 'proforma': 1, 'invoice': 2, 'export_invoice': 2}
+    return sorted(docs, key=lambda d: (order.get(d.get('doc_type'), 3), str(d.get('issue_date') or ''),
+                                       d.get('doc_number') or ''))
+
+
+def project_stages(docs: List[Dict], files: Optional[List[Dict]] = None) -> List[Dict]:
+    """Documents by stage for the project page: quotations, proforma invoices, invoices -
+    with any made before DocuMint and uploaded as files."""
+    from documents import DOC_TYPES
+    stages = [('quote', ('quote',)), ('proforma', ('proforma',)), ('invoice', ('invoice', 'export_invoice'))]
+    out = []
+    for key, types in stages:
+        out.append({'key': key, 'label': DOC_TYPES[key].plural,
+                    'docs': [d for d in docs if d.get('doc_type') in types],
+                    'uploads': [f for f in files or [] if EARLIER_KINDS.get(f.get('kind')) == key]})
+    return out
+
+
+def project_money(docs: List[Dict], files: Optional[List[Dict]] = None) -> Dict:
+    """Quoted (latest live quotation, or an uploaded earlier one), invoiced, received and due - per currency."""
+    from documents import balance_of, sum_by_currency
+    live_quotes = [d for d in docs if d.get('doc_type') == 'quote' and d.get('status') not in ('revised', 'declined')]
+    if not live_quotes:
+        live_quotes = [{'total_amount': f['amount'], 'currency_code': f.get('currency')} for f in reversed(files or [])
+                       if f.get('kind') == 'our_quote' and f.get('amount')]
+    invoices = [d for d in docs if d.get('doc_type') in ('invoice', 'export_invoice') and d.get('status') != 'draft']
+    return {
+        'quoted': sum_by_currency(live_quotes[-1:], lambda d: d.get('total_amount')),
+        'invoiced': sum_by_currency(invoices, lambda d: d.get('total_amount')),
+        'received': sum_by_currency(invoices, lambda d: d.get('paid_amount')),
+        'due': sum_by_currency(invoices, balance_of),
+    }
+
+
+def unassigned_documents(org_id, customer_id) -> List[Dict]:
+    """This customer's documents that aren't in any project (to add to one)."""
+    free = {r['invoice_id'] for r in _links(org_id) if r.get('customer_id') == customer_id and not r.get('project_id')}
+    return [d for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or [] if d['invoice_id'] in free]
+
+
+def list_projects(org_id, customer_id=None, status=None) -> List[Dict]:
+    return db.execute_proc('sp_list_projects', (org_id, customer_id, status)) or []
+
+
+# ---------------------------------------------------------------- Customer documents
+
+def read_upload(upload) -> tuple:
+    """(file name, content type, bytes) for an allowed file; raises UploadError."""
+    if not upload or not upload.filename:
+        raise UploadError('Choose a file to upload')
+    name = os.path.basename(upload.filename.replace('\\', '/')).strip()
+    name = re.sub(r'[\x00-\x1f"]', '', name)[:200] or 'file'
+    ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+    if ext not in FILE_TYPES:
+        raise UploadError(f'{name}: that kind of file isn\'t supported. Use PDF, images, Office files, CAD (DWG/DXF/STEP) or ZIP.')
+    data = upload.read(MAX_FILE_BYTES + 1)
+    if len(data) > MAX_FILE_BYTES:
+        raise UploadError(f'{name}: files must be under {MAX_FILE_BYTES // (1024 * 1024)} MB')
+    if not data:
+        raise UploadError(f'{name} is empty')
+    magic = _MAGIC.get(ext)
+    if magic and not data.startswith(magic):
+        raise UploadError(f"{name} doesn't look like a real .{ext} file")
+    return name, FILE_TYPES[ext], data
+
+
+def _date_or_none(value):
+    try:
+        return date.fromisoformat((value or '').strip()).isoformat()
+    except ValueError:
+        return None
+
+
+def _amount_or_none(value):
+    try:
+        return round(float(str(value).replace(',', '')), 2) if str(value or '').strip() else None
+    except ValueError:
+        return None
+
+
+def add_attachment(org_id, customer_id, form, upload, user_id=None, project_id=None, invoice_id=None) -> Dict:
+    """Store an uploaded customer document. Returns {'attachment_id', 'filled': [doc numbers given the PO no.]}."""
+    name, content_type, data = read_upload(upload)
+    kind = form.get('kind') if form.get('kind') in DOCUMENT_KINDS else 'other'
+    title = (form.get('title') or '').strip()[:200] or (DOCUMENT_KINDS[kind] if kind != 'other' else name)
+    reference = (form.get('reference_no') or '').strip()[:100]
+    doc_date = _date_or_none(form.get('doc_date'))
+    amount = _amount_or_none(form.get('amount'))
+    currency = (form.get('currency') or '').upper()[:3]
+    if amount is not None and not currency:
+        from document_service import get_org_profile
+        currency = get_org_profile(org_id)[1].get('default_currency') or 'INR'
+    row = db.execute_proc_single('sp_add_attachment', (
+        org_id, customer_id, project_id or None, invoice_id or None, kind, title, reference, doc_date,
+        amount, currency,
+        (form.get('notes') or '').strip()[:2000], name, content_type, data, user_id))
+    filled = []
+    if kind == 'po' and reference and project_id and form.get('fill_po', 'on'):
+        filled = fill_purchase_order(org_id, project_id, reference, doc_date)
+    return {'attachment_id': row['attachment_id'], 'filled': filled}
+
+
+def list_attachments(org_id, customer_id=None, project_id=None, invoice_id=None) -> List[Dict]:
+    return db.execute_proc('sp_list_attachments', (org_id, customer_id, project_id, invoice_id)) or []
+
+
+def get_attachment(attachment_id, org_id) -> Optional[Dict]:
+    try:
+        return db.execute_proc_single('sp_get_attachment', (attachment_id, org_id))
+    except DatabaseError:
+        return None
+
+
+def latest_purchase_order(org_id, project_id) -> Optional[Dict]:
+    pos = [d for d in list_attachments(org_id, project_id=project_id) if d.get('kind') == 'po' and d.get('reference_no')]
+    return pos[0] if pos else None
+
+
+def po_details(po: Optional[Dict]) -> Dict:
+    """detail_* values a PO gives a new document."""
+    if not po:
+        return {}
+    out = {'buyer_order_no': po['reference_no']}
+    if po.get('doc_date'):
+        out['buyer_order_date'] = str(po['doc_date'])
+    return out
+
+
+def fill_purchase_order(org_id, project_id, number, po_date) -> List[str]:
+    """Write the PO no./date onto the project's draft documents that have the field and leave it blank."""
+    from access import get_org_invoice
+    from document_service import save_details
+    from documents import get_type, load_json
+    filled = []
+    for d in project_documents(project_id, org_id):
+        if (d.get('status') or 'draft') != 'draft':
+            continue
+        if 'buyer_order_no' not in {f.key for f in get_type(d.get('doc_type')).details}:
+            continue
+        header, _ = get_org_invoice(d['invoice_id'], org_id)
+        details = load_json(header.get('details'))
+        if details.get('buyer_order_no'):
+            continue
+        details['buyer_order_no'] = number
+        if po_date:
+            details['buyer_order_date'] = po_date
+        save_details(header, org_id, details)
+        filled.append(d.get('doc_number') or 'a draft')
+    return filled
+
+
+def human_size(n) -> str:
+    n = int(n or 0)
+    if n < 1024:
+        return f'{n} B'
+    if n < 1024 * 1024:
+        return f'{n / 1024:.0f} KB'
+    return f'{n / (1024 * 1024):.1f} MB'

@@ -5,7 +5,9 @@
 
     
     function parseCellValue(cell) {
-        const text = cell.textContent.trim();
+        // An explicit data-sort value wins over the displayed text (e.g. formatted dates)
+        const raw = cell.getAttribute('data-sort');
+        const text = raw !== null ? raw.trim() : cell.textContent.trim();
         
         
         const currencyMatch = text.replace(/[$,]/g, '').match(/^[\d.]+$/);
@@ -257,7 +259,7 @@
     
     function initAllTables() {
         
-        const tables = document.querySelectorAll('table.table, table.list-table');
+        const tables = document.querySelectorAll('table[data-sortable]');
         
         tables.forEach(table => {
             

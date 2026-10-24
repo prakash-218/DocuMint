@@ -2,19 +2,27 @@
 Invoices blueprint - CRUD operations for invoices
 """
 
+import logging
 from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, make_response
 from db import db, DatabaseError
 from auth import require_org, get_current_org_role, can_create_invoice, can_edit_invoice, can_delete_invoice, can_finalize_invoice
+from access import get_org_invoice, get_org_template
+from app_helpers import invoice_is_overdue
+from documents import CHOOSABLE, DOC_TYPES, TAX_MODES, get_type, invoice_kind, load_json
+from document_service import (DocumentError, apply_document_form, convert_document, customer_tax_hints,
+                              form_defaults, get_org_profile, preview_number, revise_document, revision_info)
 import uuid
-from datetime import datetime
-try:
-    from xhtml2pdf import pisa
-    PDF_AVAILABLE = True
-except ImportError:
-    PDF_AVAILABLE = False
-    pisa = None
+from datetime import date, datetime
+from layout import load_layout, packing_page, pages_for, template_is_export
+import projects
+import activity
+import doc_urls
+from invoice_service import get_template_fields, build_sections, invoice_summary, recalculate_invoice, render_invoice_pdf, PdfUnavailable
+
+logger = logging.getLogger(__name__)
 
 invoices_bp = Blueprint('invoices_bp', __name__)
+doc_urls.install(invoices_bp)
 
 
 @invoices_bp.route('/')
@@ -22,29 +30,80 @@ invoices_bp = Blueprint('invoices_bp', __name__)
 def list_invoices():
     """List all invoices"""
     org_id = g.current_org_id
-    status_filter = request.args.get('status')
-    
-    # Get current role
-    current_role = get_current_org_role()
+    group = {'quotes': 'quote', 'proformas': 'proforma'}.get(g.doc_path, 'invoices')
+    status_filter = request.args.get('status') or 'all'
+    query = (request.args.get('q') or '').strip()
 
     try:
-        invoices = db.execute_proc('sp_list_invoices', (org_id, status_filter, 50, 0))
+        documents = db.execute_proc('sp_list_invoices', (org_id, None, 1000, 0)) or []
+    except DatabaseError:
+        logger.exception("Failed to list documents for org %s", org_id)
+        flash('Error loading documents', 'error')
+        documents = []
 
-        if invoices is None:
-            invoices = []
-        elif not isinstance(invoices, list):
-            invoices = [invoices] if invoices else []
-        return render_template('invoices/list.html', invoices=invoices, current_org_role=current_role)
-    except DatabaseError as e:
-        flash(f'Error loading invoices: {str(e)}', 'error')
-        import traceback
-        traceback.print_exc()
-        return render_template('invoices/list.html', invoices=[])
-    except Exception as e:
-        flash(f'Unexpected error: {str(e)}', 'error')
-        import traceback
-        traceback.print_exc()
-        return render_template('invoices/list.html', invoices=[])
+    types = LIST_GROUPS[group]['types']
+    documents = [d for d in documents if (d.get('doc_type') or 'invoice') in types]
+    if query:
+        q = query.lower()
+        documents = [d for d in documents
+                     if q in (d.get('customer_name') or '').lower()
+                     or q in (d.get('doc_number') or '').lower()
+                     or q in (d.get('invoice_id') or '').lower()]
+
+    tabs = LIST_GROUPS[group]['tabs']
+    if status_filter not in tabs:
+        status_filter = 'all'
+    counts = {name: sum(1 for d in documents if match(d)) for name, (_, match) in tabs.items()}
+    shown = [d for d in documents if tabs[status_filter][1](d)]
+
+    return render_template('invoices/list.html',
+                           invoices=shown,
+                           counts=counts,
+                           tabs=[(k, label) for k, (label, _) in tabs.items()],
+                           group=group,
+                           group_info=LIST_GROUPS[group],
+                           status_filter=status_filter,
+                           query=query,
+                           current_org_role=get_current_org_role())
+
+
+def _status_is(*statuses):
+    return lambda d: (d.get('status') or 'draft') in statuses
+
+
+LIST_GROUPS = {
+    'invoices': {
+        'title': 'Invoices', 'types': ('invoice', 'export_invoice'), 'new_type': 'invoice',
+        'tabs': {
+            'all': ('All', lambda d: True),
+            'draft': ('Draft', _status_is('draft')),
+            'pending': ('Pending', lambda d: d.get('status') == 'pending' and not invoice_is_overdue(d)),
+            'overdue': ('Overdue', invoice_is_overdue),
+            'paid': ('Paid', _status_is('paid')),
+        },
+    },
+    'quote': {
+        'title': 'Quotations', 'types': ('quote',), 'new_type': 'quote',
+        'tabs': {
+            'all': ('All', lambda d: True),
+            'draft': ('Draft', _status_is('draft')),
+            'sent': ('Sent', _status_is('sent')),
+            'accepted': ('Accepted', _status_is('accepted')),
+            'declined': ('Declined', _status_is('declined')),
+            'revised': ('Revised', _status_is('revised')),
+            'converted': ('Converted', _status_is('converted')),
+        },
+    },
+    'proforma': {
+        'title': 'Proforma invoices', 'types': ('proforma',), 'new_type': 'proforma',
+        'tabs': {
+            'all': ('All', lambda d: True),
+            'draft': ('Draft', _status_is('draft')),
+            'sent': ('Sent', _status_is('sent')),
+            'converted': ('Converted', _status_is('converted')),
+        },
+    },
+}
 
 
 @invoices_bp.route('/create', methods=['GET', 'POST'])
@@ -58,13 +117,26 @@ def create_invoice():
     
     org_id = g.current_org_id
 
+    doc_type = request.values.get('doc_type')
+    if doc_type == 'export_invoice':      # old links: an export invoice is an invoice with an export template
+        doc_type = 'invoice'
+    if doc_type not in DOC_TYPES:
+        doc_type = doc_urls.PATH_TYPES[g.doc_path]
+
     if request.method == 'POST':
         customer_id = request.form.get('customer_id')
         template_id = request.form.get('template_id')
 
         if not customer_id or not template_id:
             flash('Customer and template are required', 'error')
-            return redirect(url_for('invoices_bp.create_invoice'))
+            return redirect(url_for('invoices_bp.create_invoice', doc_type=doc_type))
+        doc_type = invoice_kind(doc_type, template_is_export(template_id, org_id))
+        project = projects.get_project(request.form.get('project_id'), org_id)
+        if project and project['customer_id'] != customer_id:
+            project = None
+        if not project:                           # every document belongs to a project
+            flash(f'Choose the project this {get_type(doc_type).label.lower()} is for', 'error')
+            return redirect(url_for('invoices_bp.create_invoice', doc_type=doc_type))
 
         try:
 
@@ -195,759 +267,416 @@ def create_invoice():
                 db.execute_proc('sp_update_invoice_dates', (invoice_id, issue_date or None, due_date or None), fetch=False)
 
 
-            from calculations import calculate_invoice_fields
+            _, profile = get_org_profile(org_id)
+            try:
+                apply_document_form(invoice_id, org_id, doc_type, request.form, profile,
+                                    new=True, issue_date=issue_date or None)
+            except DocumentError as e:
+                db.execute_proc('sp_delete_invoice', (invoice_id,), fetch=False)
+                flash(str(e), 'error')
+                return redirect(url_for('invoices_bp.create_invoice', doc_type=doc_type, template_id=template_id))
 
+            invoice_header, invoice_values = get_org_invoice(invoice_id, org_id)
+            recalculate_invoice(invoice_id, invoice_header, invoice_values)
+            if project:
+                projects.set_project(invoice_id, org_id, project['project_id'])
 
-            invoice_values_result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-            current_invoice_values = []
-            if invoice_values_result and isinstance(invoice_values_result, list):
-                if len(invoice_values_result) >= 2:
-                    if isinstance(invoice_values_result[1], list):
-                        current_invoice_values = invoice_values_result[1]
-                    else:
-                        current_invoice_values = invoice_values_result[1:]
-
-
-            sections_for_calc = {}
-            for field in fields:
-                section_title = field.get('section_title', '')
-                section_type = field.get('section_type', 'normal')
-                if section_title not in sections_for_calc:
-                    sections_for_calc[section_title] = {
-                        'type': section_type,
-                        'fields': [],
-                        'line_item_rows': {} if section_type == 'line_item' else None
-                    }
-                sections_for_calc[section_title]['fields'].append(field)
-
-
-            for section_title, section_info in sections_for_calc.items():
-                if section_info['type'] == 'line_item':
-
-                    section_info['line_item_rows'] = {}
-                    for value in current_invoice_values:
-                        if value.get('section_title') == section_title:
-                            ordinal = value.get('value_ordinal', 0) or 0
-                            if ordinal not in section_info['line_item_rows']:
-                                section_info['line_item_rows'][ordinal] = []
-                            section_info['line_item_rows'][ordinal].append(value)
-
-
-            calculated_values = calculate_invoice_fields(current_invoice_values, sections_for_calc)
-
-
-            for (field_id, ordinal), calc_value in calculated_values.items():
-                db.execute_proc('sp_save_invoice_value',
-                              (invoice_id, field_id, None, calc_value, None, None, ordinal),
-                              fetch=False)
-
-
-            db.execute_proc('sp_update_invoice_total', (invoice_id,), fetch=False)
-
-            flash('Invoice created successfully', 'success')
+            activity.document_event('document_created', invoice_header, 'created', project_id=project['project_id'] if project else None)
+            flash(f'{get_type(doc_type).label} {invoice_header.get("doc_number") or ""} created', 'success')
             return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
         except DatabaseError as e:
-            flash(f'Error creating invoice: {str(e)}', 'error')
-            return redirect(url_for('invoices_bp.create_invoice'))
+            logger.exception("Failed to create %s", doc_type)
+            flash(f'Error creating {get_type(doc_type).label.lower()}: {str(e)}', 'error')
+            return redirect(url_for('invoices_bp.create_invoice', doc_type=doc_type))
 
 
     try:
-
-        template_id = request.args.get('template_id') or request.form.get('template_id')
-
-
-        if not template_id:
-
-            all_templates = db.execute_proc('sp_list_templates', (org_id, False))
-            templates = []
-            seen_template_ids = set()
+        return _create_form(org_id, doc_type)
+    except DatabaseError:
+        logger.exception("Failed to load the create form")
+        flash('Could not load the form', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
 
 
-            if all_templates:
-
-                sorted_templates = sorted(all_templates,
-                                         key=lambda t: (t.get('template_id'), -t.get('version', 0)))
-
-                for template in sorted_templates:
-                    tid = template.get('template_id')
-                    if tid and tid not in seen_template_ids:
-
-                        if template.get('version') == template.get('latest_version'):
-                            templates.append(template)
-                            seen_template_ids.add(tid)
-
-            return render_template('invoices/create.html',
-                                 customers=[],
-                                 templates=templates or [],
-                                 fields=[],
-                                 sections_data={},
-                                 selected_template_id=None,
-                                 step='template')
+# Template names that suit each document type, for the "Suggested" badge and ordering
+_TEMPLATE_HINTS = {'quote': ('quot',), 'proforma': ('proforma',), 'invoice': ('invoice',)}
 
 
+def _latest_templates(org_id):
+    return [t for t in db.execute_proc('sp_list_templates', (org_id, False)) or []
+            if t.get('version') == t.get('latest_version')]
 
-        customers = db.execute_proc('sp_list_customers', (org_id, False))
+
+def _editor_sections(fields):
+    """{section_id: {title, type, fields}} in template order, for the document editor."""
+    sections = {}
+    for f in fields:
+        f['label'] = f.get('field_display_name') or f.get('field_name')
+        sections.setdefault(f['section_id'], {
+            'title': f.get('section_display_name') or f.get('section_name') or 'Items',
+            'type': f.get('section_type') or 'normal',
+            'fields': [],
+        })['fields'].append(f)
+    return sections
 
 
-        all_templates = db.execute_proc('sp_list_templates', (org_id, False))
-        templates = []
-        seen_template_ids = set()
+def _create_form(org_id, doc_type):
+    """GET /<type>/create: choose a project (quotes), then a template, then fill in the document."""
+    project = projects.get_project(request.args.get('project_id'), org_id)
+    customers = db.execute_proc('sp_list_customers', (org_id, False)) or []
+    if not project:
+        return render_template('invoices/create.html', step='project', doc_type=get_type(doc_type), project=None,
+                               open_projects=projects.list_projects(org_id, None, 'open'), customers=customers)
 
-        if all_templates:
-            sorted_templates = sorted(all_templates,
-                                     key=lambda t: (t.get('template_id'), -t.get('version', 0)))
-
-            for template in sorted_templates:
-                tid = template.get('template_id')
-                if tid and tid not in seen_template_ids:
-                    if template.get('version') == template.get('latest_version'):
-                        templates.append(template)
-                        seen_template_ids.add(tid)
-
-        fields = []
-        sections_data = {}
-
+    templates = _latest_templates(org_id)
+    hints = _TEMPLATE_HINTS.get(doc_type, ())
+    for t in templates:
+        name = (t.get('name') or '').lower()
+        t['suggested'] = any(h in name for h in hints) and not (doc_type == 'invoice' and 'proforma' in name)
+    templates.sort(key=lambda t: (not t['suggested'], (t.get('name') or '').lower()))
+    template_id = request.args.get('template_id')
+    selected = next((t for t in templates if t['template_id'] == template_id), None)
+    if not selected:
         if template_id:
-            try:
-                fields_result = db.execute_proc('sp_get_template_fields', (template_id,))
+            flash('Template not found', 'error')
+        return render_template('invoices/create.html', step='template', doc_type=get_type(doc_type),
+                               doc_types={k: DOC_TYPES[k] for k in CHOOSABLE}, templates=templates, project=project)
 
-
-                if fields_result:
-                    if isinstance(fields_result, list):
-
-                        if len(fields_result) > 0 and isinstance(fields_result[0], list):
-                            fields = fields_result[0] if len(fields_result) > 0 else []
-                        else:
-                            fields = fields_result
-                    else:
-                        fields = [fields_result]
-
-
-                    for field in fields:
-                        # Map field_display_name to label for template compatibility
-                        if 'field_display_name' in field and 'label' not in field:
-                            field['label'] = field['field_display_name']
-                        # Map section_display_name to title for line item headers
-                        if 'section_display_name' in field and 'section_title' not in field:
-                            field['section_title'] = field['section_display_name']
-                        section_id = field.get('section_id')
-                        if section_id:
-                            if section_id not in sections_data:
-                                sections_data[section_id] = {
-                                    'title': field.get('section_title', '') or field.get('section_display_name', '') or 'Untitled Section',
-                                    'type': field.get('section_type', 'normal') or 'normal',
-                                    'fields': []
-                                }
-                            sections_data[section_id]['fields'].append(field)
-            except DatabaseError as e:
-                flash(f'Error loading template fields: {str(e)}', 'error')
-            except Exception as e:
-                flash(f'Unexpected error loading fields: {str(e)}', 'error')
-
-
-        selected_template_info = None
-        for t in templates or []:
-            if t.get('template_id') == template_id:
-                selected_template_info = t
-                break
-
-        return render_template('invoices/create.html',
-                             customers=customers or [],
-                             templates=templates or [],
-                             fields=fields,
-                             sections_data=sections_data,
-                             selected_template_id=template_id,
-                             selected_template_info=selected_template_info,
-                             step='fields')
-    except DatabaseError as e:
-        flash('Error loading form data', 'error')
-        return render_template('invoices/create.html',
-                             customers=[],
-                             templates=[],
-                             fields=[],
-                             sections_data={})
+    org, profile = get_org_profile(org_id)
+    doc_type = invoice_kind(doc_type, template_is_export(template_id, org_id))
+    doc = _document_form_context(doc_type, org, profile, customers, org_id=org_id,
+                                 currency=selected.get('currency_code'))
+    if project:
+        details = doc['values'].get('details') or {}
+        if doc_type == 'quote' and not details.get('subject'):
+            details['subject'] = project['title']
+        doc['values']['details'] = {**projects.po_details(projects.latest_purchase_order(org_id, project['project_id'])), **details}
+        hint = doc['customer_hints'].get(project['customer_id'])
+        if hint:
+            doc['values']['tax_mode'] = hint
+    return render_template('invoices/editor.html', doc=doc, project=project, customers=customers,
+                           sections_data=_editor_sections(get_template_fields(template_id)),
+                           selected_template_id=template_id, template_name=selected.get('name') or '',
+                           today=date.today().isoformat())
 
 
 @invoices_bp.route('/<invoice_id>')
 @require_org
 def view_invoice(invoice_id):
-    """View invoice details"""
+    """View invoice details (read-only: formulas are computed, never saved here)"""
+    invoice_header, invoice_values = get_org_invoice(invoice_id, g.current_org_id)
+    if not invoice_header:
+        flash('Invoice not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+
     try:
-
-        result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-
-        if not result:
-            flash('Invoice not found', 'error')
-            return redirect(url_for('invoices_bp.list_invoices'))
-
-
-
-
-        invoice_header = None
-        invoice_values = []
-
-        if isinstance(result, list):
-
-            if len(result) > 0:
-                if isinstance(result[0], list):
-
-                    if len(result) >= 1 and len(result[0]) > 0:
-                        invoice_header = result[0][0]
-                    if len(result) >= 2:
-                        invoice_values = result[1]
-                elif isinstance(result[0], dict):
-
-                    invoice_header = result[0]
-
-                    if len(result) > 1:
-                        invoice_values = result[1:]
-        elif isinstance(result, dict):
-
-            invoice_header = result
-
-        if not invoice_header:
-            flash('Invoice not found', 'error')
-            return redirect(url_for('invoices_bp.list_invoices'))
-
-
-        sections_data = {}
-
-
-        print(f"\nDEBUG: Invoice values count: {len(invoice_values) if invoice_values else 0}")
-        if invoice_values:
-            print(f"DEBUG: First value sample: {invoice_values[0] if len(invoice_values) > 0 else 'None'}")
-
-        for value in (invoice_values or []):
-            section_title = value.get('section_title', '') or value.get('section_display_name', '') or 'Untitled Section'
-            section_type = value.get('section_type', 'normal') or 'normal'
-            field_label = value.get('field_label', '') or value.get('field_display_name', '')
-            data_type = value.get('data_type', 'string')
-            
-            value['field_label'] = field_label
-            value['section_title'] = section_title
-            if 'is_currency' not in value or value.get('is_currency') is None:
-                value['is_currency'] = False
-
-            if not section_title:
-                section_title = 'Untitled Section'
-
-            if section_title not in sections_data:
-                sections_data[section_title] = {
-                    'type': section_type,
-                    'fields': [],
-                    'line_item_rows': {} if section_type == 'line_item' else None,
-                    'line_item_headers': [] if section_type == 'line_item' else None
-                }
-
-            if section_type == 'line_item':
-
-                ordinal = value.get('value_ordinal', 0)
-                if ordinal is None:
-                    ordinal = 0
-
-                if ordinal not in sections_data[section_title]['line_item_rows']:
-                    sections_data[section_title]['line_item_rows'][ordinal] = []
-
-                sections_data[section_title]['line_item_rows'][ordinal].append(value)
-
-
-                if field_label and field_label not in sections_data[section_title]['line_item_headers']:
-                    sections_data[section_title]['line_item_headers'].append(field_label)
-            else:
-                sections_data[section_title]['fields'].append(value)
-
-
-        for section_title, section_info in sections_data.items():
-            if section_info['type'] == 'line_item' and section_info['line_item_rows']:
-
-                field_order = {}
-                for ordinal, values in section_info['line_item_rows'].items():
-                    for value in values:
-                        field_id = value.get('field_id')
-                        field_label = value.get('field_label', '')
-                        field_ordinal = value.get('field_ordinal', 0) or 0
-                        if field_id and field_id not in field_order:
-                            field_order[field_id] = {
-                                'label': field_label,
-                                'ordinal': field_ordinal
-                            }
-
-
-                sorted_fields = sorted(field_order.items(), key=lambda x: x[1]['ordinal'])
-                section_info['line_item_headers'] = [f[1]['label'] for f in sorted_fields]
-                field_ids_ordered = [f[0] for f in sorted_fields]
-
-
-                organized_rows = []
-                for ordinal in sorted(section_info['line_item_rows'].keys()):
-                    row_values = section_info['line_item_rows'][ordinal]
-
-                    row_dict = {v.get('field_id'): v for v in row_values}
-
-                    organized_row = [row_dict.get(fid) for fid in field_ids_ordered]
-                    organized_rows.append(organized_row)
-
-                section_info['line_item_rows'] = organized_rows
-
-        print(f"DEBUG: Processed sections_data keys: {list(sections_data.keys())}")
-        for key, val in sections_data.items():
-            print(f"DEBUG: Section '{key}': type={val['type']}, fields_count={len(val.get('fields', []))}, line_item_rows_count={len(val.get('line_item_rows', [])) if val.get('line_item_rows') else 0}")
-
-
-        template_id = invoice_header.get('template_id')
-        sections_for_calc = None
-        if template_id:
-
-            # Get max version using stored procedure
-            version_result = db.execute_proc_single('sp_get_template_max_version', (template_id,))
-            if version_result and version_result.get('max_version'):
-                max_version = version_result['max_version']
-                
-                # Get fields by version using stored procedure
-                fields_result = db.execute_proc('sp_get_template_fields_by_version', (template_id, max_version))
-                fields = fields_result if fields_result else []
-            else:
-                fields = []
-
-            if not fields:
-                # Fallback to latest version if specific version not found
-                fields_result = db.execute_proc('sp_get_template_fields', (template_id,))
-                fields = fields_result if fields_result else []
-
-
-
-            field_map = {}
-            for field in fields:
-                field_id = field.get('field_id')
-                if field_id:
-                    # Ensure field has all necessary attributes for calculations
-                    if 'field_name' not in field:
-                        field['field_name'] = field.get('name', '')
-                    if 'field_display_name' not in field:
-                        field['field_display_name'] = field.get('display_name') or field.get('label', '')
-                    if 'label' not in field:
-                        field['label'] = field.get('field_display_name') or field.get('display_name', '')
-                    field_map[field_id] = field
-
-            print(f"DEBUG: Created field_map with {len(field_map)} fields")
-            for field_id, field in field_map.items():
-                formula_val = field.get('calculation_formula')
-
-                if formula_val is None or formula_val == '' or str(formula_val).lower() == 'none':
-                    formula_str = 'None'
-                else:
-                    formula_str = formula_val
-                print(f"DEBUG: Field {field_id}: name='{field.get('field_name')}', label='{field.get('label')}', formula='{formula_str}' (type: {type(formula_val).__name__})")
-
-            sections_for_calc = {}
-            for field in fields:
-                # Get section title from multiple possible sources
-                section_title = (field.get('section_title') or 
-                               field.get('section_display_name') or 
-                               field.get('section_name') or 
-                               '')
-                if not section_title:
-                    print(f"DEBUG: WARNING: Field {field.get('field_id')} has no section_title! Skipping.")
-                    continue  # Skip fields without a section
-                section_type = field.get('section_type', 'normal')
-                # Also get the normalized section name for lookup
-                section_name = field.get('section_name', '').replace(' ', '_').lower() if field.get('section_name') else section_title.replace(' ', '_').lower()
-                if section_title not in sections_for_calc:
-                    sections_for_calc[section_title] = {
-                        'type': section_type,
-                        'name': section_name,  # Store normalized name for lookup
-                        'fields': [],
-                        'line_item_rows': {} if section_type == 'line_item' else None
-                    }
-                sections_for_calc[section_title]['fields'].append(field)
-            
-            print(f"DEBUG: Built sections_for_calc with keys: {list(sections_for_calc.keys())}")
-
-
-            for value in invoice_values or []:
-                section_title = value.get('section_title') or value.get('section_display_name') or value.get('section_name', '')
-                if not section_title or section_title not in sections_for_calc:
-                    continue  # Skip values without a valid section
-                section_info = sections_for_calc[section_title]
-                field_id = value.get('field_id')
-
-                if field_id in field_map:
-                    field = field_map[field_id]
-                    value['calculation_formula'] = field.get('calculation_formula')
-                    value['field_label'] = field.get('label', value.get('field_label', ''))
-                    value['data_type'] = field.get('data_type', value.get('data_type', 'string'))
-                    # Also add field_name and field_display_name for calculations
-                    if 'field_name' not in value:
-                        value['field_name'] = field.get('field_name') or field.get('name', '')
-                    if 'field_display_name' not in value:
-                        value['field_display_name'] = field.get('field_display_name') or field.get('label', '')
-                    print(f"DEBUG: Merged formula for field_id {field_id}: '{value.get('calculation_formula')}'")
-                else:
-                    print(f"DEBUG: WARNING: field_id {field_id} not found in field_map!")
-
-                if section_info['type'] == 'line_item':
-                    ordinal = value.get('value_ordinal', 0) or 0
-                    if section_info['line_item_rows'] is None:
-                        section_info['line_item_rows'] = {}
-                    if ordinal not in section_info['line_item_rows']:
-                        section_info['line_item_rows'][ordinal] = []
-                    section_info['line_item_rows'][ordinal].append(value)
-                else:
-                    section_info['fields'].append(value)
-
-
-            for section_title, section_info in sections_for_calc.items():
-                if section_info['type'] == 'line_item' and section_info['line_item_rows']:
-                    rows_list = []
-                    for ordinal in sorted(section_info['line_item_rows'].keys()):
-                        row = section_info['line_item_rows'][ordinal]
-
-                        for val in row:
-                            if val:
-                                print(f"DEBUG: Row {ordinal}, field '{val.get('field_label')}': formula={val.get('calculation_formula')}")
-                        rows_list.append(row)
-                    section_info['line_item_rows'] = rows_list
-                    print(f"DEBUG: Converted {section_title} line_item_rows to list with {len(rows_list)} rows")
-                elif section_info['type'] == 'normal':
-
-                    for val in section_info.get('fields', []):
-                        if val:
-                            print(f"DEBUG: Normal section '{section_title}', field '{val.get('field_label')}': formula={val.get('calculation_formula')}")
-
-
-        from calculations import calculate_invoice_fields
-        calc_sections = sections_for_calc if sections_for_calc else sections_data
-        print(f"DEBUG: Calling calculate_invoice_fields with {len(invoice_values or [])} values and {len(calc_sections)} sections")
-        print(f"DEBUG: Sections in calc_sections: {list(calc_sections.keys()) if isinstance(calc_sections, dict) else 'NOT A DICT!'}")
-        print(f"DEBUG: calc_sections type: {type(calc_sections)}")
-        
-        # Ensure calc_sections is a dictionary and has valid keys
-        if not isinstance(calc_sections, dict):
-            print(f"DEBUG: ERROR: calc_sections is not a dict! It's: {type(calc_sections)}")
-            calc_sections = sections_data  # Fallback to sections_data
-        # conerting the keys to lower case
-        calc_sections = {k.lower(): v for k, v in calc_sections.items()}
-        # Remove any None keys
-        if None in calc_sections:
-            print(f"DEBUG: WARNING: Removing None key from calc_sections")
-            del calc_sections[None]
-        
-        for sec_name, sec_info in calc_sections.items():
-            if sec_name is None:
-                continue
-            if sec_info.get('type') == 'line_item':
-                rows = sec_info.get('line_item_rows', [])
-                print(f"DEBUG: Section '{sec_name}' has {len(rows)} rows")
-                for i, row in enumerate(rows):
-                    print(f"DEBUG:   Row {i} has {len(row)} values")
-                    for val in row:
-                        if val:
-                            print(f"DEBUG:     Value: field_id={val.get('field_id')}, name={val.get('field_name')}, label={val.get('field_label')}, formula={val.get('calculation_formula')}")
-        calculated_values = calculate_invoice_fields(invoice_values or [], calc_sections)
-        print(f"DEBUG: Calculated {len(calculated_values)} values: {calculated_values}")
-
-
-        for (field_id, ordinal), calc_value in calculated_values.items():
-            if calc_value is not None:
-                try:
-                    db.execute_proc('sp_save_invoice_value',
-                                  (invoice_id, field_id, None, calc_value, None, None, ordinal),
-                                  fetch=False)
-                except Exception as e:
-                    print(f"Warning: Failed to save calculated value for field {field_id}, ordinal {ordinal}: {str(e)}")
-
-
-        try:
-            db.execute_proc('sp_update_invoice_total', (invoice_id,), fetch=False)
-        except Exception as e:
-            print(f"Warning: Failed to update invoice total: {str(e)}")
-
-
-        result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-        if result and isinstance(result, list):
-            if len(result) >= 2:
-                if isinstance(result[1], list):
-                    invoice_values = result[1]
-                else:
-                    invoice_values = result[1:]
-
-
-        sections_data = {}
-        for value in invoice_values or []:
-            section_title = value.get('section_title', '')
-            section_type = value.get('section_type', 'normal') or 'normal'
-
-            if not section_title:
-                section_title = 'Untitled Section'
-
-            if section_title not in sections_data:
-                sections_data[section_title] = {
-                    'type': section_type,
-                    'fields': [],
-                    'line_item_rows': {} if section_type == 'line_item' else None,
-                    'line_item_headers': [] if section_type == 'line_item' else None
-                }
-
-            if section_type == 'line_item':
-                ordinal = value.get('value_ordinal', 0) or 0
-                if ordinal not in sections_data[section_title]['line_item_rows']:
-                    sections_data[section_title]['line_item_rows'][ordinal] = []
-                sections_data[section_title]['line_item_rows'][ordinal].append(value)
-            else:
-                sections_data[section_title]['fields'].append(value)
-
-
-        for section_title, section_info in sections_data.items():
-            if section_info['type'] == 'line_item' and section_info['line_item_rows']:
-                field_order = {}
-                for ordinal, values in section_info['line_item_rows'].items():
-                    for value in values:
-                        field_id = value.get('field_id')
-                        field_label = value.get('field_label', '')
-                        field_ordinal = value.get('field_ordinal', 0) or 0
-                        if field_id and field_id not in field_order:
-                            field_order[field_id] = {
-                                'label': field_label,
-                                'ordinal': field_ordinal
-                            }
-
-                sorted_fields = sorted(field_order.items(), key=lambda x: x[1]['ordinal'])
-                section_info['line_item_headers'] = [f[1]['label'] for f in sorted_fields]
-                field_ids_ordered = [f[0] for f in sorted_fields]
-
-                organized_rows = []
-                for ordinal in sorted(section_info['line_item_rows'].keys()):
-                    row_values = section_info['line_item_rows'][ordinal]
-                    row_dict = {v.get('field_id'): v for v in row_values}
-                    organized_row = [row_dict.get(fid) for fid in field_ids_ordered]
-                    organized_rows.append(organized_row)
-
-                section_info['line_item_rows'] = organized_rows
-
-
-        for section_title, section_info in sections_data.items():
-            if section_info['type'] == 'line_item':
-                line_item_rows = section_info.get('line_item_rows', [])
-                if isinstance(line_item_rows, list):
-                    for row_idx, row in enumerate(line_item_rows):
-                        for value in row:
-                            if value and value.get('calculation_formula'):
-                                field_id = value.get('field_id')
-                                ordinal = value.get('value_ordinal', 0) or 0
-                                key = (field_id, ordinal)
-                                if key in calculated_values:
-                                    value['val_number'] = calculated_values[key]
-                                    value['calculated'] = True
-                                elif (field_id, row_idx) in calculated_values:
-                                    value['val_number'] = calculated_values[(field_id, row_idx)]
-                                    value['calculated'] = True
-            else:
-                for value in section_info.get('fields', []):
-                    if value and value.get('calculation_formula'):
-                        field_id = value.get('field_id')
-                        key = (field_id, 0)
-                        if key in calculated_values:
-                            value['val_number'] = calculated_values[key]
-                            value['calculated'] = True
-
-
-        payments = db.execute_proc('sp_get_invoice_payments', (invoice_id,))
-        
-        # Get current role
-        current_role = get_current_org_role()
-
-        return render_template('invoices/view.html',
-                             invoice=invoice_header,
-                             values=invoice_values or [],
-                             sections_data=sections_data,
-                             payments=payments or [],
-                             current_org_role=current_role)
-    except DatabaseError as e:
-        import traceback
-        print(f"ERROR loading invoice {invoice_id}: {str(e)}")
-        traceback.print_exc()
-        flash(f'Error loading invoice: {str(e)}', 'error')
+        sections_data = build_sections(invoice_header, invoice_values)
+        payments = db.execute_proc('sp_get_invoice_payments', (invoice_id,)) or []
+    except DatabaseError:
+        logger.exception("Failed to load invoice %s", invoice_id)
+        flash('Error loading invoice', 'error')
         return redirect(url_for('invoices_bp.list_invoices'))
-    except Exception as e:
-        import traceback
-        print(f"UNEXPECTED ERROR loading invoice {invoice_id}: {str(e)}")
-        traceback.print_exc()
-        flash(f'Error loading invoice: {str(e)}', 'error')
-        return redirect(url_for('invoices_bp.list_invoices'))
+
+    source = None
+    if invoice_header.get('source_invoice_id'):
+        source, _ = get_org_invoice(invoice_header['source_invoice_id'], g.current_org_id)
+    templates = [t for t in (db.execute_proc('sp_list_templates', (g.current_org_id, False)) or [])
+                 if t.get('version') == t.get('latest_version')]
+    # Template each conversion starts with: the export one when this document is for export
+    export = invoice_header.get('doc_type') == 'export_invoice' or invoice_header.get('tax_mode') == 'lut'
+    convert_defaults = {}
+    for target in get_type(invoice_header.get('doc_type')).converts_to:
+        word = 'proforma' if target == 'proforma' else 'invoice'
+        names = [(t['template_id'], (t.get('name') or '').lower()) for t in templates]
+        match = [tid for tid, n in names if word in n and ('export' in n) == export and (target != 'invoice' or 'proforma' not in n)]
+        convert_defaults[target] = (match or [invoice_header.get('template_id')])[0]
+
+    _, org_profile = get_org_profile(g.current_org_id)
+    pages = pages_for(load_layout(invoice_header.get('template_id'), g.current_org_id), invoice_header.get('doc_type'))
+    project = projects.get_project(projects.project_of(invoice_id, g.current_org_id), g.current_org_id)
+    files = projects.list_attachments(g.current_org_id, project_id=project['project_id']) if project else \
+        projects.list_attachments(g.current_org_id, invoice_id=invoice_id)
+    return render_template('invoices/view.html',
+                           convert_defaults=convert_defaults,
+                           project=project,
+                           project_docs=projects.project_documents(project['project_id'], g.current_org_id) if project else [],
+                           customer_projects=projects.list_projects(g.current_org_id, invoice_header['customer_id'], 'open'),
+                           files=files, file_kinds=projects.DOCUMENT_KINDS,
+                           extra_pages=[p for p in pages if not p['with_document']],
+                           has_packing=any(p['kind'] == 'packing' for p in pages),
+                           base_currency=org_profile.get('default_currency') or 'INR',
+                           today=date.today().isoformat(),
+                           revisions=_quote_revisions(invoice_header, g.current_org_id),
+                           invoice=invoice_header,
+                           sections_data=sections_data,
+                           payments=payments,
+                           summary=invoice_summary(invoice_header, sections_data, payments),
+                           source=source,
+                           templates=templates,
+                           current_org_role=get_current_org_role())
 
 
 @invoices_bp.route('/<invoice_id>/pdf')
 @require_org
 def export_pdf(invoice_id):
     """Export invoice as PDF"""
-    if not PDF_AVAILABLE:
-        flash('PDF export is not available. Please install xhtml2pdf: pip install xhtml2pdf', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    invoice_header, invoice_values = get_org_invoice(invoice_id, g.current_org_id)
+    if not invoice_header:
+        flash('Invoice not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
 
     try:
-
-        result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-
-        if not result:
-            flash('Invoice not found', 'error')
-            return redirect(url_for('invoices_bp.list_invoices'))
-
-
-        invoice_header = None
-        invoice_values = []
-
-        if isinstance(result, list):
-            if len(result) > 0:
-                if isinstance(result[0], list):
-                    if len(result) >= 1 and len(result[0]) > 0:
-                        invoice_header = result[0][0]
-                    if len(result) >= 2:
-                        invoice_values = result[1]
-                elif isinstance(result[0], dict):
-                    invoice_header = result[0]
-                    if len(result) > 1:
-                        invoice_values = result[1:]
-        elif isinstance(result, dict):
-            invoice_header = result
-
-        if not invoice_header:
-            flash('Invoice not found', 'error')
-            return redirect(url_for('invoices_bp.list_invoices'))
-
-
-        sections_data = {}
-
-        for value in (invoice_values or []):
-            section_title = value.get('section_title', '') or 'Untitled Section'
-            section_type = value.get('section_type', 'normal') or 'normal'
-
-            if section_title not in sections_data:
-                sections_data[section_title] = {
-                    'type': section_type,
-                    'fields': [],
-                    'line_item_rows': {} if section_type == 'line_item' else None,
-                    'line_item_headers': [] if section_type == 'line_item' else None
-                }
-
-            if section_type == 'line_item':
-                ordinal = value.get('value_ordinal', 0) or 0
-                if ordinal not in sections_data[section_title]['line_item_rows']:
-                    sections_data[section_title]['line_item_rows'][ordinal] = []
-                sections_data[section_title]['line_item_rows'][ordinal].append(value)
-            else:
-                sections_data[section_title]['fields'].append(value)
-
-
-        for section_title, section_info in sections_data.items():
-            if section_info['type'] == 'line_item' and section_info['line_item_rows']:
-                field_order = {}
-                for ordinal, values in section_info['line_item_rows'].items():
-                    for value in values:
-                        field_id = value.get('field_id')
-                        field_label = value.get('field_label', '')
-                        field_ordinal = value.get('field_ordinal', 0) or 0
-                        if field_id and field_id not in field_order:
-                            field_order[field_id] = {
-                                'label': field_label,
-                                'ordinal': field_ordinal
-                            }
-
-                sorted_fields = sorted(field_order.items(), key=lambda x: x[1]['ordinal'])
-                section_info['line_item_headers'] = [f[1]['label'] for f in sorted_fields]
-                field_ids_ordered = [f[0] for f in sorted_fields]
-
-                organized_rows = []
-                for ordinal in sorted(section_info['line_item_rows'].keys()):
-                    row_values = section_info['line_item_rows'][ordinal]
-                    row_dict = {v.get('field_id'): v for v in row_values}
-                    organized_row = [row_dict.get(fid) for fid in field_ids_ordered]
-                    organized_rows.append(organized_row)
-
-                section_info['line_item_rows'] = organized_rows
-
-
-        payments = db.execute_proc('sp_get_invoice_payments', (invoice_id,))
-
-
-        html_content = render_template('invoices/pdf.html',
-                                     invoice=invoice_header,
-                                     sections_data=sections_data,
-                                     payments=payments or [],
-                                     current_date=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-
-
-        from io import BytesIO
-        pdf_buffer = BytesIO()
-        pdf = pisa.pisaDocument(BytesIO(html_content.encode('utf-8')), pdf_buffer)
-
-        if pdf.err:
-            flash(f'Error generating PDF: {pdf.err}', 'error')
-            return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
-
-
-        response = make_response(pdf_buffer.getvalue())
-        response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'inline; filename=invoice_{invoice_id[:8]}.pdf'
-
-        return response
-
-    except DatabaseError as e:
-        flash(f'Error generating PDF: {str(e)}', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
-    except Exception as e:
-        flash(f'Error generating PDF: {str(e)}', 'error')
-        import traceback
-        traceback.print_exc()
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return render_invoice_pdf(invoice_header, invoice_values, request.args.get('copies', type=int),
+                                  packing=request.args.get('packing') == '1', page_key=request.args.get('page'))
+    except LookupError:
+        flash('That page isn\'t part of this document\'s template', 'error')
+    except PdfUnavailable:
+        flash('PDF export is not available on this server', 'error')
+    except Exception:
+        logger.exception("PDF generation failed for invoice %s", invoice_id)
+        flash('Error generating PDF', 'error')
+    return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
 
 @invoices_bp.route('/<invoice_id>/finalize', methods=['POST'])
 @require_org
 def finalize_invoice(invoice_id):
-    """Finalize an invoice (change status from draft to pending)"""
-    current_role = get_current_org_role()
+    """Finalize a draft: invoices become 'pending' (awaiting payment), quotes/proformas 'sent'."""
     if not can_finalize_invoice():
-        flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to finalize invoices.', 'error')
+        flash('You need to be a Member or Owner to finalize documents.', 'error')
         return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
-    
+
+    invoice_header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    if not invoice_header:
+        flash('Document not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+
+    doc_type = get_type(invoice_header.get('doc_type'))
+    if (invoice_header.get('status') or 'draft') != 'draft':
+        flash(f'This {doc_type.short.lower()} is already {invoice_header.get("status")}.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
     try:
-
-        result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-        if not result:
-            flash('Invoice not found', 'error')
-            return redirect(url_for('invoices_bp.list_invoices'))
-
-
-        invoice_header = None
-        if isinstance(result, list):
-            if len(result) > 0:
-                if isinstance(result[0], list):
-                    if len(result[0]) > 0:
-                        invoice_header = result[0][0]
-                elif isinstance(result[0], dict):
-                    invoice_header = result[0]
-
-        if not invoice_header:
-            flash('Invoice not found', 'error')
-            return redirect(url_for('invoices_bp.list_invoices'))
-
-        current_status = invoice_header.get('status', 'draft')
+        db.execute_proc('sp_update_invoice_status', (invoice_id, doc_type.sent_status), fetch=False)
+    except DatabaseError:
+        logger.exception("Failed to finalize %s", invoice_id)
+        flash('Error finalizing document', 'error')
+    else:
+        activity.document_event('document_sent', invoice_header, 'marked as sent' if doc_type.sent_status == 'sent' else 'finalized')
+        flash(f'{doc_type.label} finalized. The customer can now see it in their portal.', 'success')
+    return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
 
-        if current_status != 'draft':
-            flash(f'Invoice is already {current_status}. Only draft invoices can be finalized.', 'error')
-            return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+QUOTE_OUTCOMES = {'accepted': 'marked as accepted', 'declined': 'marked as declined', 'sent': 'reopened'}
 
 
-        db.execute_proc('sp_update_invoice_status', (invoice_id, 'pending'), fetch=False)
-
-        flash('Invoice finalized successfully. Customer can now view it in the portal.', 'success')
+@invoices_bp.route('/<invoice_id>/status', methods=['POST'])
+@require_org
+def set_status(invoice_id):
+    """Record a customer's answer to a quote."""
+    if not can_edit_invoice():
+        flash('You need to be a Member or Owner to update documents.', 'error')
         return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
-    except DatabaseError as e:
-        flash(f'Error finalizing invoice: {str(e)}', 'error')
+    invoice_header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    status = request.form.get('status')
+    if not invoice_header or invoice_header.get('doc_type') != 'quote' or status not in QUOTE_OUTCOMES:
+        flash("That status change isn't allowed", 'error')
         return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    if invoice_header.get('status') in ('draft', 'converted'):
+        flash('Finalize the quote before recording an answer', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+    db.execute_proc('sp_update_invoice_status', (invoice_id, status), fetch=False)
+    if status in ('accepted', 'declined'):
+        activity.document_event(f'quote_{status}', invoice_header, status)
+    flash(f'Quote {QUOTE_OUTCOMES[status]}', 'success')
+    return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+
+@invoices_bp.route('/<invoice_id>/convert', methods=['POST'])
+@require_org
+def convert(invoice_id):
+    """Turn a quote into a proforma/invoice, or a proforma into an invoice."""
+    if not can_create_invoice():
+        flash('You need to be a Member or Owner to create documents.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+    org_id = g.current_org_id
+    source, values = get_org_invoice(invoice_id, org_id)
+    if not source:
+        flash('Document not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+
+    target = request.form.get('target')
+    template_id = request.form.get('template_id') or None
+    if template_id and not get_org_template(template_id, org_id):
+        flash('Template not found', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+    _, profile = get_org_profile(org_id)
+    try:
+        new_id = convert_document(source, values, target, org_id, profile, template_id)
+    except DocumentError as e:
+        flash(str(e), 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    except DatabaseError:
+        flash('Conversion failed. Nothing was changed.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+    _into_project(source, new_id, org_id)
+    new_header, _ = get_org_invoice(new_id, org_id)
+    if new_header:
+        activity.document_event('document_converted', new_header, f'made from {source.get("doc_number") or "a draft"}')
+    flash(f'Created {get_type(target).label.lower()} from {source.get("doc_number") or "this document"}. '
+          'Check the details, then finalize it.', 'success')
+    return redirect(url_for('invoices_bp.edit_invoice', invoice_id=new_id))
+
+
+def _into_project(source, new_id, org_id):
+    """Keep a converted / revised document in its source's project, and give it the project's PO number."""
+    project_id = projects.follow_source(source, new_id, org_id)
+    po = projects.latest_purchase_order(org_id, project_id) if project_id else None
+    if po:
+        projects.fill_purchase_order(org_id, project_id, po['reference_no'], str(po['doc_date']) if po.get('doc_date') else None)
+
+
+@invoices_bp.route('/<invoice_id>/revise', methods=['POST'])
+@require_org
+def revise(invoice_id):
+    """Start a new revision of a sent quotation (same number + " Rev.N")."""
+    if not can_create_invoice():
+        flash('You need to be a Member or Owner to revise quotations.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+    source, values = get_org_invoice(invoice_id, g.current_org_id)
+    if not source:
+        flash('Document not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices', type='quote'))
+    try:
+        new_id = revise_document(source, values, g.current_org_id)
+    except DocumentError as e:
+        flash(str(e), 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    except DatabaseError:
+        flash('Could not create the revision. Nothing was changed.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+    _into_project(source, new_id, g.current_org_id)
+    new_header, _ = get_org_invoice(new_id, g.current_org_id)
+    if new_header:
+        activity.document_event('quote_revised', new_header, 'started (revision)')
+    flash('New revision created as a draft. Make your changes, then mark it as sent.', 'success')
+    return redirect(url_for('invoices_bp.edit_invoice', invoice_id=new_id))
+
+
+@invoices_bp.route('/<invoice_id>/packing', methods=['GET', 'POST'])
+@require_org
+def packing(invoice_id):
+    """Box-by-box packing, for documents whose template has a packing page (editable after finalizing; it's logistics)."""
+    from document_service import boxes_from_form, save_details
+    from invoice_service import build_sections, item_lines, packing_summary
+
+    header, values = get_org_invoice(invoice_id, g.current_org_id)
+    if not header:
+        flash('Document not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+    pack_page = packing_page(load_layout(header.get('template_id'), g.current_org_id), header.get('doc_type'))
+    if not pack_page:
+        flash("This document's template has no packing list page. Add one under Templates → Pages & printing.", 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    box_fields = pack_page['box_fields']
+    if not can_edit_invoice():
+        flash('You need to be a Member or Owner to edit packing.', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+    sections = build_sections(header, values)
+    lines = item_lines(sections)
+
+    if request.method == 'POST':
+        details = load_json(header.get('details'))
+        boxes = boxes_from_form(request.form, lines, box_fields)
+        details['boxes'] = boxes
+        if boxes:
+            details['packages'] = f"{len(boxes)} {'box' if len(boxes) == 1 else 'boxes'}"
+        for key in ('packing_list_no', 'marks'):
+            value = (request.form.get(key) or '').strip()
+            if value:
+                details[key] = value
+            else:
+                details.pop(key, None)
+        try:
+            save_details(header, g.current_org_id, details)
+        except DatabaseError:
+            logger.exception("Failed to save packing for %s", invoice_id)
+            flash('Could not save the packing', 'error')
+            return redirect(url_for('invoices_bp.packing', invoice_id=invoice_id))
+        header, values = get_org_invoice(invoice_id, g.current_org_id)
+        summary = packing_summary(header, build_sections(header, values), box_fields)
+        if summary['unpacked'] or summary['over']:
+            flash('Packing saved, but the quantities in boxes don\'t match the invoice yet (see below).', 'warning')
+        else:
+            flash(f"Packing saved: {summary['count']} {'box' if summary['count'] == 1 else 'boxes'}.", 'success')
+        return redirect(url_for('invoices_bp.packing', invoice_id=invoice_id))
+
+    details = load_json(header.get('details'))
+    boxes = details.get('boxes') or [{'contents': []}]
+    packed = [{c['ordinal']: c['qty'] for c in (b.get('contents') or [])} for b in boxes]
+    return render_template('invoices/packing.html', invoice=header, lines=lines, boxes=boxes, packed=packed,
+                           details=details, box_fields=box_fields, pack_page=pack_page,
+                           summary=packing_summary(header, sections, box_fields))
+
+
+def _quote_revisions(header, org_id):
+    """All versions of a quote (original + revisions), oldest first."""
+    if header.get('doc_type') != 'quote':
+        return []
+    base, _ = revision_info(header)
+    if not base:
+        return []
+    quotes = [d for d in db.execute_proc('sp_list_invoices', (org_id, None, 1000, 0)) or []
+              if d.get('doc_type') == 'quote'
+              and (d.get('doc_number') == base or (d.get('doc_number') or '').startswith(base + ' Rev.'))]
+
+    def rev(d):
+        number = d.get('doc_number') or ''
+        return int(number.rsplit('Rev.', 1)[1]) if 'Rev.' in number and number.rsplit('Rev.', 1)[1].isdigit() else 0
+    return sorted(quotes, key=rev) if len(quotes) > 1 else []
+
+
+def _document_form_context(doc_type, org, profile, customers, header=None, org_id=None, currency=None):
+    """Everything the shared 'document details' form block needs."""
+    from money import SYMBOLS
+    t = get_type(doc_type)
+    if header:
+        values = {
+            'tax_mode': header.get('tax_mode') or 'none',
+            'tax_rate': float(header.get('tax_rate') or 0),
+            'advance_percent': header.get('advance_percent'),
+            'advance_basis': header.get('advance_basis') or 'pre_tax',
+            'details': load_json(header.get('details')),
+        }
+        number, suggested = header.get('doc_number') or '', ''
+    else:
+        values = form_defaults(doc_type, profile, org, export=(currency or 'INR') != 'INR')
+        number = suggested = preview_number(org_id or org.get('org_id'), doc_type, profile)
+    from documents import DETAIL_GROUPS
+    groups = [(k, label) for k, label in DETAIL_GROUPS.items() if any(f.group == k for f in t.details)]
+    return {
+        'groups': groups,
+        'export': (currency or (header or {}).get('currency_code') or 'INR') != 'INR',
+        'type': t,
+        'number': number,
+        'suggested_number': suggested,
+        'values': values,
+        'tax_modes': TAX_MODES,
+        'gst_enabled': bool(profile.get('gstin')),
+        'default_rate': float(profile.get('default_gst_rate') or 18),
+        'customer_hints': customer_tax_hints(doc_type, org, customers) if customers else {},
+        'currency': (header.get('currency_code') if header else currency) or 'INR',
+        'currencies': list(SYMBOLS),
+    }
 
 
 @invoices_bp.route('/<invoice_id>/edit', methods=['GET', 'POST'])
@@ -963,27 +692,9 @@ def edit_invoice(invoice_id):
 
 
     try:
-        result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-        if not result:
-            flash('Invoice not found', 'error')
-            return redirect(url_for('invoices_bp.list_invoices'))
-
-
-        invoice_header = None
-        if isinstance(result, list):
-            if len(result) > 0:
-                if isinstance(result[0], list):
-                    if len(result[0]) > 0:
-                        invoice_header = result[0][0]
-                elif isinstance(result[0], dict):
-                    invoice_header = result[0]
+        invoice_header, _ = get_org_invoice(invoice_id, org_id)
 
         if not invoice_header:
-            flash('Invoice not found', 'error')
-            return redirect(url_for('invoices_bp.list_invoices'))
-
-
-        if invoice_header.get('org_id') != org_id:
             flash('Invoice not found', 'error')
             return redirect(url_for('invoices_bp.list_invoices'))
 
@@ -998,9 +709,9 @@ def edit_invoice(invoice_id):
 
     if request.method == 'POST':
         try:
-            print(f"DEBUG EDIT -- POST request: Saving invoice {invoice_id}")
-            print(f"DEBUG EDIT -- Total form keys received: {len(request.form.keys())}")
-            print(f"DEBUG EDIT -- All form keys: {list(request.form.keys())}")
+            logger.debug(f"DEBUG EDIT -- POST request: Saving invoice {invoice_id}")
+            logger.debug(f"DEBUG EDIT -- Total form keys received: {len(request.form.keys())}")
+            logger.debug(f"DEBUG EDIT -- All form keys: {list(request.form.keys())}")
 
 
             issue_date = request.form.get('issue_date')
@@ -1010,9 +721,8 @@ def edit_invoice(invoice_id):
 
 
             template_id = invoice_header.get('template_id')
-            fields_result = db.execute_proc('sp_get_template_fields', (template_id,))
-            fields = fields_result if fields_result else []
-            print(f"DEBUG EDIT -- Loaded {len(fields)} template fields")
+            fields = get_template_fields(template_id, invoice_header.get('template_version'))
+            logger.debug(f"DEBUG EDIT -- Loaded {len(fields)} template fields")
 
 
             sections = {}
@@ -1044,10 +754,10 @@ def edit_invoice(invoice_id):
                         # Format field_ids as comma-separated quoted values for the stored procedure
                         field_ids_str = ','.join([f"'{fid}'" for fid in field_ids])
                         db.execute_proc('sp_delete_invoice_values_by_fields', (invoice_id, field_ids_str), fetch=False)
-                        print(f"DEBUG EDIT -- Deleted existing line item values for section {section_id}")
+                        logger.debug(f"DEBUG EDIT -- Deleted existing line item values for section {section_id}")
 
                     line_item_keys = [k for k in request.form.keys() if k.startswith(f'line_item_{section_id}_')]
-                    print(f"DEBUG EDIT -- Section {section_id}: Found {len(line_item_keys)} line item form keys")
+                    logger.debug(f"DEBUG EDIT -- Section {section_id}: Found {len(line_item_keys)} line item form keys")
 
 
                     rows = {}
@@ -1064,15 +774,15 @@ def edit_invoice(invoice_id):
                                     if row_num not in rows:
                                         rows[row_num] = {}
                                     rows[row_num][field_id] = request.form.get(key)
-                                    print(f"DEBUG EDIT -- Section {section_id}: Row {row_num}, field {field_id} = '{request.form.get(key)}'")
+                                    logger.debug(f"DEBUG EDIT -- Section {section_id}: Row {row_num}, field {field_id} = '{request.form.get(key)}'")
                                 except ValueError:
-                                    print(f"DEBUG EDIT -- ERROR: Could not parse row number from key: {key}")
+                                    logger.debug(f"DEBUG EDIT -- ERROR: Could not parse row number from key: {key}")
 
-                    print(f"DEBUG EDIT -- Section {section_id}: Found {len(rows)} unique rows: {sorted(rows.keys())}")
+                    logger.debug(f"DEBUG EDIT -- Section {section_id}: Found {len(rows)} unique rows: {sorted(rows.keys())}")
 
 
                     for row_num, row_data in rows.items():
-                        print(f"DEBUG EDIT -- Saving row {row_num} for section {section_id} with {len(row_data)} fields")
+                        logger.debug(f"DEBUG EDIT -- Saving row {row_num} for section {section_id} with {len(row_data)} fields")
                         for field in section_data['fields']:
                             field_id = field['field_id']
                             data_type = field['data_type']
@@ -1099,11 +809,11 @@ def edit_invoice(invoice_id):
                                 elif data_type == 'boolean':
                                     val_boolean = 1 if value_str.lower() in ('true', '1', 'on', 'yes') else (0 if value_str else None)
                                 
-                                print(f"DEBUG EDIT -- Saving field {field_id} (row {row_num}): string={val_string}, number={val_number}, date={val_date}, boolean={val_boolean}")
+                                logger.debug(f"DEBUG EDIT -- Saving field {field_id} (row {row_num}): string={val_string}, number={val_number}, date={val_date}, boolean={val_boolean}")
                                 db.execute_proc('sp_save_invoice_value',
                                                 (invoice_id, field_id, val_string, val_number, val_date, val_boolean, row_num),
                                                 fetch=False)
-                                print(f"DEBUG EDIT -- Saved field {field_id} for row {row_num}")
+                                logger.debug(f"DEBUG EDIT -- Saved field {field_id} for row {row_num}")
                 else:
 
                     for field in section_data['fields']:
@@ -1136,86 +846,19 @@ def edit_invoice(invoice_id):
                                    fetch=False)
 
 
-            from calculations import calculate_invoice_fields
+            _, profile = get_org_profile(org_id)
+            try:
+                apply_document_form(invoice_id, org_id, invoice_header.get('doc_type') or 'invoice',
+                                    request.form, profile, new=False,
+                                    current_number=invoice_header.get('doc_number'))
+            except DocumentError as e:
+                flash(str(e), 'error')
+                return redirect(url_for('invoices_bp.edit_invoice', invoice_id=invoice_id))
 
-            invoice_values_result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-            current_invoice_values = []
-            if invoice_values_result and isinstance(invoice_values_result, list):
-                if len(invoice_values_result) >= 2:
-                    if isinstance(invoice_values_result[1], list):
-                        current_invoice_values = invoice_values_result[1]
-                    else:
-                        current_invoice_values = invoice_values_result[1:]
+            invoice_header, invoice_values = get_org_invoice(invoice_id, org_id)
+            recalculate_invoice(invoice_id, invoice_header, invoice_values)
 
-
-            field_map = {}
-            for field in fields:
-                field_id = field.get('field_id')
-                if field_id:
-                    field_map[field_id] = field
-
-
-            sections_for_calc = {}
-            for field in fields:
-                section_title = field.get('section_title', '')
-                section_type = field.get('section_type', 'normal')
-                if section_title not in sections_for_calc:
-                    sections_for_calc[section_title] = {
-                        'type': section_type,
-                        'fields': [],
-                        'line_item_rows': {} if section_type == 'line_item' else None
-                    }
-                sections_for_calc[section_title]['fields'].append(field)
-
-
-            for section_title, section_info in sections_for_calc.items():
-                if section_info['type'] != 'line_item':
-                    section_info['fields'] = []
-
-
-            for value in current_invoice_values:
-                section_title = value.get('section_title', '')
-                if section_title in sections_for_calc:
-                    section_info = sections_for_calc[section_title]
-                    field_id = value.get('field_id')
-
-
-                    if field_id and field_id in field_map:
-                        field_meta = field_map[field_id]
-                        value['calculation_formula'] = field_meta.get('calculation_formula')
-                        value['field_label'] = field_meta.get('label', value.get('field_label', ''))
-                        value['data_type'] = field_meta.get('data_type', value.get('data_type', 'string'))
-
-                    if section_info['type'] == 'line_item':
-                        ordinal = value.get('value_ordinal', 0) or 0
-                        if section_info['line_item_rows'] is None:
-                            section_info['line_item_rows'] = {}
-                        if ordinal not in section_info['line_item_rows']:
-                            section_info['line_item_rows'][ordinal] = []
-                        section_info['line_item_rows'][ordinal].append(value)
-                    else:
-
-                        section_info['fields'].append(value)
-
-
-            for section_title, section_info in sections_for_calc.items():
-                if section_info['type'] == 'line_item' and section_info['line_item_rows']:
-                    rows_list = []
-                    for ordinal in sorted(section_info['line_item_rows'].keys()):
-                        row = section_info['line_item_rows'][ordinal]
-                        rows_list.append(row)
-                    section_info['line_item_rows'] = rows_list
-
-            calculated_values = calculate_invoice_fields(current_invoice_values, sections_for_calc)
-
-            for (field_id, ordinal), calc_value in calculated_values.items():
-                db.execute_proc('sp_save_invoice_value',
-                              (invoice_id, field_id, None, calc_value, None, None, ordinal),
-                              fetch=False)
-
-            db.execute_proc('sp_update_invoice_total', (invoice_id,), fetch=False)
-
-            flash('Invoice updated successfully', 'success')
+            flash(f'{get_type(invoice_header.get("doc_type")).label} updated', 'success')
 
             return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
@@ -1225,7 +868,7 @@ def edit_invoice(invoice_id):
 
 
     try:
-        print(f"DEBUG EDIT -- GET request: Loading edit form for invoice {invoice_id}")
+        logger.debug(f"DEBUG EDIT -- GET request: Loading edit form for invoice {invoice_id}")
 
         result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
         invoice_values = []
@@ -1236,7 +879,7 @@ def edit_invoice(invoice_id):
                 else:
                     invoice_values = result[1:]
 
-        print(f"DEBUG EDIT -- GET: Loaded {len(invoice_values)} invoice values from database")
+        logger.debug(f"DEBUG EDIT -- GET: Loaded {len(invoice_values)} invoice values from database")
 
         ordinals_found = {}
         for value in invoice_values:
@@ -1246,7 +889,7 @@ def edit_invoice(invoice_id):
                 ordinals_found[section_title] = set()
             ordinals_found[section_title].add(ordinal)
         for section_title, ords in ordinals_found.items():
-            print(f"DEBUG EDIT -- GET: Section '{section_title}' has ordinals: {sorted(ords)}")
+            logger.debug(f"DEBUG EDIT -- GET: Section '{section_title}' has ordinals: {sorted(ords)}")
 
 
         template_id = invoice_header.get('template_id')
@@ -1254,15 +897,8 @@ def edit_invoice(invoice_id):
         sections_data = {}
 
         if template_id:
-            fields_result = db.execute_proc('sp_get_template_fields', (template_id,))
-            if fields_result:
-                if isinstance(fields_result, list):
-                    if len(fields_result) > 0 and isinstance(fields_result[0], list):
-                        fields = fields_result[0] if len(fields_result) > 0 else []
-                    else:
-                        fields = fields_result
-                else:
-                    fields = [fields_result]
+            fields = get_template_fields(template_id, invoice_header.get('template_version'))
+            if fields:
 
 
                 for field in fields:
@@ -1284,19 +920,19 @@ def edit_invoice(invoice_id):
 
 
                 value_map = {}
-                print(f"DEBUG EDIT -- Total invoice_values received: {len(invoice_values)}")
+                logger.debug(f"DEBUG EDIT -- Total invoice_values received: {len(invoice_values)}")
                 for value in invoice_values:
                     field_id = value.get('field_id')
                     ordinal = value.get('value_ordinal', 0) or 0
                     key = (field_id, ordinal)
                     value_map[key] = value
-                    print(f"DEBUG EDIT -- Mapped value: field_id={field_id}, ordinal={ordinal}, section_title={value.get('section_title')}")
+                    logger.debug(f"DEBUG EDIT -- Mapped value: field_id={field_id}, ordinal={ordinal}, section_title={value.get('section_title')}")
 
-                print(f"DEBUG EDIT -- Total values in value_map: {len(value_map)}")
+                logger.debug(f"DEBUG EDIT -- Total values in value_map: {len(value_map)}")
 
 
                 for section_id, section_info in sections_data.items():
-                    print(f"DEBUG EDIT -- Processing section: {section_id}, type={section_info.get('type')}, title={section_info.get('title')}")
+                    logger.debug(f"DEBUG EDIT -- Processing section: {section_id}, type={section_info.get('type')}, title={section_info.get('title')}")
                     if section_info['type'] == 'line_item':
 
 
@@ -1305,7 +941,7 @@ def edit_invoice(invoice_id):
 
 
                         section_field_ids = {field['field_id'] for field in section_info['fields']}
-                        print(f"DEBUG EDIT -- Section {section_id} has {len(section_field_ids)} fields: {list(section_field_ids)}")
+                        logger.debug(f"DEBUG EDIT -- Section {section_id} has {len(section_field_ids)} fields: {list(section_field_ids)}")
 
 
                         for value in invoice_values:
@@ -1315,7 +951,7 @@ def edit_invoice(invoice_id):
                             if value_field_id in section_field_ids:
                                 ordinal = value.get('value_ordinal', 0) or 0
                                 section_ordinals.add(ordinal)
-                                print(f"DEBUG EDIT -- Found value for section {section_id}: field_id={value_field_id}, ordinal={ordinal}, section_title={value_section_title}")
+                                logger.debug(f"DEBUG EDIT -- Found value for section {section_id}: field_id={value_field_id}, ordinal={ordinal}, section_title={value_section_title}")
 
 
                         for field_id in section_field_ids:
@@ -1323,7 +959,7 @@ def edit_invoice(invoice_id):
                                 if key[0] == field_id:
                                     section_ordinals.add(key[1])
 
-                        print(f"DEBUG EDIT -- Section {section_id} collected ordinals: {sorted(section_ordinals)}")
+                        logger.debug(f"DEBUG EDIT -- Section {section_id} collected ordinals: {sorted(section_ordinals)}")
 
 
                         for field in section_info['fields']:
@@ -1334,7 +970,7 @@ def edit_invoice(invoice_id):
                                 key = (field_id, ordinal)
                                 if key in value_map:
                                     field['values'][ordinal] = value_map[key]
-                                    print(f"DEBUG EDIT -- Field {field_id} ({field.get('label')}) has value for ordinal {ordinal}")
+                                    logger.debug(f"DEBUG EDIT -- Field {field_id} ({field.get('label')}) has value for ordinal {ordinal}")
                                 else:
 
 
@@ -1348,9 +984,9 @@ def edit_invoice(invoice_id):
                                         'field_label': field.get('label', ''),
                                         'data_type': field.get('data_type', 'string')
                                     }
-                                    print(f"DEBUG EDIT -- Field {field_id} ({field.get('label')}) created empty value for ordinal {ordinal}")
+                                    logger.debug(f"DEBUG EDIT -- Field {field_id} ({field.get('label')}) created empty value for ordinal {ordinal}")
 
-                            print(f"DEBUG EDIT -- Field {field_id} ({field.get('label')}) now has {len(field.get('values', {}))} value entries")
+                            logger.debug(f"DEBUG EDIT -- Field {field_id} ({field.get('label')}) now has {len(field.get('values', {}))} value entries")
                     else:
 
                         for field in section_info['fields']:
@@ -1359,10 +995,14 @@ def edit_invoice(invoice_id):
                             if key in value_map:
                                 field['value'] = value_map[key]
 
-        return render_template('invoices/edit.html',
+        org, profile = get_org_profile(org_id)
+        return render_template('invoices/editor.html',
                              invoice=invoice_header,
-                             fields=fields,
-                             sections_data=sections_data)
+                             sections_data=sections_data,
+                             template_name=invoice_header.get('template_name') or '',
+                             project=projects.get_project(projects.project_of(invoice_id, org_id), org_id),
+                             doc=_document_form_context(invoice_header.get('doc_type') or 'invoice', org, profile,
+                                                        [], header=invoice_header))
     except DatabaseError as e:
         flash('Error loading form data', 'error')
     return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
@@ -1380,22 +1020,9 @@ def delete_invoice(invoice_id):
     org_id = g.current_org_id
 
     try:
+        invoice_header, _ = get_org_invoice(invoice_id, org_id)
 
-        result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-        if not result:
-            flash('Invoice not found', 'error')
-            return redirect(url_for('invoices_bp.list_invoices'))
-
-        invoice_header = None
-        if isinstance(result, list):
-            if len(result) > 0:
-                if isinstance(result[0], list):
-                    if len(result[0]) > 0:
-                        invoice_header = result[0][0]
-                elif isinstance(result[0], dict):
-                    invoice_header = result[0]
-
-        if not invoice_header or invoice_header.get('org_id') != org_id:
+        if not invoice_header:
             flash('Invoice not found', 'error')
             return redirect(url_for('invoices_bp.list_invoices'))
 
@@ -1425,9 +1052,44 @@ def add_payment(invoice_id):
         flash('Amount is required', 'error')
         return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
-    try:
+    invoice_header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    if not invoice_header:
+        flash('Invoice not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+    if not get_type(invoice_header.get('doc_type')).takes_payments:
+        flash('Payments are recorded against invoices, not quotes or proformas', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
-        db.execute_proc('sp_record_payment', (invoice_id, float(amount), method, reference_number, None), fetch=False)
+    try:
+        amount_value = float(amount)
+    except ValueError:
+        flash('Amount must be a number', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+    # Foreign-currency invoices: what the bank actually credited in the home currency
+    _, profile = get_org_profile(g.current_org_id)
+    base_currency = profile.get('default_currency') or 'INR'
+    received = None
+    raw_received = (request.form.get('received_amount') or '').strip()
+    if raw_received and (invoice_header.get('currency_code') or base_currency) != base_currency:
+        try:
+            received = float(raw_received)
+        except ValueError:
+            flash('Amount credited must be a number', 'error')
+            return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    payment_date = (request.form.get('payment_date') or '').strip() or None
+
+    try:
+        row = db.execute_proc_single('sp_record_payment', (invoice_id, amount_value, method, reference_number, None))
+        if row and (payment_date or received is not None):
+            db.execute_proc('sp_set_payment_details', (
+                row['payment_id'], invoice_id, payment_date, received,
+                base_currency if received is not None else None), fetch=False)
+        from money import format_money
+        activity.record('payment', f"Payment of {format_money(amount_value, invoice_header.get('currency_code'))} on "
+                                   f"{invoice_header.get('doc_number') or 'an invoice'}",
+                        project_id=invoice_header.get('project_id'), body=invoice_header.get('customer_name'),
+                        link=url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
         flash('Payment recorded successfully', 'success')
     except DatabaseError as e:
         flash(f'Error recording payment: {str(e)}', 'error')

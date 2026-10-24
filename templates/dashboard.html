@@ -1,611 +1,231 @@
 {% extends "base.html" %}
+{% from "_macros.html" import status_badge, invoice_number, empty_state %}
 
-{% block title %}Dashboard - Invoice System{% endblock %}
+{% block title %}Dashboard{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
-{% block page_description %}
-<div class="header-description">
-    Track your invoicing performance with real-time metrics and insights
-</div>
+{% block page_description %}<p class="header-description">{{ session.get('org_name', '') }}</p>{% endblock %}
+
+{% block header_actions %}
+{% if current_org_role in ('owner', 'admin', 'member') %}
+{% set with_project = true %}{% include "_new_menu.html" %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<section class="dashboard-section">
-    <h2 class="section-title">Financial Overview</h2>
-    <div class="stats-grid">
+{% if error %}
+<div class="alert alert-error">Some dashboard data couldn't be loaded. Try refreshing the page.</div>
+{% endif %}
+
+{% if pending_requests %}
+<div class="alert alert-info flex-between" style="align-items: center;">
+    <span>{{ pending_requests | length }} {{ 'person is' if pending_requests | length == 1 else 'people are' }} waiting to join {{ session.get('org_name', 'your organization') }}.</span>
+    <a href="{{ url_for('settings_bp.index') }}#team" class="btn btn-secondary btn-xs">Review requests</a>
+</div>
+{% endif %}
+
+{% if currencies %}
+<div class="list-header">
+    <nav class="segmented" aria-label="Currency">
+        {% for c in currencies %}
+        <a href="{{ url_for('dashboard_bp.index', currency=c) }}" class="{{ 'active' if c == currency }}" {% if c == currency %}aria-current="page"{% endif %}>{{ c }}</a>
+        {% endfor %}
+    </nav>
+</div>
+{% endif %}
+
+{# ---- KPIs ---- #}
+<div class="stats-grid">
     <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="This Month Revenue Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value">{{ stats.revenue_this_month or 0 | currency }}</div>
-        <div class="stat-label">This Month Revenue</div>
-        {% if stats.revenue_last_month and stats.revenue_last_month > 0 %}
-        <div class="stat-change {% if stats.revenue_this_month > stats.revenue_last_month %}positive{% else %}negative{% endif %}">
-            {% set change_pct = ((stats.revenue_this_month - stats.revenue_last_month) / stats.revenue_last_month * 100) | round(1) %}
-            {% if change_pct > 0 %}+{% endif %}{{ change_pct }}% vs last month
+        <div class="stat-label"><i data-lucide="wallet"></i>Outstanding</div>
+        <div class="stat-value">{{ kpis.outstanding | currency(currency) }}</div>
+        <div class="stat-meta">
+            {{ kpis.outstanding_count }} open invoice{{ '' if kpis.outstanding_count == 1 else 's' }}
+            {% if kpis.other_outstanding %}· plus {{ kpis.other_outstanding | money_totals }}{% endif %}
         </div>
+    </div>
+    <a class="stat-card {{ 'stat-alert' if kpis.overdue_count }}" href="{{ url_for('invoices_bp.list_invoices', status='overdue') }}" style="color: inherit; text-decoration: none;">
+        <div class="stat-label"><i data-lucide="alarm-clock"></i>Overdue</div>
+        <div class="stat-value">{{ kpis.overdue | currency(currency) }}</div>
+        <div class="stat-meta">{{ kpis.overdue_count }} invoice{{ "" if kpis.overdue_count == 1 else "s" }}</div>
+    </a>
+    <div class="stat-card">
+        <div class="stat-label"><i data-lucide="file-text"></i>Invoiced this month</div>
+        <div class="stat-value">{{ kpis.invoiced_this_month | currency(currency) }}</div>
+        {% if kpis.invoiced_delta is not none %}
+        {% set d = kpis.invoiced_delta %}
+        <div class="stat-change {{ 'positive' if d >= 0 else 'negative' }}">
+            {{ '▲' if d >= 0 else '▼' }} {{ '%+.1f' | format(d) }}% vs last month
+        </div>
+        {% else %}
+        <div class="stat-meta">{{ kpis.invoices_this_month }} invoice{{ '' if kpis.invoices_this_month == 1 else 's' }} issued</div>
         {% endif %}
     </div>
     <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="This Month Invoices Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value">{{ stats.invoices_created_this_month or 0 }}</div>
-        <div class="stat-label">Invoices Created</div>
-        <div class="stat-change" style="color: var(--text-tertiary); font-size: 0.7rem; margin-top: 4px;">
-            This month
-        </div>
+        <div class="stat-label"><i data-lucide="circle-check"></i>Collected this month</div>
+        <div class="stat-value">{{ kpis.collected_this_month | currency(currency) }}</div>
+        <div class="stat-meta">This month</div>
     </div>
+    {% if received.foreign_converted or received.foreign_pending or currency != home_currency %}
     <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="Money Received This Month Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value" style="color: var(--color-success);">{{ stats.money_received_this_month or 0 | currency }}</div>
-        <div class="stat-label">Money Received</div>
-        <div class="stat-change" style="color: var(--text-tertiary); font-size: 0.7rem; margin-top: 4px;">
-            Paid this month
+        <div class="stat-label"><i data-lucide="landmark"></i>Received in {{ home_currency }} this month</div>
+        <div class="stat-value">{{ received.home | currency(home_currency) }}</div>
+        <div class="stat-meta">
+            {% if received.foreign_converted %}Includes {{ received.foreign_converted | money_totals }} at credited rates{% else %}{{ home_currency }} payments plus foreign payments as credited{% endif %}
+            {% if received.foreign_pending %}<br><span style="color: var(--warning-ink);">{{ received.foreign_pending }} foreign payment{{ '' if received.foreign_pending == 1 else 's' }} without a {{ home_currency }} amount</span>{% endif %}
         </div>
     </div>
-    <div class="stat-card">
-        <button class="card-menu" aria-label="Menu" data-tooltip="Pending Money This Month Options">
-            <i data-lucide="more-horizontal" class="nav-icon"></i>
-        </button>
-        <div class="stat-value" style="color: var(--color-warning);">{{ stats.pending_money_this_month or 0 | currency }}</div>
-        <div class="stat-label">Pending Money</div>
-        <div class="stat-change" style="color: var(--text-tertiary); font-size: 0.7rem; margin-top: 4px;">
-            Awaiting payment
-        </div>
-    </div>
+    {% endif %}
+    <a class="stat-card" href="{{ url_for('invoices_bp.list_invoices', type='quote', status='sent') }}" style="color: inherit; text-decoration: none;">
+        <div class="stat-label"><i data-lucide="file-pen-line"></i>Open quotes</div>
+        <div class="stat-value">{{ kpis.open_quotes }}</div>
+        <div class="stat-meta">{{ kpis.open_quotes_value | money_totals if kpis.open_quotes_value else 'Sent or accepted, not yet invoiced' }}</div>
+    </a>
 </div>
-</section>
 
-
-<section class="dashboard-section">
-    <h2 class="section-title">Analytics</h2>
-    <div class="charts-grid">
-    <div class="card">
-        <div class="card-header">
-            <h2 class="card-title">Revenue Over Time</h2>
-            <button class="card-menu" aria-label="Menu" data-tooltip="Revenue Over Time Chart Options">
-                <i data-lucide="more-horizontal" class="nav-icon"></i>
-            </button>
-        </div>
-        <div class="card-body">
-            <canvas id="revenueChart" style="max-height: 300px;"></canvas>
-        </div>
-    </div>
-    
-    <div class="card">
-        <div class="card-header">
-            <h2 class="card-title">Invoice Status Distribution</h2>
-            <button class="card-menu" aria-label="Menu" data-tooltip="Invoice Status Distribution Chart Options">
-                <i data-lucide="more-horizontal" class="nav-icon"></i>
-            </button>
-        </div>
-        <div class="card-body">
-            <canvas id="statusChart" style="max-height: 300px;"></canvas>
-        </div>
-    </div>
+{% if not has_invoices %}
+<div class="card">
+    {{ empty_state('sparkles', 'Welcome to DocuMint',
+        'Set up a template with your line items and formulas, add a customer, then create your first invoice.',
+        url_for('templates_bp.create_template') if current_org_role in ('owner', 'admin') else (url_for('invoices_bp.create_invoice') if current_org_role == 'member' else None),
+        'Create a template' if current_org_role in ('owner', 'admin') else 'New invoice') }}
 </div>
-</section>
+{% else %}
 
-<section class="dashboard-section">
-    <div class="card">
+{# ---- Charts ---- #}
+<div class="charts-grid">
+    <section class="card" aria-labelledby="revenue-title">
         <div class="card-header">
-            <h2 class="card-title">Revenue by Status</h2>
-            <button class="card-menu" aria-label="Menu" data-tooltip="Revenue by Status Chart Options">
-                <i data-lucide="more-horizontal" class="nav-icon"></i>
-            </button>
+            <div>
+                <h2 class="card-title" id="revenue-title">Invoiced revenue</h2>
+                <p class="card-subtitle">Last 12 months · {{ currency }}</p>
+            </div>
         </div>
         <div class="card-body">
-            <canvas id="revenueStatusChart" style="max-height: 300px;"></canvas>
+            <div class="col-chart" id="revenueChart" data-series='{{ revenue_series | tojson }}' data-currency="{{ currency }}" role="img"
+                 aria-label="Column chart of invoiced revenue per month for the last 12 months. Exact values are in the table below."></div>
+            <details class="data-table-toggle">
+                <summary>Show as table</summary>
+                <table class="table">
+                    <thead><tr><th>Month</th><th class="num">Revenue</th></tr></thead>
+                    <tbody>
+                        {% for point in revenue_series | reverse %}
+                        <tr><td>{{ point.full_label }}</td><td class="num">{{ point.revenue | currency(currency) }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </details>
         </div>
-    </div>
-</section>
+    </section>
 
-<section class="dashboard-section">
-    <h2 class="section-title">Recent Activity</h2>
-    <div class="card">
+    <section class="card" aria-labelledby="status-title">
         <div class="card-header">
-            <h2 class="card-title">Recent Invoices</h2>
-            <button class="card-menu" aria-label="Menu" data-tooltip="Recent Invoices Options">
-                <i data-lucide="more-horizontal" class="nav-icon"></i>
-            </button>
+            <div>
+                <h2 class="card-title" id="status-title">Invoices by status <span class="text-tertiary" style="font-weight: 400;">({{ currency }})</span></h2>
+                <p class="card-subtitle">{{ breakdown_total }} invoice{{ '' if breakdown_total == 1 else 's' }} in total</p>
+            </div>
         </div>
-    <div class="card-body">
-        {% if recent_invoices %}
-        <div class="table-container">
+        <div class="card-body">
+            {% set labels = {'paid': 'Paid', 'pending': 'Pending', 'overdue': 'Overdue', 'draft': 'Draft'} %}
+            <div class="status-bar" aria-hidden="true">
+                {% for key in ['paid', 'pending', 'overdue', 'draft'] %}
+                {% set b = breakdown[key] %}
+                {% if b.count %}
+                <span class="fill-{{ key }}" style="flex: {{ b.count }};" title="{{ labels[key] }}: {{ b.count }}"></span>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <ul class="status-legend">
+                {% for key in ['paid', 'pending', 'overdue', 'draft'] %}
+                {% set b = breakdown[key] %}
+                <li>
+                    <span class="swatch fill-{{ key }}" aria-hidden="true"></span>
+                    <a href="{{ url_for('invoices_bp.list_invoices', status=key) }}" style="color: inherit;">{{ labels[key] }}</a>
+                    <span class="count">{{ b.count }}</span>
+                    <span class="amount">{{ b.amount | currency(currency) }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+</div>
+
+{# ---- Lists ---- #}
+<div class="dashboard-grid">
+    <section class="card" aria-labelledby="recent-title">
+        <div class="card-header">
+            <h2 class="card-title" id="recent-title">Recent documents</h2>
+            <a href="{{ url_for('invoices_bp.list_invoices') }}" class="btn btn-ghost btn-xs">View all <i data-lucide="arrow-right"></i></a>
+        </div>
+        <div class="table-container" style="border: 0; box-shadow: none; border-radius: 0 0 var(--radius-lg) var(--radius-lg);">
             <table class="table">
                 <thead>
-                    <tr>
-                        <th>Invoice ID</th>
-                        <th>Customer</th>
-                        <th>Template</th>
-                        <th>Issue Date</th>
-                        <th>Due Date</th>
-                        <th>Status</th>
-                        <th>Amount</th>
-                        <th>Actions</th>
-                    </tr>
+                    <tr><th>Document</th><th class="hide-mobile">Customer</th><th>Status</th><th class="num">Total</th></tr>
                 </thead>
                 <tbody>
                     {% for invoice in recent_invoices %}
-                    <tr>
-                        <td>{{ invoice.invoice_id[:8] }}...</td>
-                        <td>{{ invoice.customer_name }}</td>
-                        <td>{{ invoice.template_name or 'N/A' }}</td>
-                        <td>{{ invoice.issue_date or 'N/A' }}</td>
-                        <td>{{ invoice.due_date or 'N/A' }}</td>
+                    <tr data-href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}">
                         <td>
-                            <span class="badge badge-{{ 'success' if invoice.status == 'paid' else 'warning' if invoice.status == 'pending' else 'info' }}">
-                                {{ invoice.status or 'draft' }}
-                            </span>
+                            <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="cell-primary" style="color: inherit;">{{ (invoice | doc_number) }}</a>
+                            <span class="cell-secondary"><span class="show-mobile">{{ invoice.customer_name }}</span><span class="hide-mobile">{{ invoice.doc_type | doc_label }} · {{ invoice.issue_date | date or 'no date' }}</span></span>
                         </td>
-                        <td>{{ invoice.total_amount or 0 | currency }}</td>
-                        <td>
-                            <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-sm btn-secondary">View</a>
-                        </td>
+                        <td class="hide-mobile">{{ invoice.customer_name }}</td>
+                        <td>{{ status_badge(invoice) }}</td>
+                        <td class="num">{{ invoice.total_amount | currency(invoice.currency_code) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        {% else %}
-        <p>No invoices yet. <a href="{{ url_for('invoices_bp.create_invoice') }}">Create your first invoice</a></p>
+    </section>
+
+    <div>
+        <section class="card" aria-labelledby="due-title">
+            <div class="card-header"><h2 class="card-title" id="due-title">Awaiting payment</h2></div>
+            <div class="card-body">
+                {% if due_soon %}
+                <ul class="timeline">
+                    {% for invoice in due_soon %}
+                    {% set late = is_overdue(invoice) %}
+                    <li>
+                        <span class="dot" style="{{ 'background: var(--critical-soft); color: var(--critical-ink);' if late else 'background: var(--warning-soft); color: var(--warning-ink);' }}">
+                            <i data-lucide="{{ 'alarm-clock' if late else 'clock' }}"></i>
+                        </span>
+                        <div style="min-width: 0;">
+                            <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" style="color: inherit;">{{ invoice.customer_name }}</a>
+                            <div class="when">
+                                {% if late %}Overdue · was due {{ invoice.due_date | date }}{% elif invoice.due_date %}Due {{ invoice.due_date | date }}{% else %}No due date{% endif %}
+                            </div>
+                        </div>
+                        <strong class="num">{{ [(invoice.total_amount or 0) - (invoice.paid_amount or 0), 0] | max | currency(invoice.currency_code) }}</strong>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-tertiary" style="margin: 0;">Nothing outstanding. Every finalized invoice is paid.</p>
+                {% endif %}
+            </div>
+        </section>
+
+        {% if top_owed %}
+        <section class="card" aria-labelledby="owed-title">
+            <div class="card-header"><h2 class="card-title" id="owed-title">Largest balances</h2></div>
+            <div class="card-body">
+                <dl class="summary-list">
+                    {% for c in top_owed %}
+                    <div>
+                        <dt>{{ c.name }} <span class="text-tertiary">· {{ c.count }}</span></dt>
+                        <dd>{{ c.amount | currency(currency) }}</dd>
+                    </div>
+                    {% endfor %}
+                </dl>
+            </div>
+        </section>
         {% endif %}
     </div>
 </div>
-</section>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script>
-        // Wait for Chart.js to load and DOM to be ready
-        (function() {
-            function initCharts() {
-                // Initialize Lucide icons
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
-                
-                // Check if Chart is available
-                if (typeof Chart === 'undefined') {
-                    console.error('Chart.js failed to load');
-                    return;
-                }
-
-        // Modern Chart.js configuration - Purple & Teal Theme
-        const chartColors = {
-            // Soft Purple (main color)
-            primary: '#9B86FF', // Soft Purple
-            primaryGradient: ['#9B86FF', '#B5A5FF', '#CFC4FF'],
-            // Teal Accent (secondary)
-            secondary: '#4CD4A9', // Teal Accent
-            secondaryGradient: ['#4CD4A9', '#6DD9B8', '#8EDEC7'],
-            // Lighter Purple (tertiary)
-            tertiary: '#B5A5FF', // Lighter Purple
-            tertiaryGradient: ['#B5A5FF', '#CFC4FF', '#E9E3FF'],
-            // Primary Hover Purple (accent)
-            accent: '#8B76F5', // Primary Hover Purple
-            accentGradient: ['#8B76F5', '#A595F7', '#BFB4F9'],
-            // Additional colors for variety
-            success: '#34D399',
-            successGradient: ['#34D399', '#5DD9B3', '#86DFCD'],
-            warning: '#EAB308',
-            warningGradient: ['#EAB308', '#F0C948', '#F6E088'],
-            error: '#EF4444',
-            errorGradient: ['#EF4444', '#F87171', '#FCA5A5'],
-            info: '#4CD4A9',
-            infoGradient: ['#4CD4A9', '#6DD9B8', '#8EDEC7'],
-            gray: '#A0A0A0',
-            grayGradient: ['#A0A0A0', '#C0C0C0', '#E0E0E0']
-        };
-
-        // Helper function to create gradient
-        function createGradient(ctx, colorStops) {
-            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            colorStops.forEach((color, index) => {
-                gradient.addColorStop(index / (colorStops.length - 1), color);
-            });
-            return gradient;
-        }
-
-        const chartOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: {
-                duration: 1000,
-                easing: 'easeInOutQuart'
-            },
-            plugins: {
-                legend: {
-                    position: 'top',
-                    labels: {
-                        usePointStyle: true,
-                        padding: 20,
-                        font: {
-                            family: 'Inter, sans-serif',
-                            size: 13,
-                            weight: '500'
-                        },
-                        color: '#ffffff'
-                    }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-                    padding: 16,
-                    titleFont: {
-                        family: 'Inter, sans-serif',
-                        size: 14,
-                        weight: '600'
-                    },
-                    bodyFont: {
-                        family: 'Inter, sans-serif',
-                        size: 13,
-                        weight: '500'
-                    },
-                    borderColor: 'rgba(26, 26, 26, 0.8)',
-                    borderWidth: 1,
-                    cornerRadius: 8,
-                    displayColors: true,
-                    padding: 16,
-                    titleSpacing: 8,
-                    bodySpacing: 6,
-                    boxPadding: 8
-                }
-            },
-            scales: {
-                x: {
-            grid: {
-                color: 'rgba(255, 255, 255, 0.05)',
-                drawBorder: false,
-                lineWidth: 1
-            },
-            ticks: {
-                font: {
-                    family: 'Inter, sans-serif',
-                    size: 12,
-                    weight: '500'
-                },
-                color: '#9ca3af',
-                        padding: 12
-                    }
-                },
-                y: {
-            grid: {
-                color: 'rgba(255, 255, 255, 0.05)',
-                drawBorder: false,
-                lineWidth: 1
-            },
-            ticks: {
-                font: {
-                    family: 'Inter, sans-serif',
-                    size: 12,
-                    weight: '500'
-                },
-                color: '#9ca3af',
-                        padding: 12,
-                        callback: function(value) {
-                            return '$' + value.toLocaleString();
-                        }
-                    }
-                }
-            }
-        };
-
-        // Revenue Over Time Chart (Line Chart)
-        const revenueData = {{ revenue_timeseries | tojson }};
-        console.log('Revenue timeseries raw data:', revenueData);
-        console.log('Type of revenueData:', typeof revenueData);
-        console.log('Is array?', Array.isArray(revenueData));
-        
-        // Handle different possible key formats and ensure we have data
-        let revenueLabels = [];
-        let revenueValues = [];
-        
-        if (revenueData && Array.isArray(revenueData) && revenueData.length > 0) {
-            console.log('Processing revenue data, length:', revenueData.length);
-            console.log('First item:', revenueData[0]);
-            console.log('First item keys:', Object.keys(revenueData[0] || {}));
-            
-            revenueLabels = revenueData.map(item => {
-                // Try different possible key names
-                const label = item.month_label || item.MONTH_LABEL || item.month || item.MONTH || 'Unknown';
-                console.log('Label from item:', item, '->', label);
-                return label;
-            });
-            revenueValues = revenueData.map(item => {
-                // Try different possible key names for revenue
-                const revenue = item.revenue || item.REVENUE || item.total_amount || item.TOTAL_AMOUNT || 0;
-                const parsed = parseFloat(revenue);
-                console.log('Parsing revenue:', revenue, 'type:', typeof revenue, '->', parsed);
-                return isNaN(parsed) ? 0 : parsed;
-            });
-            
-            // Reverse arrays so oldest month is on the left
-            revenueLabels = revenueLabels.reverse();
-            revenueValues = revenueValues.reverse();
-        } else {
-            console.warn('No revenue timeseries data available or not an array');
-            console.warn('revenueData:', revenueData);
-        }
-        
-        console.log('Revenue labels:', revenueLabels);
-        console.log('Revenue values:', revenueValues);
-
-        const revenueCtx = document.getElementById('revenueChart');
-        if (revenueCtx && revenueLabels.length > 0 && revenueValues.length > 0) {
-            const revenueGradient = createGradient(revenueCtx.getContext('2d'), [
-                'rgba(155, 134, 255, 0.25)',  // #9B86FF with opacity
-                'rgba(155, 134, 255, 0.1)',
-                'rgba(155, 134, 255, 0)'
-            ]);
-
-            new Chart(revenueCtx, {
-                type: 'line',
-                data: {
-                    labels: revenueLabels,
-                    datasets: [{
-                        label: 'Revenue',
-                        data: revenueValues,
-                        borderColor: chartColors.primary,
-                        backgroundColor: revenueGradient,
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.5,
-                        pointBackgroundColor: '#1C1D22',
-                        pointBorderColor: chartColors.primary,
-                        pointBorderWidth: 3,
-                        pointRadius: 5,
-                        pointHoverRadius: 8,
-                        pointHoverBorderWidth: 4,
-                        pointHoverBackgroundColor: chartColors.primary
-                    }]
-                },
-                options: {
-                    ...chartOptions,
-                    interaction: {
-                        intersect: false,
-                        mode: 'index'
-                    },
-                    plugins: {
-                        ...chartOptions.plugins,
-                        tooltip: {
-                            ...chartOptions.plugins.tooltip,
-                            callbacks: {
-                                label: function(context) {
-                                    return 'Revenue: $' + context.parsed.y.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Invoice Status Distribution Chart (Doughnut Chart)
-        const statusData = {{ status_distribution | tojson }};
-        const statusLabels = statusData.map(item => {
-            const status = item.status || 'draft';
-            return status.charAt(0).toUpperCase() + status.slice(1);
-        });
-        const statusValues = statusData.map(item => parseInt(item.count || 0));
-        
-        const statusCtx = document.getElementById('statusChart');
-        if (statusCtx) {
-            const ctx = statusCtx.getContext('2d');
-            // Color palette using purple & teal theme
-            const donutColors = [
-                '#9B86FF',  // Soft Purple (primary)
-                '#4CD4A9',  // Teal Accent (secondary)
-                '#8B76F5',  // Primary Hover Purple (tertiary)
-                '#B5A5FF'   // Lighter Purple (accent)
-            ];
-            
-            const statusColors = statusData.map((item, index) => {
-                // Use the donut color palette, cycling through if needed
-                return donutColors[index % donutColors.length];
-            });
-
-            new Chart(statusCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: statusLabels,
-                    datasets: [{
-                        data: statusValues,
-                        backgroundColor: statusColors,
-                        borderWidth: 0,
-                        hoverOffset: 12,
-                        hoverBorderWidth: 0
-                    }]
-                },
-                options: {
-                    ...chartOptions,
-                    cutout: '70%',
-                    plugins: {
-                        ...chartOptions.plugins,
-                        legend: {
-                            ...chartOptions.plugins.legend,
-                            position: 'bottom',
-                            labels: {
-                                ...chartOptions.plugins.legend.labels,
-                                padding: 15,
-                                boxWidth: 14,
-                                boxHeight: 14
-                            }
-                        },
-                        tooltip: {
-                            ...chartOptions.plugins.tooltip,
-                            callbacks: {
-                                label: function(context) {
-                                    const label = context.label || '';
-                                    const value = context.parsed || 0;
-                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                    const percentage = ((value / total) * 100).toFixed(1);
-                                    return label + ': ' + value + ' (' + percentage + '%)';
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Revenue by Status Chart (Bar Chart)
-        const revenueStatusData = {{ revenue_by_status | tojson }};
-        const revenueStatusLabels = revenueStatusData.map(item => {
-            const status = item.status || 'draft';
-            return status.charAt(0).toUpperCase() + status.slice(1);
-        });
-        const revenueStatusValues = revenueStatusData.map(item => parseFloat(item.revenue || 0));
-        
-        const revenueStatusCtx = document.getElementById('revenueStatusChart');
-        if (revenueStatusCtx) {
-            const ctx = revenueStatusCtx.getContext('2d');
-            // Color palette using purple & teal theme
-            const donutColors = [
-                '#9B86FF',  // Soft Purple (primary)
-                '#4CD4A9',  // Teal Accent (secondary)
-                '#8B76F5',  // Primary Hover Purple (tertiary)
-                '#B5A5FF'   // Lighter Purple (accent)
-            ];
-            
-            const revenueStatusGradients = revenueStatusData.map((item, index) => {
-                const baseColor = donutColors[index % donutColors.length];
-                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                // Create a subtle gradient from the base color
-                gradient.addColorStop(0, baseColor);
-                // Convert hex to rgba for transparency
-                const r = parseInt(baseColor.slice(1, 3), 16);
-                const g = parseInt(baseColor.slice(3, 5), 16);
-                const b = parseInt(baseColor.slice(5, 7), 16);
-                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.8)`);
-                return gradient;
-            });
-
-            new Chart(revenueStatusCtx, {
-                type: 'bar',
-                data: {
-                    labels: revenueStatusLabels,
-                    datasets: [{
-                        label: 'Revenue',
-                        data: revenueStatusValues,
-                        backgroundColor: revenueStatusGradients,
-                        borderColor: revenueStatusGradients,
-                        borderWidth: 0,
-                        borderRadius: 8,
-                        borderSkipped: false,
-                        maxBarThickness: 60
-                    }]
-                },
-                options: {
-                    ...chartOptions,
-                    plugins: {
-                        ...chartOptions.plugins,
-                        tooltip: {
-                            ...chartOptions.plugins.tooltip,
-                            callbacks: {
-                                label: function(context) {
-                                    return 'Revenue: $' + context.parsed.y.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-    }
-
-    // Try to initialize immediately if Chart.js is already loaded
-    if (typeof Chart !== 'undefined') {
-        initCharts();
-    } else {
-        // Wait for DOM and Chart.js to load
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                setTimeout(initCharts, 100);
-            });
-        } else {
-            setTimeout(initCharts, 100);
-        }
-    }
-
-    // Click-based tooltips for card menu buttons
-    document.addEventListener('DOMContentLoaded', function() {
-        const cardMenus = document.querySelectorAll('.card-menu');
-        let activeTooltip = null;
-
-        cardMenus.forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.stopPropagation();
-                
-                // Remove existing tooltip if any
-                if (activeTooltip) {
-                    activeTooltip.remove();
-                    activeTooltip = null;
-                    return;
-                }
-
-                // Get tooltip text from data-tooltip attribute
-                const tooltipText = this.getAttribute('data-tooltip') || 'Options';
-                
-                // Create tooltip element
-                const tooltip = document.createElement('div');
-                tooltip.className = 'custom-tooltip';
-                tooltip.textContent = tooltipText;
-                
-                // Position tooltip
-                const rect = this.getBoundingClientRect();
-                tooltip.style.position = 'fixed';
-                tooltip.style.top = (rect.bottom + 8) + 'px';
-                tooltip.style.left = (rect.left + rect.width / 2) + 'px';
-                tooltip.style.transform = 'translateX(-50%)';
-                
-                document.body.appendChild(tooltip);
-                activeTooltip = tooltip;
-
-                // Close tooltip when clicking outside
-                const closeTooltip = function(e) {
-                    if (activeTooltip && !activeTooltip.contains(e.target) && !button.contains(e.target)) {
-                        activeTooltip.remove();
-                        activeTooltip = null;
-                        document.removeEventListener('click', closeTooltip);
-                    }
-                };
-                
-                // Use setTimeout to avoid immediate close
-                setTimeout(() => {
-                    document.addEventListener('click', closeTooltip);
-                }, 0);
-            });
-        });
-    });
-})();
-</script>
-<style>
-.custom-tooltip {
-    background-color: var(--bg-secondary);
-    color: var(--text-primary);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--border-radius);
-    font-size: var(--font-size-sm);
-    box-shadow: var(--shadow-lg);
-    border: 1px solid var(--border-color);
-    z-index: 1000;
-    pointer-events: none;
-    white-space: nowrap;
-    animation: tooltipFadeIn 0.2s ease-out;
-}
-
-@keyframes tooltipFadeIn {
-    from {
-        opacity: 0;
-        transform: translateX(-50%) translateY(-4px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
-    }
-}
-</style>
+<script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
 {% endblock %}

@@ -1,63 +1,68 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Customer Portal - Invoice System{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    {% block extra_css %}{% endblock %}
-</head>
-<body>
-    {% if current_customer %}
-    <div class="app-container">
-        
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <a href="{{ url_for('customer_portal_bp.dashboard') }}" class="sidebar-logo">Invoice Portal</a>
-            </div>
-            <nav>
-                <ul class="sidebar-nav">
-                    <li class="sidebar-nav-item">
-                        <a href="{{ url_for('customer_portal_bp.dashboard') }}" class="sidebar-nav-link {% if request.endpoint == 'customer_portal_bp.dashboard' %}active{% endif %}">
-                            My Invoices
-                        </a>
-                    </li>
-                </ul>
-            </nav>
-        </aside>
+{% extends "base.html" %}
+{% from "_macros.html" import flash_messages %}
 
-        
-        <main class="main-content">
-            <header class="header">
-                <h1 class="header-title">{% block page_title %}My Invoices{% endblock %}</h1>
-                <div class="header-actions">
-                    <div>
-                        <span>{{ current_customer.email }}</span>
-                        <a href="{{ url_for('customer_portal_bp.logout') }}" class="btn btn-secondary btn-sm">Logout</a>
+{# The staff shell is skipped for customers: base.html shows auth_content when no staff user is logged in #}
+{% block auth_content %}
+{% if current_customer %}
+<div class="app-container">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('customer_portal_bp.dashboard') }}" class="sidebar-logo">
+                <span class="logo-icon">DM</span>
+                <span class="logo-text">Billing portal</span>
+            </a>
+        </div>
+        <nav aria-label="Portal">
+            <ul class="sidebar-nav">
+                <li class="sidebar-nav-item">
+                    <a href="{{ url_for('customer_portal_bp.dashboard') }}" class="sidebar-nav-link {% if (request.endpoint or '').startswith('customer_portal_bp') %}active{% endif %}">
+                        <i data-lucide="receipt" class="nav-icon"></i><span>My documents</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="flex-between" style="flex-wrap: nowrap;">
+                <div class="user-chip">
+                    <span class="avatar" aria-hidden="true">{{ (current_customer.customer_name or '?')[:2] }}</span>
+                    <span class="user-chip-text">
+                        <strong>{{ current_customer.customer_name }}</strong>
+                        <span style="text-transform: none;">{{ current_customer.email }}</span>
+                    </span>
+                </div>
+                <div class="footer-actions">
+                    <button type="button" class="icon-btn theme-toggle" onclick="toggleTheme()" title="Dark mode" aria-label="Toggle dark mode"><i data-lucide="sun" class="icon-sun"></i><i data-lucide="moon" class="icon-moon"></i></button>
+                <form method="POST" action="{{ url_for('customer_portal_bp.logout') }}">
+                    <button type="submit" class="icon-btn" title="Log out" aria-label="Log out"><i data-lucide="log-out"></i></button>
+                </form>
+                </div>
+            </div>
+        </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <main class="main-content">
+        <header class="header">
+            <div class="header-content">
+                <div class="header-title-section">
+                    <button class="mobile-menu-btn" type="button" onclick="toggleSidebar()" aria-label="Open menu" aria-controls="sidebar">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div style="min-width: 0;">
+                        <h1 class="header-title">{% block page_title %}My documents{% endblock %}</h1>
+                        {% block page_description %}{% endblock %}
                     </div>
                 </div>
-            </header>
-
-            
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }}">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-
-            {% block content %}{% endblock %}
-        </main>
-    </div>
-    {% else %}
-        {% block auth_content %}{% endblock %}
-    {% endif %}
-
-    {% block extra_js %}{% endblock %}
-</body>
-</html>
-
+                <div class="header-actions">
+                    {% block header_actions %}{% endblock %}
+                </div>
+            </div>
+        </header>
+        {{ flash_messages() }}
+        {% block content %}{% endblock %}
+    </main>
+</div>
+{% else %}
+{% block customer_auth %}{% endblock %}
+{% endif %}
+{% endblock %}

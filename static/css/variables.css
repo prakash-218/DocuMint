@@ -1,103 +1,213 @@
-
+/*
+ * DocuMint design tokens.
+ *
+ * Light is the default. Dark follows the OS setting unless the user picks a
+ * theme with the toggle, which sets data-theme on <html> and wins both ways.
+ * Older variable names (--bg-secondary, --color-button-*, ...) are kept as
+ * aliases so existing templates and inline styles pick up the new theme.
+ */
 
 :root {
-    
-    --color-primary: #9B86FF;
-    --color-primary-hover: #8B76F5;
-    --color-primary-light: #B5A5FF;
-    --color-secondary: #9ca3af;
-    --color-secondary-hover: #d1d5db;
+    color-scheme: light;
 
-    --color-button-primary: #9B86FF;
-    --color-button-primary-hover: #8B76F5;
-    --color-button-primary-light: #B5A5FF;
+    /* Surfaces */
+    --surface-page: #f6f6f3;
+    --surface-1: #ffffff;          /* cards, sidebar, tables */
+    --surface-2: #f2f1ed;          /* subtle fills: table heads, inputs on hover */
+    --surface-3: #e9e8e3;          /* pressed / selected */
+    --surface-overlay: rgba(11, 11, 11, 0.45);
 
-    --color-button-secondary: #1A1A1A;
-    --color-button-secondary-hover: #2A2A2A;
-    --color-button-secondary-light: #2A2A2A;
+    /* Ink */
+    --ink-1: #0b0b0b;
+    --ink-2: #52514e;
+    --ink-3: #6f6d68;
+    --ink-on-accent: #ffffff;
 
-    --color-button-tertiary: #141414;
-    --color-button-tertiary-hover: #1A1A1A;
-    --color-button-tertiary-light: #2A2A2A;
+    /* Lines */
+    --line-1: #e6e5df;             /* hairlines, card borders */
+    --line-2: #d4d3cc;             /* inputs, stronger dividers */
+    --focus-ring: 0 0 0 3px rgba(98, 80, 214, 0.28);
 
-    --color-button-danger: #C85A5A;
-    --color-button-danger-hover: #B84A4A;
-    --color-button-danger-light: #D86A6A;
-    
-    --color-button-success: #4CD4A9;
-    --color-button-success-hover: #3BC499;
-    --color-button-success-light: #5DE4B9;
-    
-    
-    --bg-primary: #0D0D0D;
-    --bg-secondary: #141414;
-    --bg-tertiary: #1A1A1A;
-    --bg-hover: #1A1A1A;
-    
-    
-    --text-primary: #EDEDED;
-    --text-secondary: #A0A0A0;
-    --text-tertiary: #808080;
-    --text-inverse: #0D0D0D;
-    
-    
-    --border-color: #2A2A2A;
-    --border-color-hover: #3A3A3A;
-    --border-radius: 0.5rem;      
-    --border-radius-sm: 0.375rem;  
-    --border-radius-lg: 0.75rem;   
-    
-    
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
-    --shadow-md: 0 1px 3px 0 rgba(0, 0, 0, 0.6), 0 1px 2px 0 rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.7), 0 2px 4px -1px rgba(0, 0, 0, 0.6);
-    
-    
-    --color-success: #4CD4A9;
-    --color-success-bg: #064E3B;
-    --color-error: #C85A5A;
-    --color-error-bg: #5A2A2A;
-    --color-warning: #EAB308;
-    --color-warning-bg: #78350F;
-    --color-info: #9B86FF;
-    --color-info-bg: #2A1F4A;
-    
-    
-    --chart-primary: #9B86FF;
-    --chart-secondary: #4CD4A9;
-    --chart-accent: #8B76F5;
-    
-    
-    --spacing-xs: 0.25rem;   
-    --spacing-sm: 0.5rem;    
-    --spacing-md: 1rem;      
-    --spacing-lg: 1.5rem;    
-    --spacing-xl: 2rem;      
-    --spacing-2xl: 3rem;     
-    --spacing-3xl: 4rem;     
-    
-    
-    --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    --font-size-xs: 0.75rem;    
-    --font-size-sm: 0.875rem;   
-    --font-size-base: 1rem;     
-    --font-size-lg: 1.125rem;   
-    --font-size-xl: 1.25rem;    
-    --font-size-2xl: 1.5rem;    
-    --font-size-3xl: 1.875rem;  
-    --font-size-4xl: 2.25rem;   
-    
+    /* Brand accent (violet, validated for charts on both surfaces) */
+    --accent: #6250d6;
+    --accent-hover: #5141c2;
+    --accent-soft: #efedfc;
+    --accent-ink: #4a3aa7;
+
+    /* Status: always paired with an icon or label, never color alone */
+    --good: #0ca30c;
+    --good-ink: #006300;
+    --good-soft: #e7f6e7;
+    --warning: #fab219;
+    --warning-ink: #7a4f00;
+    --warning-soft: #fdf3dc;
+    --critical: #d03b3b;
+    --critical-ink: #a32525;
+    --critical-soft: #fbeaea;
+    --neutral: #a3a29b;
+    --neutral-ink: #52514e;
+    --neutral-soft: #efeee9;
+
+    /* Charts */
+    --chart-surface: var(--surface-1);
+    --chart-series-1: #6250d6;
+    --chart-grid: #e1e0d9;
+    --chart-axis: #c3c2b7;
+
+    /* Shape */
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --radius-pill: 999px;
+
+    --shadow-1: 0 1px 2px rgba(11, 11, 11, 0.04), 0 1px 1px rgba(11, 11, 11, 0.03);
+    --shadow-2: 0 4px 16px rgba(11, 11, 11, 0.08), 0 1px 3px rgba(11, 11, 11, 0.06);
+    --shadow-3: 0 16px 40px rgba(11, 11, 11, 0.16);
+
+    /* Spacing */
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+    --spacing-2xl: 3rem;
+    --spacing-3xl: 4rem;
+
+    /* Type */
+    --font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 0.9375rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+    --font-size-3xl: 1.875rem;
+    --font-size-4xl: 2.25rem;
     --font-weight-normal: 400;
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
     --font-weight-bold: 700;
-    
     --line-height-tight: 1.25;
     --line-height-normal: 1.5;
-    --line-height-relaxed: 1.75;
-    
-    
-    --transition-fast: 160ms cubic-bezier(0.16, 1, 0.3, 1);
-    --transition-base: 180ms cubic-bezier(0.16, 1, 0.3, 1);
-    --transition-slow: 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    --line-height-relaxed: 1.7;
+
+    --transition-fast: 120ms cubic-bezier(0.2, 0, 0, 1);
+    --transition-base: 180ms cubic-bezier(0.2, 0, 0, 1);
+    --transition-slow: 260ms cubic-bezier(0.2, 0, 0, 1);
+
+    --sidebar-width: 248px;
+    --header-height: 64px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+        color-scheme: dark;
+        --surface-page: #0f0f0e;
+        --surface-1: #1a1a19;
+        --surface-2: #232321;
+        --surface-3: #2e2e2b;
+        --surface-overlay: rgba(0, 0, 0, 0.6);
+        --ink-1: #f0efec;
+        --ink-2: #c3c2b7;
+        --ink-3: #9a988f;
+        --line-1: #2c2c2a;
+        --line-2: #3d3d39;
+        --focus-ring: 0 0 0 3px rgba(144, 133, 233, 0.35);
+        --accent: #9085e9;
+        --accent-hover: #a59cf0;
+        --accent-soft: #262240;
+        --accent-ink: #b9b2f5;
+        --ink-on-accent: #0f0f0e;
+        --good-ink: #4cc24c;
+        --good-soft: #142a14;
+        --warning-ink: #fab219;
+        --warning-soft: #2e2511;
+        --critical-ink: #ef7a7a;
+        --critical-soft: #331a1a;
+        --neutral: #6f6d68;
+        --neutral-ink: #c3c2b7;
+        --neutral-soft: #2a2a27;
+        --chart-series-1: #9085e9;
+        --chart-grid: #2c2c2a;
+        --chart-axis: #383835;
+        --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+        --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45);
+        --shadow-3: 0 16px 40px rgba(0, 0, 0, 0.6);
+    }
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-page: #0f0f0e;
+    --surface-1: #1a1a19;
+    --surface-2: #232321;
+    --surface-3: #2e2e2b;
+    --surface-overlay: rgba(0, 0, 0, 0.6);
+    --ink-1: #f0efec;
+    --ink-2: #c3c2b7;
+    --ink-3: #9a988f;
+    --line-1: #2c2c2a;
+    --line-2: #3d3d39;
+    --focus-ring: 0 0 0 3px rgba(144, 133, 233, 0.35);
+    --accent: #9085e9;
+    --accent-hover: #a59cf0;
+    --accent-soft: #262240;
+    --accent-ink: #b9b2f5;
+    --ink-on-accent: #0f0f0e;
+    --good-ink: #4cc24c;
+    --good-soft: #142a14;
+    --warning-ink: #fab219;
+    --warning-soft: #2e2511;
+    --critical-ink: #ef7a7a;
+    --critical-soft: #331a1a;
+    --neutral: #6f6d68;
+    --neutral-ink: #c3c2b7;
+    --neutral-soft: #2a2a27;
+    --chart-series-1: #9085e9;
+    --chart-grid: #2c2c2a;
+    --chart-axis: #383835;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45);
+    --shadow-3: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Legacy aliases used by existing templates and inline styles */
+:root {
+    --bg-primary: var(--surface-page);
+    --bg-secondary: var(--surface-1);
+    --bg-tertiary: var(--surface-2);
+    --bg-hover: var(--surface-2);
+    --color-bg-secondary: var(--surface-1);
+
+    --text-primary: var(--ink-1);
+    --text-secondary: var(--ink-2);
+    --text-tertiary: var(--ink-3);
+    --text-inverse: var(--ink-on-accent);
+    --color-text-secondary: var(--ink-2);
+
+    --border-color: var(--line-1);
+    --border-color-hover: var(--line-2);
+    --border-radius: var(--radius);
+    --border-radius-sm: var(--radius-sm);
+    --border-radius-lg: var(--radius-lg);
+
+    --shadow-sm: var(--shadow-1);
+    --shadow-md: var(--shadow-1);
+    --shadow-lg: var(--shadow-2);
+
+    --color-primary: var(--accent);
+    --color-primary-hover: var(--accent-hover);
+    --color-primary-light: var(--accent-soft);
+    --color-success: var(--good-ink);
+    --color-success-bg: var(--good-soft);
+    --color-warning: var(--warning-ink);
+    --color-warning-dark: var(--warning-ink);
+    --color-warning-bg: var(--warning-soft);
+    --color-error: var(--critical-ink);
+    --color-error-bg: var(--critical-soft);
+    --color-info: var(--accent-ink);
+    --color-info-bg: var(--accent-soft);
+
+    --chart-primary: var(--chart-series-1);
 }

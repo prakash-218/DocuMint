@@ -1,0 +1,53 @@
+{% macro flash_messages() %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="page-alerts" role="status">
+            {% for category, message in messages %}
+            <div class="alert alert-{{ 'info' if category == 'message' else category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+{% endmacro %}
+
+{# Invoice status badge. Overdue = unpaid and past its due date. #}
+{% macro status_badge(invoice) %}
+    {% set status = invoice.status or 'draft' %}
+    {% set styles = {'paid': 'success', 'accepted': 'success', 'pending': 'warning', 'sent': 'info',
+                     'declined': 'danger', 'converted': 'secondary', 'revised': 'secondary', 'draft': 'secondary'} %}
+    {% if is_overdue(invoice) %}
+        <span class="badge badge-danger">Overdue</span>
+    {% else %}
+        <span class="badge badge-{{ styles.get(status, 'secondary') }}">{{ status }}</span>
+    {% endif %}
+{% endmacro %}
+
+{% macro invoice_number(invoice_id) -%}
+    INV-{{ (invoice_id or '')[:8] | upper }}
+{%- endmacro %}
+
+{# Render one stored invoice value according to its data type #}
+{% macro field_value(value, code=None) -%}
+    {%- if not value -%}
+        <span class="text-tertiary">—</span>
+    {%- elif value.data_type == 'number' -%}
+        {%- if value.val_number is none -%}<span class="text-tertiary">—</span>
+        {%- elif value.is_currency -%}{{ value.val_number | currency(code) }}
+        {%- else -%}{{ value.val_number | number }}{%- endif -%}
+    {%- elif value.data_type == 'date' -%}
+        {{ value.val_date | date if value.val_date else '—' }}
+    {%- elif value.data_type == 'boolean' -%}
+        {{ 'Yes' if value.val_boolean else 'No' }}
+    {%- else -%}
+        {{ value.val_string | multiline if value.val_string else '—' }}
+    {%- endif -%}
+{%- endmacro %}
+
+{% macro empty_state(icon, title, text='', action_url=None, action_label=None) %}
+<div class="empty-state">
+    <span class="empty-icon"><i data-lucide="{{ icon }}"></i></span>
+    <h3>{{ title }}</h3>
+    {% if text %}<p>{{ text }}</p>{% endif %}
+    {% if action_url %}<a href="{{ action_url }}" class="btn btn-primary"><i data-lucide="plus"></i>{{ action_label }}</a>{% endif %}
+</div>
+{% endmacro %}

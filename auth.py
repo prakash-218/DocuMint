@@ -11,7 +11,7 @@ import os
 from db import db, DatabaseError
 
 
-JWT_SECRET = os.getenv('JWT_SECRET', 'your-secret-key-change-in-production')
+JWT_SECRET = os.getenv('JWT_SECRET') or os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 24
 
@@ -86,9 +86,24 @@ def require_org(f):
         
         if not user or not user.get('org_id'):
             return redirect(url_for('settings_bp.select_org'))
-        
+
+        # Re-read membership on every request so role changes, deactivations
+        # and removals take effect immediately instead of at next login.
+        try:
+            orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],)) or []
+        except DatabaseError:
+            orgs = None
+        if orgs is not None:
+            session['user_organizations'] = orgs
+            membership = next((o for o in orgs if str(o.get('org_id')) == str(user['org_id'])), None)
+            if not membership:
+                for key in ('org_id', 'org_name', 'org_status'):
+                    session.pop(key, None)
+                return redirect(url_for('settings_bp.select_org'))
+            session['org_name'] = membership.get('name')
+            session['org_status'] = membership.get('status', 'active')
+
         org_status = session.get('org_status')
-        org_name = session.get('org_name')
         if org_status and org_status != 'active':
             # Render the "Access Status" page instead of the requested route
             return render_template('errors/org_status.html', 
@@ -128,80 +143,31 @@ def require_role(allowed_roles):
     return decorator
 
 
+# Roles, most to least: owner (everything), admin (runs the business: customers, templates,
+# settings, team except owners), member (creates and edits documents), viewer (read only).
+MANAGERS = ('owner', 'admin')
+EDITORS = ('owner', 'admin', 'member')
+
+
+def can_manage():
+    """Customers, templates, business settings, team, audit log, deleting drafts."""
+    return get_current_org_role() in MANAGERS
+
+
 def can_create_invoice():
-    """Check if user can create invoices (members and owners)"""
-    role = get_current_org_role()
-    return role in ['member', 'owner']
+    return get_current_org_role() in EDITORS
 
 
 def can_edit_invoice():
-    """Check if user can edit invoices (members and owners)"""
-    role = get_current_org_role()
-    return role in ['member', 'owner']
+    return get_current_org_role() in EDITORS
 
 
 def can_delete_invoice():
-    """Check if user can delete invoices (owners only)"""
-    role = get_current_org_role()
-    return role == 'owner'
+    return can_manage()
 
 
 def can_finalize_invoice():
-    """Check if user can finalize invoices (members and owners)"""
-    role = get_current_org_role()
-    return role in ['member', 'owner']
-
-def authenticate_user(email: str, password: str) -> dict:
-    """
-    Authenticate a user and return user info with organizations.
-
-    Returns:
-        dict with user_id, email, and organizations list
-    """
-    try:
-
-
-
-        result = db.execute_proc('sp_authenticate_user', (email, password, None, None))
-
-        if not result:
-            return None
-
-
-        user_info = None
-        orgs = []
-
-        if isinstance(result, list):
-            if len(result) > 0:
-                if isinstance(result[0], list):
-
-                    if len(result) >= 1 and len(result[0]) > 0:
-                        user_info = result[0][0]
-                    if len(result) >= 2:
-                        orgs = result[1]
-                elif isinstance(result[0], dict):
-
-
-
-                    user_info = result[0] if len(result) == 1 else None
-                    orgs = result if len(result) > 1 else []
-        elif isinstance(result, dict):
-            user_info = result
-
-        if not user_info:
-            return None
-
-        return {
-            'user_id': user_info.get('user_id'),
-            'email': user_info.get('email') or email,
-            'organizations': orgs or []
-        }
-    except DatabaseError as e:
-
-        if 'Invalid email or password' in str(e):
-            return None
-        raise
-
+    return get_current_org_role() in EDITORS
 
 def register_user(email: str, password: str, org_name: str, org_domain: str) -> dict:
     """
@@ -287,69 +253,3 @@ def require_customer_auth(f):
         g.current_customer_id = customer['customer_id']
         return f(*args, **kwargs)
     return decorated_function
-
-
-def authenticate_customer(email: str, password: str) -> dict:
-    """
-    Authenticate a customer and return customer info.
-
-    Returns:
-        dict with customer_user_id, customer_id, email, customer_name
-    """
-    try:
-        # Use stored procedure to get customer user by email
-        user_result = db.execute_proc_single('sp_get_customer_user_by_email', (email,))
-
-        if not user_result:
-            return None
-
-
-        if not verify_password(password, user_result['password_hash']):
-            return None
-
-
-        customer_result = db.execute_proc('sp_authenticate_customer', (email, hash_password(password)))
-        if not customer_result or len(customer_result) == 0:
-            return None
-
-        customer_info = customer_result[0]
-        return {
-            'customer_user_id': customer_info.get('customer_user_id'),
-            'customer_id': customer_info.get('customer_id'),
-            'email': customer_info.get('email'),
-            'customer_name': customer_info.get('customer_name'),
-            'org_id': customer_info.get('org_id')
-        }
-    except DatabaseError as e:
-        if 'Invalid email or password' in str(e):
-            return None
-        raise
-
-
-def create_customer_user(customer_id: str, email: str, password: str) -> dict:
-    """
-    Create a customer user account.
-
-    Returns:
-        dict with customer_user_id, customer_id, email
-    """
-    try:
-        password_hash = hash_password(password)
-
-
-        result = db.execute_proc('sp_create_customer_user', (customer_id, email, password_hash, None))
-        if not result or len(result) == 0:
-            raise DatabaseError("Failed to create customer user")
-
-        customer_user_id = result[0].get('customer_user_id')
-
-        return {
-            'customer_user_id': customer_user_id,
-            'customer_id': customer_id,
-            'email': email
-        }
-    except DatabaseError as e:
-        if 'already exists' in str(e).lower():
-            raise ValueError("Email already exists")
-        raise
-

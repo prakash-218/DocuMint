@@ -1,0 +1,18 @@
+{# Document-level tax, grand total and advance rows. Expects: summary, invoice #}
+{% set cur = invoice.currency_code %}
+{% for line in summary.tax_lines %}
+<div><span class="label">{{ line.label }} {{ '%g' | format(line.rate) }}%</span><span>{{ line.amount | currency(cur) }}</span></div>
+{% endfor %}
+{% if summary.tax_mode == 'lut' %}
+<div><span class="label">Supply under LUT, without payment of IGST</span><span>{{ 0 | currency(cur) }}</span></div>
+{% endif %}
+{% if summary.tax_lines or summary.tax_mode == 'lut' %}
+<div class="grand"><span>Total</span><span>{{ summary.total | currency(cur) }}</span></div>
+{% endif %}
+{% if summary.advance %}
+<div class="grand" style="color: var(--accent-ink); align-items: baseline;">
+    <span>Against proforma invoice {{ '%g' | format(summary.advance.percent) }}%
+        <span class="text-tertiary" style="display: block; font-weight: 400; font-size: var(--font-size-xs);">{{ 'Calculated on the value before tax' if summary.advance.basis == 'pre_tax' else 'Calculated on the total including tax' }}</span></span>
+    <span style="white-space: nowrap;">{{ summary.advance.amount | currency(cur) }}</span>
+</div>
+{% endif %}

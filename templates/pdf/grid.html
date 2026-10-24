@@ -1,0 +1,347 @@
+{#
+  Boxed-grid layout for proforma, tax and export invoices (modelled on the
+  usual Indian GST invoice format). xhtml2pdf: tables only, simple CSS.
+  Expects: invoice, sections_data, summary, payments, profile, fonts, copies
+  With packing=true it prints the packing list for an export invoice instead
+  (no prices or tax; packages and weights).
+#}
+{% set t = doc_type_info(invoice.doc_type) %}
+{% set cur = invoice.currency_code %}
+{% set d = invoice.details | fromjson %}
+{% set is_export = t.key == 'export_invoice' or summary.tax_mode == 'lut' %}
+{% set gst = summary.tax_mode in ('cgst_sgst', 'igst') %}
+{% set packing = packing | default(false) %}
+{% set page = page | default({}) %}
+{% set title = (page.title or 'Packing List') if packing else (page.title or t.label) %}
+{% set org_fields = org_fields | default([]) %}
+{% set customer_fields = customer_fields | default([]) %}
+{% macro money(v) %}{{ v | currency(cur) }}{% endmacro %}
+{% macro cell(value) -%}
+    {%- if not value -%}
+    {%- elif value.data_type == 'number' -%}
+        {%- if value.val_number is none -%}{%- elif value.is_currency -%}{{ value.val_number | currency(cur) }}{%- else -%}{{ value.val_number | number }}{%- endif -%}
+    {%- elif value.data_type == 'date' -%}{{ value.val_date | date }}
+    {%- elif value.data_type == 'boolean' -%}{{ 'Yes' if value.val_boolean else 'No' }}
+    {%- else -%}{{ value.val_string | multiline }}{%- endif -%}
+{%- endmacro %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>{{ title }} {{ invoice | doc_number }}</title>
+<style>
+    @page { size: a4 portrait; margin: 1.2cm 1.2cm 1.4cm 1.2cm;
+            @frame footer { -pdf-frame-content: footer; bottom: 0.6cm; margin-left: 1.2cm; margin-right: 1.2cm; height: 0.6cm; } }
+    body { font-family: {{ fonts.regular or 'Helvetica' }}; font-size: 8.5pt; color: #111; line-height: 1.3; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { vertical-align: top; padding: 2pt 4pt; }
+    .box td, .box th { border: 0.6pt solid #222; }
+    .noborder td { border: 0; padding: 0; }
+    .lbl { font-size: 7.5pt; color: #333; }
+    .val { font-weight: bold; }
+    .red { color: #c00000; font-weight: bold; }
+    .title { font-size: 10pt; font-weight: bold; }
+    .num { text-align: right; }
+    .center { text-align: center; }
+    .left { text-align: left; }
+    .items td.head { background-color: #f2f2f2; font-weight: bold; }
+    .items td { border-top: 0; border-bottom: 0; }
+    .items tr.filler td { height: 9pt; }
+    .items tr.sum td { border-top: 0.6pt solid #222; font-weight: bold; }
+    .small { font-size: 7.5pt; }
+    .sign { height: 40pt; }
+</style>
+</head>
+<body>
+{% for copy in copies %}
+<table class="box">
+    <tr>
+        <td rowspan="{{ 6 if packing else 5 }}" style="width: 50%;">
+            {% if profile.logo %}<img src="{{ profile.logo }}" style="height: 28pt;"><br>{% endif %}
+            <span class="lbl">Consignor's Name &amp; Address</span><br>
+            <span class="val">{{ invoice.organization_name }}</span><br>
+            {% if invoice.organization_street_address %}{{ invoice.organization_street_address }}<br>{% endif %}
+            {{ [invoice.organization_city, invoice.organization_zip_code] | select | join(' - ') }}{% if invoice.organization_state %}. {{ invoice.organization_state }}.{% endif %}
+            {% if profile.state_code %} Code : {{ profile.state_code }}{% endif %}<br>
+            {% if profile.gstin %}<b>GSTIN / UIN : {{ profile.gstin }}</b><br>{% endif %}
+            {% for f in org_fields %}{{ f.label }} : {{ f.value }}<br>{% endfor %}
+            {% if profile.email %}E-mail : {{ profile.email }}<br>{% endif %}
+            {% if profile.phone %}Cell: {{ profile.phone }}{% endif %}
+        </td>
+        <td style="width: 25%;"><span class="title">{{ title }}</span></td>
+        <td style="width: 25%;"><span class="title">{{ copy }}</span></td>
+    </tr>
+    {% if packing %}
+    <tr>
+        <td><span class="lbl">Packing List No.</span><br><span class="red">{{ d.packing_list_no or '' }}</span></td>
+        <td><span class="lbl">Dated</span><br><span class="red">{{ (d.packing_list_date or invoice.issue_date) | date }}</span></td>
+    </tr>
+    {% endif %}
+    <tr>
+        <td><span class="lbl">{{ t.label }} No.</span><br><span class="{{ 'val' if packing else 'red' }}">{{ invoice | doc_number }}</span></td>
+        <td><span class="lbl">Dated</span><br><span class="{{ 'val' if packing else 'red' }}">{{ invoice.issue_date | date }}</span></td>
+    </tr>
+    <tr>
+        <td><span class="lbl">Buyer's Order No.</span><br><span class="val">{{ d.buyer_order_no or '' }}</span></td>
+        <td><span class="lbl">Date</span><br><span class="val">{{ d.buyer_order_date | date if d.buyer_order_date }}</span></td>
+    </tr>
+    <tr>
+        {% if packing %}
+        <td><span class="lbl">No. of Packages</span><br><span class="val">{{ (pack.count ~ (' box' if pack.count == 1 else ' boxes')) if pack and pack.count else (d.packages or '') }}</span></td>
+        <td><span class="lbl">Marks &amp; Nos.</span><br><span class="val">{{ d.marks or '' }}</span></td>
+        {% elif t.key == 'export_invoice' %}
+        <td><span class="lbl">Packing List No</span><br><span class="val">{{ d.packing_list_no or '' }}</span></td>
+        <td><span class="lbl">Dated</span><br><span class="val">{{ d.packing_list_date | date if d.packing_list_date }}</span></td>
+        {% else %}
+        <td><span class="lbl">DC Ref</span><br><span class="val">{{ d.dc_ref or '' }}</span></td>
+        <td><span class="lbl">Delivery Date</span><br><span class="val">{{ d.delivery_date | date if d.delivery_date }}</span></td>
+        {% endif %}
+    </tr>
+    <tr>
+        <td><span class="lbl">Despatched Through</span><br><span class="val">{{ d.despatched_through or '' }}</span></td>
+        <td><span class="lbl">Destination</span><br><span class="val">{{ d.destination or '' }}</span></td>
+    </tr>
+    <tr>
+        <td rowspan="2">
+            <span class="lbl">Consignee's Name &amp; Address</span><br>
+            <span class="val">{{ invoice.customer_name }}</span><br>
+            {% if invoice.customer_street_address %}{{ invoice.customer_street_address }}<br>{% endif %}
+            {{ [invoice.customer_city, invoice.customer_state, invoice.customer_zip_code] | select | join(', ') }}<br>
+            {% if invoice.customer_country %}{{ invoice.customer_country }}<br>{% endif %}
+            {% if invoice.customer_tax_id %}<b>{{ 'GST NO' if gst else ('EIN No' if is_export else 'Tax ID') }} : {{ invoice.customer_tax_id }}</b>{% endif %}
+            {% for f in customer_fields %}<br>{{ f.label }} : <b>{{ f.value }}</b>{% endfor %}
+        </td>
+        <td colspan="2"><span class="lbl">Terms of Delivery</span><br>{{ d.terms_of_delivery or '' }}</td>
+    </tr>
+    <tr>
+        <td colspan="2" class="small">
+            {% if t.key == 'invoice' and invoice.due_date %}Payment due by <b>{{ invoice.due_date | date }}</b>{% endif %}
+        </td>
+    </tr>
+</table>
+
+{# ---- Line items ---- #}
+{% set items = sections_data.values() | selectattr('type', 'eq', 'line_item') | rejectattr('breakup') | list %}
+{% set all_headers = items[0].line_item_headers if items else [] %}
+{% set rows = items | map(attribute='line_item_rows') | sum(start=[]) %}
+{% set first = rows[0] if rows else [] %}
+{# Columns to print: everything, or for a packing list everything but prices and tax #}
+{% set cols = [] %}
+{% set page_cols = page.columns or [] %}
+{% for h in all_headers %}
+    {% set c = first[loop.index0] if first else none %}
+    {% set is_price = c and c.data_type == 'number' and c.is_currency %}
+    {% set is_rate = c and (c.field_name or '') | lower in ('gst_rate', 'tax', 'tax_rate', 'gst') %}
+    {% if page_cols %}
+        {% if c and c.field_name in page_cols %}{% set _ = cols.append(loop.index0) %}{% endif %}
+    {% elif not (packing and (is_price or is_rate)) %}{% set _ = cols.append(loop.index0) %}{% endif %}
+{% endfor %}
+{% set ncols = cols | length + 1 %}
+{# xhtml2pdf can't size columns in tables with colspans, so every width is set:
+   description wide, money wide enough for ₹20,63,000.00, codes and quantities narrow.
+   Each column has one alignment, used for its header and its cells alike:
+   description left, numbers right, short codes centred. #}
+{% set ns_w = namespace(weights=[], aligns=[], wide=-1) %}
+{% for i in cols %}
+    {% set h = all_headers[i] %}
+    {% set c = first[i] if first else none %}
+    {% if ns_w.wide < 0 and ('desc' in h | lower or 'particular' in h | lower or (c and c.data_type == 'string' and loop.first)) %}
+        {% set ns_w.wide = i %}{% set weight = 30 %}{% set align = 'left' %}
+    {% elif c and c.data_type == 'number' and c.is_currency %}{% set weight = 15 %}{% set align = 'num' %}
+    {% elif c and c.data_type == 'number' %}{% set weight = 8 %}{% set align = 'center' %}
+    {% else %}{% set weight = 9 %}{% set align = 'center' %}{% endif %}
+    {% set ns_w.weights = ns_w.weights + [weight] %}
+    {% set ns_w.aligns = ns_w.aligns + [align] %}
+{% endfor %}
+{% set total_weight = ns_w.weights | sum or 1 %}
+{% macro w(n) %}{{ (ns_w.weights[n - 1] * 94 / total_weight) | round(1) }}%{% endmacro %}
+{% if packing and pack and pack.boxes %}
+{# One block per box. Box no. (and its dimensions) and the per-box values span that
+   box's item rows; item columns are the ones the template's packing page picks. #}
+{% set bfields = pack.box_fields | rejectattr('key', 'eq', 'dimensions') | list %}
+{% set has_dims = pack.box_fields | selectattr('key', 'eq', 'dimensions') | list | length > 0 %}
+{% set item_share = 81 - 9 * (bfields | length) %}
+{% macro iw(n) %}{{ (ns_w.weights[n - 1] * item_share / total_weight) | round(1) }}%{% endmacro %}
+<table class="box items">
+    <tr>
+        <td width="13%" class="head center">Box No.{% if has_dims %} &amp; Size{% endif %}</td>
+        <td width="6%" class="head center">SL No.</td>
+        {% for i in cols %}<td width="{{ iw(loop.index) }}" class="head {{ ns_w.aligns[loop.index0] }}">{{ all_headers[i] }}</td>{% endfor %}
+        {% for f in bfields %}<td width="9%" class="head center">{{ f.label }}</td>{% endfor %}
+    </tr>
+    {% for box in pack.boxes %}
+    {% set n = [box.contents | length, 1] | max %}
+    {% for line in box.contents or [none] %}
+    {% set top = 'border-top: 0.6pt solid #222;' if loop.first else '' %}
+    <tr>
+        {% if loop.first %}
+        <td rowspan="{{ n }}" class="center" style="{{ top }}"><b>Box {{ box.no }} of {{ pack.count }}</b>{% if has_dims and box['values'].dimensions %}<br><span class="small">{{ box['values'].dimensions }}</span>{% endif %}</td>
+        {% endif %}
+        <td class="center" style="{{ top }}">{{ line.sl if line else '&nbsp;' | safe }}</td>
+        {% for i in cols %}
+        {% set c = line.row[i] if line else none %}
+        <td class="{{ ns_w.aligns[loop.index0] }}" style="{{ top }}">
+            {%- if not line -%}{{ '(empty)' if loop.first else '&nbsp;' | safe }}
+            {%- elif (c.field_name or '') | lower in ('qty', 'quantity') -%}{{ line.qty | number }}{{ ' ' ~ line.unit if line.unit }}
+            {%- else -%}{{ cell(c) or '&nbsp;' | safe }}{%- endif -%}
+        </td>
+        {% endfor %}
+        {% if loop.first %}
+        {% for f in bfields %}<td rowspan="{{ n }}" class="center" style="{{ top }}">{{ box['values'].get(f.key) or '&nbsp;' | safe }}</td>{% endfor %}
+        {% endif %}
+    </tr>
+    {% endfor %}
+    {% endfor %}
+    <tr class="sum">
+        <td class="center">{{ pack.count }} {{ 'box' if pack.count == 1 else 'boxes' }}</td>
+        <td colspan="{{ cols | length + 1 }}" class="num">Total quantity: {{ pack.total_qty | number }}</td>
+        {% for f in bfields %}
+        <td class="center">{{ (pack.totals.get(f.key) | number) if pack.totals.get(f.key) is not none else '&nbsp;' | safe }}</td>
+        {% endfor %}
+    </tr>
+</table>
+{% else %}
+<table class="box items">
+    <tr>
+        <td width="6%" class="head center">SL No.</td>
+        {% for i in cols %}
+        <td width="{{ w(loop.index) }}" class="head {{ ns_w.aligns[loop.index0] }}">{{ all_headers[i] }}</td>
+        {% endfor %}
+    </tr>
+    {% for row in rows %}
+    <tr>
+        <td class="center" width="6%">{{ loop.index }}</td>
+        {% for i in cols %}
+        <td width="{{ w(loop.index) }}" class="{{ ns_w.aligns[loop.index0] }}">{{ cell(row[i]) }}</td>
+        {% endfor %}
+    </tr>
+    {% endfor %}
+    {% for _ in range([6 - rows | length, 1] | max) %}
+    <tr class="filler">{% for _ in range(ncols) %}<td>&nbsp;</td>{% endfor %}</tr>
+    {% endfor %}
+    {% if packing %}
+    {% set ns_q = namespace(total=0) %}
+    {% for row in rows %}{% for i in cols %}{% if (row[i].field_name or '') | lower in ('qty', 'quantity') %}{% set ns_q.total = ns_q.total + (row[i].val_number or 0) %}{% endif %}{% endfor %}{% endfor %}
+    <tr class="sum">
+        <td colspan="{{ ncols - 1 }}" class="num">Total quantity</td>
+        <td class="num">{{ ns_q.total | number }}</td>
+    </tr>
+    {% else %}
+    {% for line in summary.tax_lines %}
+    <tr>
+        <td>&nbsp;</td>
+        <td class="num" colspan="{{ ncols - 2 }}"><b>{{ line.label }} @ {{ '%g' | format(line.rate) }}%</b></td>
+        <td class="num">{{ money(line.amount) }}</td>
+    </tr>
+    {% endfor %}
+    {% if summary.tax_mode == 'lut' %}
+    <tr><td>&nbsp;</td><td colspan="{{ ncols - 1 }}" class="center small">Supply meant for export under LUT without payment of IGST</td></tr>
+    {% endif %}
+    <tr class="sum">
+        <td colspan="{{ ncols - 1 }}" class="num">Total</td>
+        <td class="num">{{ money(summary.total) }}</td>
+    </tr>
+    {% if summary.advance %}
+    <tr>
+        <td>&nbsp;</td>
+        <td class="num red" colspan="{{ ncols - 2 }}">Against Proforma invoice @ {{ '%g' | format(summary.advance.percent) }}%</td>
+        <td class="num red">{{ money(summary.advance.amount) }}</td>
+    </tr>
+    {% endif %}
+    {% endif %}
+</table>
+{% endif %}{# box table / item table #}
+
+{% if not packing %}
+<table class="box">
+    <tr><td>
+        <span class="lbl">{{ 'Amount to be paid now (in words)' if summary.advance else 'Amount Chargeable (in words)' }}</span><br>
+        <b>{{ summary.words }}</b>
+    </td></tr>
+</table>
+
+{% if summary.hsn and gst %}
+<table class="box">
+    <tr>
+        <td rowspan="2" class="center">HSN/SAC</td><td rowspan="2" class="num">Taxable Value</td>
+        {% if summary.tax_mode == 'cgst_sgst' %}
+        <td colspan="2" class="center">Central Tax</td><td colspan="2" class="center">State Tax</td>
+        {% else %}
+        <td colspan="2" class="center">Integrated Tax</td>
+        {% endif %}
+    </tr>
+    <tr>
+        {% for _ in range(2 if summary.tax_mode == 'cgst_sgst' else 1) %}<td class="center">Rate</td><td class="num">Amount</td>{% endfor %}
+    </tr>
+    {% for h in summary.hsn %}
+    <tr>
+        <td class="center">{{ h.hsn }}</td><td class="num">{{ money(h.taxable) }}</td>
+        {% if summary.tax_mode == 'cgst_sgst' %}
+        <td class="center">{{ '%g' | format(h.half_rate) }}%</td><td class="num">{{ money(h.half_tax) }}</td>
+        <td class="center">{{ '%g' | format(h.half_rate) }}%</td><td class="num">{{ money(h.half_tax) }}</td>
+        {% else %}
+        <td class="center">{{ '%g' | format(h.rate) }}%</td><td class="num">{{ money(h.tax) }}</td>
+        {% endif %}
+    </tr>
+    {% endfor %}
+    <tr><td colspan="{{ 6 if summary.tax_mode == 'cgst_sgst' else 4 }}">
+        <span class="lbl">Tax Amount (in words) :</span> <b>{{ summary.tax_words }}</b>
+    </td></tr>
+</table>
+{% endif %}
+{% endif %}{# not packing #}
+
+<table class="box">
+    <tr>
+        <td style="width: 50%;">
+            {% set net = (pack.net_weight | number ~ ' kg') if pack and pack.net_weight is not none else d.net_weight %}
+            {% set gross = (pack.gross_weight | number ~ ' kg') if pack and pack.gross_weight is not none else d.gross_weight %}
+            {% if packing %}
+            {% if pack and pack.count %}No. of Packages : <b>{{ pack.count }} {{ 'box' if pack.count == 1 else 'boxes' }}</b><br>
+            {% elif d.packages %}No. of Packages : <b>{{ d.packages }}</b><br>{% endif %}
+            {% if d.package_dimensions and not (pack and pack.boxes) %}Dimensions : <b>{{ d.package_dimensions }}</b><br>{% endif %}
+            {% if net %}Net Weight : <b>{{ net }}</b><br>{% endif %}
+            {% if gross %}Gross Weight : <b>{{ gross }}</b><br>{% endif %}
+            {% if profile.iec_code %}IEC Code : {{ profile.iec_code }}<br>{% endif %}
+            {% elif is_export %}
+            {% if profile.lut_number %}LUT No : {{ profile.lut_number }}<br>{% endif %}
+            {% if profile.ad_code %}Authorised Dealer code No : {{ profile.ad_code }}<br>{% endif %}
+            {% if net %}Net Weight : <b>{{ net }}</b><br>{% endif %}
+            {% if gross %}Gross Weight : <b>{{ gross }}</b><br>{% endif %}
+            {% if pack and pack.count %}No. of Packages : <b>{{ pack.count }}</b><br>{% endif %}
+            {% if profile.iec_code %}IEC Code : {{ profile.iec_code }}<br>{% endif %}
+            {% endif %}
+            {% if profile.pan %}Company's PAN : <b>{{ profile.pan }}</b>{% endif %}
+        </td>
+        <td style="width: 50%;">
+            {% if not packing and (profile.bank_name or profile.bank_account) %}
+            <table class="noborder">
+                <tr><td colspan="2"><span class="lbl">Our Banker</span></td></tr>
+                {% for label, key in [('Bank Name', 'bank_name'), ('A/c No', 'bank_account'), ('IFSC code', 'bank_ifsc'), ('Branch', 'bank_branch'), ('SWIFT', 'bank_swift')] if profile.get(key) %}
+                <tr><td style="width: 35%;">{{ label }}:</td><td>{{ profile.get(key) }}</td></tr>
+                {% endfor %}
+            </table>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <u>Declaration</u><br>
+            {% if packing %}We declare that the goods packed are as described above and that all particulars are true and correct.
+            {% else %}We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.{% endif %}
+        </td>
+        <td class="num">
+            <b>For {{ invoice.organization_name | upper }}</b><br>
+            {% if profile.stamp %}<img src="{{ profile.stamp }}" style="height: 40pt;">{% endif %}
+            {% if profile.signature %}<img src="{{ profile.signature }}" style="height: 36pt;">{% endif %}
+            {% if not profile.stamp and not profile.signature %}<div class="sign"></div>{% endif %}
+            <br><b>Authorised Signatory</b>
+        </td>
+    </tr>
+    <tr><td colspan="2" class="center small">This is a Computer Generated Invoice</td></tr>
+</table>
+{% if not loop.last %}<pdf:nextpage />{% endif %}
+{% endfor %}
+<div id="footer" class="small center" style="color: #888;">{{ invoice.organization_name }} · {{ title }} {{ d.packing_list_no if packing and d.packing_list_no else invoice | doc_number }} · Page <pdf:pagenumber> of <pdf:pagecount></div>
+</body>
+</html>

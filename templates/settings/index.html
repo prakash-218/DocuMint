@@ -1,217 +1,133 @@
 {% extends "base.html" %}
 
-{% block title %}Settings - Invoice System{% endblock %}
+{% block title %}Settings{% endblock %}
 {% block page_title %}Settings{% endblock %}
 
 {% block content %}
-
-{% if current_org_role == 'owner' and pending_requests %}
-<section class="dashboard-section">
-    <div class="card" style="border-left: 4px solid var(--color-warning);">
-        <div class="card-header">
-            <h2 class="card-title" style="color: var(--color-warning-dark);">
-                <i data-lucide="user-plus" style="vertical-align: middle; margin-right: 8px;"></i>
-                Pending Access Requests
-            </h2>
-        </div>
-        <div class="card-body">
-            <div class="table-container">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>User Email</th>
-                            <th>Date Requested</th>
-                            <th>Assign Role</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for req in pending_requests %}
-                        <tr>
-                            <td><strong>{{ req.email }}</strong></td>
-                            <td>{{ req.joined_at }}</td>
-                            <td>
-                                <form id="approve-form-{{ req.user_id }}" action="{{ url_for('settings_bp.approve_member') }}" method="POST">
-                                    <input type="hidden" name="user_id" value="{{ req.user_id }}">
-                                    <select name="role" class="form-select" style="padding: 4px 8px; font-size: 13px;">
-                                        <option value="viewer">Viewer (Read Only)</option>
-                                        <option value="member" selected>Member</option>
-                                        <option value="owner">Owner</option>
-                                    </select>
-                                </form>
-                            </td>
-                            <td>
-                                <div style="display: flex; gap: 10px;">
-                                    <button type="submit" form="approve-form-{{ req.user_id }}" name="action" value="approve" class="btn btn-sm btn-success">
-                                        Approve
-                                    </button>
-                                    <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" style="display:inline;">
-                                        <input type="hidden" name="user_id" value="{{ req.user_id }}">
-                                        <button type="submit" name="action" value="reject" class="btn btn-sm btn-danger" onclick="return confirm('Reject this request?');">
-                                            Reject
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</section>
-{% endif %}
-
-{% if current_org_role == 'owner' %}
-<section class="dashboard-section">
-    <div class="card">
-        <div class="card-header">
-            <h2 class="card-title">System Administration</h2>
-        </div>
-        <div class="card-body">
-            <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
-                <a href="{{ url_for('settings_bp.audit_log') }}" class="btn btn-secondary">
-                    <i data-lucide="file-text" style="width: 16px; height: 16px; margin-right: 8px;"></i>
-                    View Audit Log
+<div class="panel-medium stack" style="max-width: 880px;">
+    {% if current_org_role in ('owner', 'admin') %}
+    <section class="card">
+        <ul class="pick-list">
+            <li>
+                <a href="{{ url_for('settings_bp.business_profile') }}">
+                    <span class="pick-main"><span class="pick-title">Business profile</span><span class="pick-sub">GSTIN, bank details, numbering, logo, quotation terms</span></span>
+                    <i data-lucide="chevron-right"></i>
                 </a>
-            </div>
-        </div>
-    </div>
-</section>
-{% endif %}
+            </li>
+            <li>
+                <a href="{{ url_for('settings_bp.edit_organization', org_id=current_org_id) }}">
+                    <span class="pick-main"><span class="pick-title">Name &amp; address</span><span class="pick-sub">{{ session.get('org_name', '') }}</span></span>
+                    <i data-lucide="chevron-right"></i>
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('templates_bp.list_templates') }}">
+                    <span class="pick-main"><span class="pick-title">Templates</span><span class="pick-sub">Columns, formulas and printed pages</span></span>
+                    <i data-lucide="chevron-right"></i>
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('settings_bp.audit_log') }}">
+                    <span class="pick-main"><span class="pick-title">Audit log</span><span class="pick-sub">Who changed what</span></span>
+                    <i data-lucide="chevron-right"></i>
+                </a>
+            </li>
+        </ul>
+    </section>
+    {% endif %}
 
-{% if current_org_role == 'owner' and active_members %}
-<section class="dashboard-section">
-    <div class="card">
-        <div class="card-header">
-            <h2 class="card-title">Team Management</h2>
-        </div>
-        <div class="card-body">
-            <div class="table-container" style="max-height: 250px; overflow-y: auto;">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Role</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for member in active_members %}
-                        <tr>
-                            <td>{{ member.email }}</td>
-                            <td>
-                                {% if member.user_id != current_user.user_id %}
-                                    <form id="role-form-{{ member.user_id }}" action="{{ url_for('settings_bp.approve_member') }}" method="POST" style="display: inline;">
-                                        <input type="hidden" name="user_id" value="{{ member.user_id }}">
-                                        <input type="hidden" name="action" value="change_role">
-                                        <select name="role" class="form-select" style="padding: 4px 8px; font-size: 13px; display: inline-block; width: auto;" onchange="this.form.submit()">
-                                            <option value="viewer" {% if member.role == 'viewer' %}selected{% endif %}>Viewer</option>
-                                            <option value="member" {% if member.role == 'member' %}selected{% endif %}>Member</option>
-                                            <option value="owner" {% if member.role == 'owner' %}selected{% endif %}>Owner</option>
-                                        </select>
-                                    </form>
-                                {% else %}
-                                    <span class="badge badge-secondary">{{ member.role|upper }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if member.status == 'active' %}
-                                    <span class="badge badge-success">Active</span>
-                                {% else %}
-                                    <span class="badge badge-danger">{{ member.status|title }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if member.user_id != current_user.user_id %}
-                                    <div style="display: flex; gap: 10px;">
-                                        {% if member.status == 'active' %}
-                                            <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" style="display:inline;">
-                                                <input type="hidden" name="user_id" value="{{ member.user_id }}">
-                                                <button type="submit" name="action" value="deactivate" class="btn btn-sm btn-danger" onclick="return confirm('Deactivate this user?');">Deactivate</button>
-                                            </form>
-                                        {% else %}
-                                            <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" style="display:inline;">
-                                                <input type="hidden" name="user_id" value="{{ member.user_id }}">
-                                                <button type="submit" name="action" value="reactivate" class="btn btn-sm btn-success">Reactivate</button>
-                                            </form>
-                                        {% endif %}
-                                    </div>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</section>
-{% endif %}
-
-<div class="card mb-lg">
-    <div class="card-header">
-        <h2 class="card-title">Organizations</h2>
-    </div>
-    <div class="card-body">
-        <p style="color: var(--text-secondary); margin-bottom: var(--spacing-lg);">
-            Manage your organizations. You can create new organizations or join existing ones by domain.
-        </p>
-        
-        <div style="display: flex; gap: var(--spacing-md); margin-bottom: var(--spacing-xl);">
-            <a href="{{ url_for('settings_bp.create_organization') }}" class="btn btn-primary">
-                <i data-lucide="plus" class="nav-icon" style="width: 16px; height: 16px; margin-right: 8px;"></i>
-                Create New Organization
-            </a>
-            <a href="{{ url_for('settings_bp.join_organization') }}" class="btn btn-secondary">
-                <i data-lucide="user-plus" class="nav-icon" style="width: 16px; height: 16px; margin-right: 8px;"></i>
-                Join Organization
-            </a>
-        </div>
-        
-        {% if user_organizations and user_organizations|length > 0 %}
-        <div>
-            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: var(--spacing-md); color: var(--text-primary);">
-                Your Organizations ({{ user_organizations|length }})
-            </h3>
-            <div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
-                {% for org in user_organizations %}
-                <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--spacing-md); border: 1px solid var(--border-color); border-radius: var(--border-radius); background: var(--bg-secondary);">
-                    <div style="flex: 1;">
-                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
-                            {{ org.get('name') or org.name }}
-                            {% if (org.get('org_id') or org.org_id) == current_org_id %}
-                            <span class="badge badge-info" style="margin-left: var(--spacing-xs); font-size: 11px;">Current</span>
-                            {% endif %}
-                        </div>
-                        <div style="font-size: 13px; color: var(--text-secondary);">
-                            {{ org.get('domain') or org.domain }} • 
-                            Role: <strong>{{ org.get('role') or org.role }}</strong>
-                        </div>
-                    </div>
-                    <div style="display: flex; gap: var(--spacing-sm);">
-                        {% if (org.get('org_id') or org.org_id) == current_org_id and (org.get('role') or org.role) == 'owner' %}
-                        <a href="{{ url_for('settings_bp.edit_organization', org_id=org.get('org_id') or org.org_id) }}" class="btn btn-sm btn-primary">Edit</a>
-                        {% endif %}
-                        {% if (org.get('org_id') or org.org_id) != current_org_id %}
-                        <form method="POST" action="{{ url_for('settings_bp.select_org') }}" style="margin: 0;">
-                            <input type="hidden" name="org_id" value="{{ org.get('org_id') or org.org_id }}">
-                            <button type="submit" class="btn btn-sm btn-secondary">Switch To</button>
-                        </form>
-                        {% endif %}
-                    </div>
+    {% if current_org_role in ('owner', 'admin') and pending_requests %}
+    <section class="card">
+        <div class="card-header"><h2 class="card-title">Requests to join</h2><span class="badge badge-warning">{{ pending_requests | length }}</span></div>
+        <ul class="member-list">
+            {% for req in pending_requests %}
+            <li>
+                <div class="pick-main"><span class="pick-title">{{ req.email }}</span><span class="pick-sub">Asked {{ req.joined_at | date }}</span></div>
+                <div class="member-actions">
+                    <form id="approve-form-{{ req.user_id }}" action="{{ url_for('settings_bp.approve_member') }}" method="POST">
+                        <input type="hidden" name="user_id" value="{{ req.user_id }}">
+                        <label class="sr-only" for="role-{{ req.user_id }}">Role</label>
+                        <select id="role-{{ req.user_id }}" name="role" class="form-select form-select-sm">
+                            <option value="viewer">Viewer</option>
+                            <option value="member" selected>Member</option>
+                            <option value="admin">Admin</option>
+                            {% if current_org_role == 'owner' %}<option value="owner">Owner</option>{% endif %}
+                        </select>
+                    </form>
+                    <button type="submit" form="approve-form-{{ req.user_id }}" name="action" value="approve" class="btn btn-primary btn-sm">Approve</button>
+                    <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" data-confirm="Reject {{ req.email }}?">
+                        <input type="hidden" name="user_id" value="{{ req.user_id }}">
+                        <button type="submit" name="action" value="reject" class="btn btn-ghost btn-sm">Reject</button>
+                    </form>
                 </div>
-                {% endfor %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if current_org_role in ('owner', 'admin') and active_members %}
+    <section class="card">
+        <div class="card-header"><h2 class="card-title">Team</h2></div>
+        <ul class="member-list">
+            {% for member in active_members %}
+            <li>
+                <div class="pick-main">
+                    <span class="pick-title">{{ member.email }}{% if member.user_id == current_user.user_id %} <span class="text-tertiary">(you)</span>{% endif %}</span>
+                    <span class="pick-sub">{{ member.role | title }}{% if member.status != 'active' %} · {{ member.status | title }}{% endif %}</span>
+                </div>
+                {% if member.user_id != current_user.user_id %}
+                <div class="member-actions">
+                    <form action="{{ url_for('settings_bp.approve_member') }}" method="POST">
+                        <input type="hidden" name="user_id" value="{{ member.user_id }}">
+                        <input type="hidden" name="action" value="change_role">
+                        <label class="sr-only" for="mrole-{{ member.user_id }}">Role</label>
+                        <select id="mrole-{{ member.user_id }}" name="role" class="form-select form-select-sm" onchange="this.form.submit()">
+                            {% for r in (('viewer', 'member', 'admin', 'owner') if current_org_role == 'owner' else ('viewer', 'member', 'admin')) %}<option value="{{ r }}" {% if member.role == r %}selected{% endif %}>{{ r | title }}</option>{% endfor %}
+                        </select>
+                    </form>
+                    <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" {% if member.status == 'active' %}data-confirm="Deactivate {{ member.email }}?"{% endif %}>
+                        <input type="hidden" name="user_id" value="{{ member.user_id }}">
+                        {% if member.status == 'active' %}
+                        <button type="submit" name="action" value="deactivate" class="btn btn-ghost btn-sm">Deactivate</button>
+                        {% else %}
+                        <button type="submit" name="action" value="reactivate" class="btn btn-secondary btn-sm">Reactivate</button>
+                        {% endif %}
+                    </form>
+                </div>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Organizations</h2>
+            <div class="btn-group">
+                <a href="{{ url_for('settings_bp.join_organization') }}" class="btn btn-ghost btn-sm">Join</a>
+                <a href="{{ url_for('settings_bp.create_organization') }}" class="btn btn-secondary btn-sm"><i data-lucide="plus"></i>New</a>
             </div>
         </div>
-        {% else %}
-        <p style="color: var(--text-secondary);">
-            You are not a member of any organizations yet. Create or join one to get started.
-        </p>
-        {% endif %}
-    </div>
+        <ul class="member-list">
+            {% for org in user_organizations %}
+            <li>
+                <div class="pick-main">
+                    <span class="pick-title">{{ org.name }}{% if org.org_id == current_org_id %} <span class="badge badge-info">Current</span>{% endif %}</span>
+                    <span class="pick-sub">{{ org.domain }} · {{ (org.role or '') | title }}</span>
+                </div>
+                {% if org.org_id != current_org_id %}
+                <form method="POST" action="{{ url_for('settings_bp.select_org') }}">
+                    <input type="hidden" name="org_id" value="{{ org.org_id }}">
+                    <button type="submit" class="btn btn-secondary btn-sm">Switch</button>
+                </form>
+                {% endif %}
+            </li>
+            {% else %}
+            <li><span class="text-tertiary">Not a member of any organization yet.</span></li>
+            {% endfor %}
+        </ul>
+    </section>
 </div>
-
 {% endblock %}

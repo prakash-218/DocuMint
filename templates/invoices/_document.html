@@ -1,0 +1,198 @@
+{#
+  The document as a page. Shared by the staff view and the customer portal.
+  Expects: invoice, sections_data, summary
+#}
+{% from "_macros.html" import field_value, status_badge %}
+{% set t = doc_type_info(invoice.doc_type) %}
+{% set cur = invoice.currency_code %}
+{% set details = invoice.details | fromjson %}
+{% set profile = invoice.organization_profile | fromjson %}
+{% set org_fields = printed_org_fields(profile) %}
+{% set customer_fields = printed_customer_fields(profile, invoice.customer_custom) %}
+
+<article class="card invoice-doc">
+    <header class="invoice-doc-head">
+        <div>
+            <p class="party-label">{{ t.label }}</p>
+            <h2 class="invoice-doc-title">{{ invoice | doc_number }}</h2>
+            <div style="margin-top: var(--spacing-sm);">{{ status_badge(invoice) }}</div>
+        </div>
+        <dl class="invoice-doc-meta">
+            <dt>{{ 'Date' if t.key == 'quote' else 'Issued' }}</dt><dd>{{ invoice.issue_date | date or '—' }}</dd>
+            {% if invoice.due_date %}<dt>{{ 'Valid until' if t.key == 'quote' else 'Due' }}</dt><dd>{{ invoice.due_date | date }}</dd>{% endif %}
+            {% for label, value in [("Buyer's order", details.buyer_order_no), ('Order date', details.buyer_order_date | date if details.buyer_order_date), ('Packing list', details.packing_list_no)] if value %}
+            <dt>{{ label }}</dt><dd>{{ value }}</dd>
+            {% endfor %}
+            <dt>Currency</dt><dd>{{ cur or 'USD' }}</dd>
+        </dl>
+    </header>
+
+    <div class="invoice-parties">
+        <div>
+            <p class="party-label">From</p>
+            <p class="party-name">{{ invoice.organization_name }}</p>
+            <p class="party-address">
+                {% if invoice.organization_street_address %}{{ invoice.organization_street_address }}<br>{% endif %}
+                {{ [invoice.organization_city, invoice.organization_state, invoice.organization_zip_code] | select | join(', ') }}
+                {% if invoice.organization_country %}<br>{{ invoice.organization_country }}{% endif %}
+                {% if profile.gstin %}<br>GSTIN {{ profile.gstin }}{% endif %}
+                {% for f in org_fields %}<br>{{ f.label }} {{ f.value }}{% endfor %}
+            </p>
+        </div>
+        <div>
+            <p class="party-label">{{ 'To' if t.key == 'quote' else 'Bill to' }}</p>
+            <p class="party-name">{{ invoice.customer_name }}</p>
+            <p class="party-address">
+                {% if invoice.customer_street_address %}{{ invoice.customer_street_address }}<br>{% endif %}
+                {{ [invoice.customer_city, invoice.customer_state, invoice.customer_zip_code] | select | join(', ') }}
+                {% if invoice.customer_country %}<br>{{ invoice.customer_country }}{% endif %}
+                {% if invoice.customer_tax_id %}<br>{{ 'GSTIN' if summary.tax_mode in ('cgst_sgst', 'igst') else 'Tax ID' }} {{ invoice.customer_tax_id }}{% endif %}
+                {% for f in customer_fields %}<br>{{ f.label }} {{ f.value }}{% endfor %}
+                {% if details.kind_attn %}<br>Kind attn: {{ details.kind_attn }}{% endif %}
+            </p>
+        </div>
+    </div>
+
+    {% if t.key == 'quote' and (details.subject or details.reference or details.intro or details.incoterms) %}
+    <section class="invoice-section">
+        {% if details.subject %}<p style="margin-bottom: 4px;"><strong>Sub:</strong> {{ details.subject }}</p>{% endif %}
+        {% if details.reference %}<p><strong>Ref:</strong> {{ details.reference }}</p>{% endif %}
+        {% set trade = [('Incoterms', details.incoterms), ('Port of loading', details.port_of_loading), ('Port of discharge', details.port_of_discharge), ('Final destination', details.final_destination)] | selectattr(1) | list %}
+        {% if trade %}<p class="text-secondary">{% for label, value in trade %}{{ label }}: {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+        {% if details.intro %}<p class="text-secondary" style="white-space: pre-line;">{{ details.intro }}</p>{% endif %}
+    </section>
+    {% endif %}
+
+    {% set dispatch = [] %}
+    {% for f in t.details if f.key in ('dc_ref', 'delivery_date', 'despatched_through', 'destination', 'terms_of_delivery', 'net_weight', 'gross_weight') and details.get(f.key) %}
+        {% set _ = dispatch.append((f.label, details.get(f.key) | date if f.kind == 'date' else details.get(f.key))) %}
+    {% endfor %}
+    {% if dispatch %}
+    <section class="invoice-section">
+        <div class="invoice-fields">
+            {% for label, value in dispatch %}
+            <div><div class="invoice-field-label">{{ label }}</div><div class="invoice-field-value">{{ value }}</div></div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% set ns = namespace(seen_items=false, totals=false) %}
+    {% for title, section in sections_data.items() if not section.breakup %}
+        {% if section.type == 'line_item' %}
+            {% set ns.seen_items = true %}
+            <section class="invoice-section">
+                <h3 class="invoice-section-title">{{ title }}</h3>
+                {% if section.line_item_rows %}
+                <div style="overflow-x: auto;">
+                    <table class="invoice-items stackable">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">#</th>
+                                {% for header in section.line_item_headers %}
+                                {% set first = section.line_item_rows[0][loop.index0] %}
+                                <th class="{{ 'num' if first.data_type == 'number' else ('desc' if loop.first or 'desc' in header | lower else '') }}">{{ header }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in section.line_item_rows %}
+                            {% set desc_i = (row | map(attribute='data_type') | list).index('string') if 'string' in (row | map(attribute='data_type') | list) else -1 %}
+                            <tr>
+                                <td class="text-tertiary" data-role="no">{{ loop.index }}</td>
+                                {% for value in row %}
+                                {% set role = 'desc' if loop.index0 == desc_i else ('amount' if loop.last and value.data_type == 'number' else 'meta') %}
+                                {% set empty = value.val_number is none and not value.val_string and not value.val_date %}
+                                <td class="{{ 'num' if value.data_type == 'number' }} {{ 'empty-meta' if role == 'meta' and empty }}" data-role="{{ role }}" data-label="{{ section.line_item_headers[loop.index0] }}">{{ field_value(value, cur) }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-tertiary">No line items.</p>
+                {% endif %}
+            </section>
+        {% elif ns.seen_items and section.fields and section.fields | selectattr('data_type', 'ne', 'number') | list | length == 0 %}
+            {# All-number section after the line items: the totals block, with document tax / advance appended #}
+            {% set ns.totals = true %}
+            <section class="invoice-section">
+                <div class="invoice-totals">
+                    {% for value in section.fields %}
+                    {% set is_grand = not summary.tax_lines and loop.last and (value.val_number or 0) | round(2) == summary.total | round(2) %}
+                    <div class="{{ 'grand' if is_grand }}">
+                        <span class="{{ '' if is_grand else 'label' }}">{{ value.field_label }}</span>
+                        <span>{{ field_value(value, cur) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% include "invoices/_tax_rows.html" %}
+                </div>
+            </section>
+        {% else %}
+            <section class="invoice-section">
+                <h3 class="invoice-section-title">{{ title }}</h3>
+                <div class="invoice-fields">
+                    {% for value in section.fields %}
+                    <div>
+                        <div class="invoice-field-label">{{ value.field_label }}</div>
+                        <div class="invoice-field-value">{{ field_value(value, cur) }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+        {% endif %}
+    {% else %}
+        <p class="text-tertiary">This document has no fields yet.</p>
+    {% endfor %}
+
+    {% if not ns.totals %}
+    {# Templates without a separate totals section: show the document totals on their own #}
+    <section class="invoice-section"><div class="invoice-totals">
+        <div><span class="label">Total before tax</span><span>{{ summary.taxable | currency(cur) }}</span></div>
+        {% include "invoices/_tax_rows.html" %}
+    </div></section>
+    {% endif %}
+
+    <section class="invoice-section">
+        <p class="party-label">{{ 'Amount to be paid now' if summary.advance else 'Amount in words' }}</p>
+        <p style="font-weight: 500;">{{ summary.words }}</p>
+    </section>
+
+    {% if summary.breakups %}
+    <section class="invoice-section">
+        <h3 class="invoice-section-title">Cost break-up</h3>
+        {% for group in summary.breakups %}
+        {% if not group.matches %}
+        <div class="alert alert-warning no-print"><span>Break-up for item {{ group.item_no }} adds up to {{ group.total | currency(cur) }}
+            {% if group.item %}but the item is {{ group.item.amount | currency(cur) }}{% else %}but there is no item {{ group.item_no }}{% endif %}.</span></div>
+        {% endif %}
+        <table class="invoice-items" style="margin-bottom: var(--spacing-md); max-width: 560px;">
+            <thead><tr><th class="desc">Item {{ group.item_no }}{% if group.item %}: {{ (group.item.description or '').splitlines()[0] }}{% endif %}</th><th class="num">Amount</th></tr></thead>
+            <tbody>
+                {% for part in group.parts %}
+                <tr><td>{{ part.description | multiline }}</td><td class="num">{{ part.amount | currency(cur) }}</td></tr>
+                {% endfor %}
+                <tr><td style="font-weight: 600;">Total</td><td class="num" style="font-weight: 600;">{{ group.total | currency(cur) }}</td></tr>
+            </tbody>
+        </table>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if details.notes %}
+    <section class="invoice-section text-secondary">{{ details.notes | notes }}</section>
+    {% endif %}
+
+    {% if t.key == 'quote' and details.terms %}
+    <section class="invoice-section">
+        <h3 class="invoice-section-title">Terms &amp; conditions</h3>
+        <ul style="margin: 0; padding-left: 1.2rem; color: var(--ink-2);">
+            {% for line in details.terms.splitlines() if line.strip() %}<li>{{ line }}</li>{% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+    {% if t.key == 'quote' and details.closing %}
+    <p class="text-secondary" style="white-space: pre-line;">{{ details.closing }}</p>
+    {% endif %}
+</article>

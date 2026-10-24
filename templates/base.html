@@ -1,233 +1,183 @@
+{% from "_macros.html" import flash_messages %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Invoice System{% endblock %}</title>
+    <title>{% block title %}DocuMint{% endblock %} · DocuMint</title>
+    <script>
+        // Apply a saved theme before first paint so there's no flash
+        try { var t = localStorage.getItem('dm-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js" defer></script>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+
     {% if current_user %}
     <div class="app-container">
-        
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <a href="{{ url_for('dashboard_bp.index') }}" class="sidebar-logo">
                     <span class="logo-icon">DM</span>
                     <span class="logo-text">DocuMint</span>
                 </a>
             </div>
-            <nav>
+            <nav aria-label="Main">
+                {% set ep = request.endpoint or '' %}
                 <div class="nav-section">
-                    <div class="nav-section-title">Work</div>
                     <ul class="sidebar-nav">
                         <li class="sidebar-nav-item">
-                            <a href="{{ url_for('dashboard_bp.index') }}" class="sidebar-nav-link {% if request.endpoint == 'dashboard_bp.index' %}active{% endif %}">
-                                <i data-lucide="layout-dashboard" class="nav-icon"></i>
-                                <span>Dashboard</span>
+                            <a href="{{ url_for('dashboard_bp.index') }}" class="sidebar-nav-link {% if ep.startswith('dashboard_bp') %}active{% endif %}">
+                                <i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span>
+                            </a>
+                        </li>
+                        {% if nav_role in ('owner', 'admin') %}
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('notifications_bp.index') }}" class="sidebar-nav-link {% if ep.startswith('notifications_bp') %}active{% endif %}">
+                                <i data-lucide="bell" class="nav-icon"></i><span>Notifications</span>
+                                {% if unread_notifications %}<span class="nav-badge" aria-label="{{ unread_notifications }} unread">{{ unread_notifications if unread_notifications < 100 else '99+' }}</span>{% endif %}
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('projects_bp.list_projects') }}" class="sidebar-nav-link {% if ep.startswith('projects_bp') %}active{% endif %}">
+                                <i data-lucide="briefcase" class="nav-icon"></i><span>Projects</span>
+                            </a>
+                        </li>
+                        {% if nav_role in ('owner', 'admin', 'member') %}
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('emails_bp.inbox') }}" class="sidebar-nav-link {% if ep.startswith('emails_bp') %}active{% endif %}">
+                                <i data-lucide="mail" class="nav-icon"></i><span>Emails</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% set doc_group = doc_nav_group if doc_nav_group is defined else 'invoices' %}
+                        {% for key, label, icon in [('quote', 'Quotations', 'file-pen-line'), ('proforma', 'Proforma invoices', 'file-clock'), ('invoices', 'Invoices', 'file-text')] %}
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('invoices_bp.list_invoices', type=None if key == 'invoices' else key) }}"
+                               class="sidebar-nav-link {% if ep.startswith('invoices_bp') and doc_group == key %}active{% endif %}">
+                                <i data-lucide="{{ icon }}" class="nav-icon"></i><span>{{ label }}</span>
+                            </a>
+                        </li>
+                        {% endfor %}
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('customers_bp.list_customers') }}" class="sidebar-nav-link {% if ep.startswith('customers_bp') %}active{% endif %}">
+                                <i data-lucide="users" class="nav-icon"></i><span>Customers</span>
                             </a>
                         </li>
                         <li class="sidebar-nav-item">
-                            <a href="{{ url_for('invoices_bp.list_invoices') }}" class="sidebar-nav-link {% if request.endpoint and 'invoices' in request.endpoint %}active{% endif %}">
-                                <i data-lucide="file-text" class="nav-icon"></i>
-                                <span>Invoices</span>
-                            </a>
-                        </li>
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('customers_bp.list_customers') }}" class="sidebar-nav-link {% if request.endpoint and 'customers' in request.endpoint %}active{% endif %}">
-                                <i data-lucide="users" class="nav-icon"></i>
-                                <span>Customers</span>
-                            </a>
-                        </li>
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('templates_bp.list_templates') }}" class="sidebar-nav-link {% if request.endpoint and 'templates' in request.endpoint %}active{% endif %}">
-                                <i data-lucide="file-code" class="nav-icon"></i>
-                                <span>Templates</span>
+                            <a href="{{ url_for('templates_bp.list_templates') }}" class="sidebar-nav-link {% if ep.startswith('templates_bp') %}active{% endif %}">
+                                <i data-lucide="layout-template" class="nav-icon"></i><span>Templates</span>
                             </a>
                         </li>
                     </ul>
                 </div>
                 <div class="nav-section">
-                    <div class="nav-section-title">Settings</div>
+                    <div class="nav-section-title">Organization</div>
                     <ul class="sidebar-nav">
                         <li class="sidebar-nav-item">
-                            <a href="{{ url_for('settings_bp.index') }}" class="sidebar-nav-link {% if request.endpoint and 'settings' in request.endpoint %}active{% endif %}">
-                                <i data-lucide="settings" class="nav-icon"></i>
-                                <span>Settings</span>
+                            <a href="{{ url_for('settings_bp.index') }}" class="sidebar-nav-link {% if ep.startswith('settings_bp') and ep != 'settings_bp.audit_log' %}active{% endif %}">
+                                <i data-lucide="settings" class="nav-icon"></i><span>Settings</span>
                             </a>
                         </li>
+                        {% if nav_role in ('owner', 'admin') %}
+                        <li class="sidebar-nav-item">
+                            <a href="{{ url_for('settings_bp.audit_log') }}" class="sidebar-nav-link {% if ep == 'settings_bp.audit_log' %}active{% endif %}">
+                                <i data-lucide="history" class="nav-icon"></i><span>Audit log</span>
+                            </a>
+                        </li>
+                        {% endif %}
                     </ul>
                 </div>
             </nav>
+            <div class="sidebar-footer">
+                {% set user_orgs = session.get('user_organizations', []) %}
+                {% if user_orgs|length > 1 %}
+                <div class="org-switcher">
+                    <label for="orgSelect" class="sr-only">Organization</label>
+                    <select id="orgSelect" class="form-select" onchange="switchOrganization(this.value)">
+                        {% for org in user_orgs %}
+                        <option value="{{ org.org_id }}" {% if org.org_id == current_org_id %}selected{% endif %}>{{ org.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="flex-between" style="flex-wrap: nowrap;">
+                    <div class="user-chip">
+                        <span class="avatar" aria-hidden="true">{{ (current_user.email or '?')[:2] }}</span>
+                        <span class="user-chip-text">
+                            <strong title="{{ current_user.email }}">{{ current_user.email }}</strong>
+                            <span>{{ session.get('org_name', '') }}{% if nav_role %} · {{ nav_role }}{% endif %}</span>
+                        </span>
+                    </div>
+                    <div class="footer-actions">
+                        <button type="button" class="icon-btn theme-toggle" onclick="toggleTheme()" title="Dark mode" aria-label="Toggle dark mode"><i data-lucide="sun" class="icon-sun"></i><i data-lucide="moon" class="icon-moon"></i></button>
+                    <form method="POST" action="{{ url_for('auth_bp.logout') }}">
+                        <button type="submit" class="icon-btn" title="Log out" aria-label="Log out"><i data-lucide="log-out"></i></button>
+                    </form>
+                    </div>
+                </div>
+            </div>
         </aside>
 
-        
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-        
         <main class="main-content">
             <header class="header">
                 <div class="header-content">
-                    <div class="header-title-section" style="display: flex; align-items: center; gap: var(--spacing-md); width: 100%;">
-                        <button class="mobile-menu-btn" onclick="window.toggleSidebar()" aria-label="Toggle menu">
+                    <div class="header-title-section">
+                        <button class="mobile-menu-btn" type="button" onclick="toggleSidebar()" aria-label="Open menu" aria-controls="sidebar">
                             <i data-lucide="menu"></i>
                         </button>
-                        <div style="flex: 1;">
+                        <div style="min-width: 0;">
                             <h1 class="header-title">{% block page_title %}Dashboard{% endblock %}</h1>
                             {% block page_description %}{% endblock %}
                         </div>
                     </div>
                     <div class="header-actions">
-                        {% if current_user %}
-                        {% set user_orgs = session.get('user_organizations', []) %}
-                        {% if user_orgs and user_orgs|length > 1 %}
-                        <div class="org-switcher" style="margin-right: var(--spacing-md);">
-                            <select id="orgSelect" class="form-select" style="min-width: 200px; padding: 8px 12px; font-size: 14px;" onchange="switchOrganization(this.value)">
-                                {% for org in user_orgs %}
-                                <option value="{{ org.get('org_id') or org.org_id }}" {% if (org.get('org_id') or org.org_id) == current_org_id %}selected{% endif %}>
-                                    {{ org.get('name') or org.name }} ({{ org.get('domain') or org.domain }})
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        {% elif current_org_id %}
-                        <div class="org-name-display" style="margin-right: var(--spacing-md); padding: 8px 12px; background: var(--bg-tertiary); border-radius: var(--border-radius); font-size: 14px; color: var(--text-secondary);">
-                            {{ session.get('org_name', 'Organization') }}
-                        </div>
-                        {% endif %}
-                        {% endif %}
-                        <div class="user-info">
-                            <span class="user-email">{{ current_user.email }}</span>
-                        </div>
-                        <a href="{{ url_for('auth_bp.logout') }}" class="btn btn-secondary btn-sm">Logout</a>
+                        {% block header_actions %}{% endblock %}
                     </div>
                 </div>
             </header>
 
-            
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }}">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-
+            {{ flash_messages() }}
             {% block content %}{% endblock %}
         </main>
     </div>
     {% else %}
-        
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div style="max-width: 600px; margin: 20px auto; padding: 0 var(--spacing-xl);">
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }}" style="margin-bottom: var(--spacing-md);">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
-        {% block auth_content %}{% endblock %}
+        {% block auth_content %}
+        <div class="auth-standalone">
+            <div style="width: 100%; max-width: 560px;">
+                {{ flash_messages() }}
+                {% block standalone_content %}{% endblock %}
+            </div>
+        </div>
+        {% endblock %}
     {% endif %}
 
     {% block extra_js %}{% endblock %}
     <script src="{{ url_for('static', filename='js/table-sort.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script>
-        // Initialize Lucide icons
-        function initIcons() {
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
-        }
-        
-        // Mobile sidebar toggle - make it globally accessible
-        window.toggleSidebar = function() {
-            const sidebar = document.querySelector('.sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            
-            if (sidebar && overlay) {
-                const isOpen = sidebar.classList.contains('open');
-                sidebar.classList.toggle('open');
-                overlay.classList.toggle('active');
-                
-                // Prevent body scroll when sidebar is open
-                if (!isOpen) {
-                    document.body.style.overflow = 'hidden';
-                } else {
-                    document.body.style.overflow = '';
-                }
-                
-                // Reinitialize icons after sidebar opens
-                setTimeout(initIcons, 100);
-            }
-        };
-        
-        // Close sidebar when clicking overlay
-        document.addEventListener('DOMContentLoaded', function() {
-            initIcons();
-            
-            const overlay = document.getElementById('sidebarOverlay');
-            if (overlay) {
-                overlay.addEventListener('click', function(e) {
-                    if (e.target === overlay) {
-                        window.toggleSidebar();
-                    }
-                });
-            }
-            
-            // Close sidebar when clicking a nav link on mobile
-            const navLinks = document.querySelectorAll('.sidebar-nav-link');
-            navLinks.forEach(link => {
-                link.addEventListener('click', function() {
-                    if (window.innerWidth <= 768) {
-                        window.toggleSidebar();
-                    }
-                });
-            });
-            
-            // Close sidebar on window resize if it becomes desktop size
-            let resizeTimer;
-            window.addEventListener('resize', function() {
-                clearTimeout(resizeTimer);
-                resizeTimer = setTimeout(function() {
-                    if (window.innerWidth > 768) {
-                        const sidebar = document.querySelector('.sidebar');
-                        const overlay = document.getElementById('sidebarOverlay');
-                        if (sidebar && overlay) {
-                            sidebar.classList.remove('open');
-                            overlay.classList.remove('active');
-                            document.body.style.overflow = '';
-                        }
-                    }
-                }, 250);
-            });
-        });
-        
-        // Organization switcher
         function switchOrganization(orgId) {
             if (!orgId) return;
-            
-            const form = document.createElement('form');
+            var form = document.createElement('form');
             form.method = 'POST';
             form.action = '{{ url_for("settings_bp.select_org") }}';
-            
-            const input = document.createElement('input');
+            var input = document.createElement('input');
             input.type = 'hidden';
             input.name = 'org_id';
             input.value = orgId;
             form.appendChild(input);
-            
             document.body.appendChild(form);
             form.submit();
         }
     </script>
 </body>
 </html>
-

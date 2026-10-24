@@ -1,13 +1,27 @@
+{# Minimal document for full-page states shown outside the app shell (e.g. pending access) #}
+{% from "_macros.html" import flash_messages %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Invoice System{% endblock %}</title>
+    <title>{% block title %}DocuMint{% endblock %} · DocuMint</title>
+    <script>try { var t = localStorage.getItem('dm-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js" defer></script>
     {% block extra_css %}{% endblock %}
 </head>
-<body>{% block content %}{% endblock %}</body>
+<body>
+    <div class="auth-standalone">
+        <div style="width: 100%; max-width: 480px;">
+            {{ flash_messages() }}
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
 </html>

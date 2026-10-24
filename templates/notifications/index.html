@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
+
+{% block title %}Notifications{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+
+{% block header_actions %}
+{% if items and unread_only %}
+<form method="POST" action="{{ url_for('notifications_bp.mark_all_read') }}">
+    <button type="submit" class="btn btn-secondary"><i data-lucide="check-check"></i><span class="btn-label">Mark all read</span></button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="list-header">
+    <nav class="segmented" aria-label="Filter">
+        <a href="{{ url_for('notifications_bp.index') }}" class="{{ 'active' if unread_only }}">Unread</a>
+        <a href="{{ url_for('notifications_bp.index', show='all') }}" class="{{ 'active' if not unread_only }}">All</a>
+    </nav>
+</div>
+
+<div class="card">
+{% if items %}
+    <ul class="member-list audit-list">
+        {% for n in items %}
+        <li class="{{ 'is-unread' if not n.read_at }}">
+            <span class="file-icon"><i data-lucide="{{ event_icon(n.kind) }}"></i></span>
+            <div class="pick-main" style="flex: 1;">
+                <a href="{{ url_for('notifications_bp.open_notification', notification_id=n.notification_id) }}" class="pick-title">{{ n.title }}</a>
+                <span class="pick-sub">
+                    {% if n.project_no %}{{ n | project_label }} · {{ n.project_title }}{% endif %}
+                    {% if n.body %}{{ ' · ' if n.project_no }}{{ n.body }}{% endif %}
+                    {% if n.actor_email %} · by {{ n.actor_email }}{% endif %}
+                </span>
+            </div>
+            <time class="text-tertiary audit-when" datetime="{{ n.created_at }}">{{ n.created_at | when }}</time>
+        </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    {{ empty_state('bell', 'All caught up' if unread_only else 'No notifications yet') }}
+{% endif %}
+</div>
+{% endblock %}

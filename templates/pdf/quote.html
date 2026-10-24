@@ -1,0 +1,168 @@
+{#
+  Letter-style quotation: letterhead, addressee, subject, priced items, terms
+  and a signed sign-off. Expects: invoice, sections_data, summary, profile, fonts
+#}
+{% set cur = invoice.currency_code %}
+{% set d = invoice.details | fromjson %}
+{% macro cell(value) -%}
+    {%- if not value -%}
+    {%- elif value.data_type == 'number' -%}
+        {%- if value.val_number is none -%}{%- elif value.is_currency -%}{{ value.val_number | currency(cur) }}{%- else -%}{{ value.val_number | number }}{%- endif -%}
+    {%- elif value.data_type == 'date' -%}{{ value.val_date | date }}
+    {%- else -%}{{ value.val_string | multiline }}{%- endif -%}
+{%- endmacro %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Quotation {{ invoice | doc_number }}</title>
+<style>
+    @page { size: a4 portrait; margin: 1.0cm 1.8cm 1.3cm 1.8cm; }
+    body { font-family: {{ fonts.regular or 'Helvetica' }}; font-size: 9.5pt; color: #111; line-height: 1.25; }
+    p { margin: 0 0 5pt 0; }
+    .head { text-align: center; color: #1f2fd1; font-family: {{ fonts.mono or 'Courier' }}; font-weight: bold; }
+    .head .name { font-size: 20pt; letter-spacing: 1pt; }
+    .head .line { font-size: 8pt; line-height: 1.2; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { vertical-align: top; padding: 2pt 4pt; }
+    .items td, .items th { border: 0.8pt solid #000; padding: 1pt 5pt; }
+    .items th { text-align: left; font-weight: normal; }
+    .num { text-align: right; }
+    .center { text-align: center; }
+    .left { text-align: left; }
+    .terms li { margin-bottom: 2pt; }
+</style>
+</head>
+<body>
+    <div class="head">
+        {% if profile.logo %}<img src="{{ profile.logo }}" style="height: 34pt;"><br>{% endif %}
+        <div class="name">{{ invoice.organization_name | upper }}</div>
+        {% if invoice.organization_street_address %}<div class="line">{{ invoice.organization_street_address | upper }}</div>{% endif %}
+        <div class="line">{{ [invoice.organization_city, invoice.organization_zip_code] | select | join('-') | upper }}{% if invoice.organization_country %}, {{ invoice.organization_country | upper }}{% endif %}</div>
+        {% if profile.email %}<div class="line">E-MAIL: {{ profile.email }}</div>{% endif %}
+        {% if profile.phone %}<div class="line">MOB NO: {{ profile.phone }}</div>{% endif %}
+        {% if profile.gstin %}<div class="line">GSTIN: {{ profile.gstin }}</div>{% endif %}
+        {% for f in org_fields | default([]) %}<div class="line">{{ f.label | upper }}: {{ f.value }}</div>{% endfor %}
+    </div>
+    <table style="margin: 4pt 0 12pt;"><tr><td style="background-color: #1f2fd1; font-size: 3pt; line-height: 3pt;">&nbsp;</td></tr></table>
+
+    <table>
+        <tr>
+{% set export = cur != 'INR' or d.incoterms or d.port_of_loading %}
+            <td style="width: 60%;"><b>M/s.{{ invoice.customer_name }}</b><br><b>{{ invoice.customer_city or '' }}{% if export and invoice.customer_country %}, {{ invoice.customer_country }}{% endif %}</b>
+                {% for f in customer_fields | default([]) %}<br>{{ f.label }}: {{ f.value }}{% endfor %}</td>
+            <td class="num"><b>{{ invoice | doc_number }}</b><br><b>Date: {{ invoice.issue_date | date }}</b></td>
+        </tr>
+    </table>
+    {% if d.kind_attn %}<p style="text-align: center; margin: 4pt 0;"><b>Kind Attn: {{ d.kind_attn }}</b></p>{% endif %}
+
+    <p style="margin: 6pt 0 2pt;"><b>Dear Sir,</b></p>
+    {% if d.subject %}<p style="margin: 0;"><b>Sub:</b> {{ d.subject }}</p>{% endif %}
+    {% if d.reference %}<p style="margin: 0 0 8pt;"><b>Ref:</b> {{ d.reference }}</p>{% endif %}
+    {% if d.intro %}<p>{{ d.intro }}</p>{% endif %}
+
+    {% for title, section in sections_data.items() if section.type == 'line_item' and not section.breakup %}
+    {# A Unit/Per column is printed with the quantity ("1 set"), not as its own column #}
+    {% set first = section.line_item_rows[0] if section.line_item_rows else [] %}
+    {% set ns_c = namespace(unit=-1, qty=-1) %}
+    {% for c in first %}
+        {% if (c.field_name or '') | lower in ('unit', 'per', 'uom') %}{% set ns_c.unit = loop.index0 %}{% endif %}
+        {% if (c.field_name or '') | lower in ('qty', 'quantity') %}{% set ns_c.qty = loop.index0 %}{% endif %}
+    {% endfor %}
+    {% set merge = ns_c.unit >= 0 and ns_c.qty >= 0 %}
+    {% set shown = [] %}
+    {% set page_cols = (page or {}).columns or [] %}
+    {% for h in section.line_item_headers %}
+        {% set c = first[loop.index0] if first else none %}
+        {% if not (merge and loop.index0 == ns_c.unit) and (not page_cols or (c and c.field_name in page_cols) or (merge and loop.index0 == ns_c.qty)) %}{% set _ = shown.append(loop.index0) %}{% endif %}
+    {% endfor %}
+    {# Explicit widths: xhtml2pdf can't size tables that have colspans on its own #}
+    {% set ns_w = namespace(weights=[], aligns=[]) %}
+    {% for i in shown %}
+        {% set c = first[i] if first else none %}
+        {% set weight = 40 if c and c.data_type == 'string' and loop.first else (20 if c and c.is_currency else 10) %}
+        {% set align = 'num' if c and c.data_type == 'number' and c.is_currency else ('center' if c and (c.data_type == 'number' or not loop.first) else 'left') %}
+        {% set ns_w.weights = ns_w.weights + [weight] %}
+        {% set ns_w.aligns = ns_w.aligns + [align] %}
+    {% endfor %}
+    {% set total_weight = ns_w.weights | sum or 1 %}
+    {% macro w(n) %}{{ (ns_w.weights[n - 1] * 92 / total_weight) | round(1) }}%{% endmacro %}
+    <table class="items" style="margin: 6pt 0 4pt;">
+        <tr>
+            <td width="8%" class="center"><b>Sl.no</b></td>
+            {% for i in shown %}<td width="{{ w(loop.index) }}" class="{{ ns_w.aligns[loop.index0] }}"><b>{{ section.line_item_headers[i] }}</b></td>{% endfor %}
+        </tr>
+        {% for row in section.line_item_rows %}
+        <tr>
+            <td width="8%" class="center">{{ loop.index }}</td>
+            {% for i in shown %}{% set value = row[i] %}
+            <td width="{{ w(loop.index) }}" class="{{ ns_w.aligns[loop.index0] }}">
+                {{- cell(value) or '&nbsp;' | safe -}}
+                {%- if merge and i == ns_c.qty and row[ns_c.unit].val_string %} {{ row[ns_c.unit].val_string }}{% endif -%}
+            </td>{% endfor %}
+        </tr>
+        {% endfor %}
+        {% set width = shown | length %}
+        {% for line in summary.tax_lines %}
+        <tr><td>&nbsp;</td><td colspan="{{ width - 1 }}" class="num">{{ line.label }} {{ '%g' | format(line.rate) }}%</td><td class="num">{{ line.amount | currency(cur) }}</td></tr>
+        {% endfor %}
+        <tr><td>&nbsp;</td><td colspan="{{ width - 1 }}" class="num">Total</td><td class="num"><b>{{ summary.total | currency(cur) }}</b></td></tr>
+    </table>
+    {% endfor %}
+
+    {% if summary.breakups %}
+    <p style="margin: 10pt 0 3pt;"><b><u>Cost break-up:</u></b></p>
+    {% for group in summary.breakups %}
+    <table class="items" style="margin: 0 0 6pt; width: 75%;">
+        <tr><td colspan="2" style="background-color: #f2f2f2;"><b>Item {{ group.item_no }}{% if group.item %}: {{ (group.item.description or '').splitlines()[0] }}{% endif %}</b></td></tr>
+        {% for part in group.parts %}
+        <tr><td width="70%" class="left">{{ part.description | multiline }}</td><td width="30%" class="num">{{ part.amount | currency(cur) }}</td></tr>
+        {% endfor %}
+        <tr><td class="num"><b>Total</b></td><td class="num"><b>{{ group.total | currency(cur) }}</b></td></tr>
+    </table>
+    {% endfor %}
+    {% endif %}
+
+    {% set trade = [('Incoterms', d.incoterms), ('Port of loading', d.port_of_loading), ('Port of discharge', d.port_of_discharge), ('Final destination', d.final_destination)] | selectattr(1) | list %}
+    {% if trade %}
+    <table class="items" style="margin: 8pt 0 4pt; width: 75%;">
+        {% for label, value in trade %}<tr><td width="35%" class="left"><b>{{ label }}</b></td><td width="65%" class="left">{{ value }}</td></tr>{% endfor %}
+    </table>
+    {% endif %}
+
+    {% if d.notes %}
+    <p style="margin-top: 8pt;">{{ d.notes | notes }}</p>
+    {% endif %}
+
+    {% if d.terms %}
+    <p style="margin: 14pt 0 2pt;"><b><u>Terms &amp; Conditions:</u></b></p>
+    <ul class="terms" style="margin-top: 0;">
+        {% for line in d.terms.splitlines() if line.strip() %}<li>{{ line }}</li>{% endfor %}
+        {% if invoice.due_date %}<li>Quote valid until {{ invoice.due_date | date }}</li>{% endif %}
+    </ul>
+    {% endif %}
+
+    {% if export and (profile.bank_account or profile.bank_swift) %}
+    <p style="margin: 10pt 0 2pt;"><b><u>Bank details for wire transfer:</u></b></p>
+    <p style="margin: 0;">
+        {% for label, key in [('Beneficiary', None), ('Bank', 'bank_name'), ('Account no.', 'bank_account'), ('SWIFT', 'bank_swift'), ('IFSC', 'bank_ifsc'), ('Branch', 'bank_branch')] %}
+        {% if key is none %}{{ label }}: {{ invoice.organization_name or '' }}<br>{% elif profile.get(key) %}{{ label }}: {{ profile.get(key) }}<br>{% endif %}
+        {% endfor %}
+    </p>
+    {% endif %}
+
+    {% if d.closing %}
+    {% for para in d.closing.split('\n\n') %}<p>{{ para }}</p>{% endfor %}
+    {% endif %}
+
+    {# One table so the sign-off never splits across pages #}
+    <table style="width: 45%; margin-top: 6pt;">
+        <tr><td style="padding: 0;">Thanks &amp; regards,</td></tr>
+        <tr><td style="padding: 2pt 0 0;">
+            {% if profile.stamp %}<img src="{{ profile.stamp }}" style="height: 50pt;">{% endif %}
+            {% if profile.signature %}<img src="{{ profile.signature }}" style="height: 40pt;">{% endif %}
+        </td></tr>
+        <tr><td style="padding: 0;">{{ profile.signatory_name or '' }}<br>{{ invoice.organization_name }}</td></tr>
+    </table>
+</body>
+</html>

@@ -31,3 +31,12 @@ Thumbs.db
 
 # Railway
 .railway/
+
+# Replication script checkpoint
+railway_replication_checkpoint.json
+
+# Real customer documents used as reference: never commit
+private/
+
+# Local file storage (dev)
+var/

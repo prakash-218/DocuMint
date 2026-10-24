@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
+
+{% block title %}Emails{% endblock %}
+{% block page_title %}Emails{% endblock %}
+{% block page_description %}<p class="header-description">{{ accounts | map(attribute='address') | join(' · ') if accounts else 'No mailboxes synced yet' }}</p>{% endblock %}
+
+{% block header_actions %}
+{% if current_org_role in ('owner', 'admin') %}
+<form method="POST" action="{{ url_for('emails_bp.sync_now') }}">
+    <button type="submit" class="btn btn-secondary"><i data-lucide="refresh-cw"></i><span class="btn-label">Sync now</span></button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% for a in accounts if a.last_error %}
+<div class="alert alert-warning"><span>{{ a.address }}: {{ a.last_error }}</span></div>
+{% endfor %}
+
+<div class="list-header">
+    <nav class="segmented" aria-label="Filter">
+        <a href="{{ url_for('emails_bp.inbox') }}" class="{{ 'active' if show == 'unlinked' }}">Not in a project</a>
+        <a href="{{ url_for('emails_bp.inbox', show='all') }}" class="{{ 'active' if show != 'unlinked' }}">All</a>
+    </nav>
+</div>
+
+<div class="card">
+{% if threads %}
+    <ul class="pick-list thread-list">
+        {% for t in threads %}
+        <li>
+            <a href="{{ url_for('emails_bp.thread', thread_id=t.thread_id) }}">
+                <span class="pick-main">
+                    <span class="pick-title">{{ t.subject }}{% if t.message_count > 1 %} <span class="text-tertiary">({{ t.message_count }})</span>{% endif %}</span>
+                    <span class="pick-sub">
+                        {{ t.last_from_name or t.last_from_address }}
+                        {% if t.customer_name %} · {{ t.customer_name }}{% endif %}
+                        {% if t.project_no %} · {{ t | project_label }}{% endif %}
+                        {% if t.file_count %} · <i data-lucide="paperclip" class="inline-icon"></i>{{ t.file_count }}{% endif %}
+                    </span>
+                    {% if t.snippet %}<span class="thread-snippet">{{ t.snippet }}</span>{% endif %}
+                </span>
+                <span class="text-tertiary thread-when">{{ t.last_message_at | when }}</span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    {{ empty_state('mail', 'Nothing to sort' if show == 'unlinked' else 'No emails yet',
+                   'Emails mentioning a project number (PRJ-012) or a document number go to that project on their own.') }}
+{% endif %}
+</div>
+{% endblock %}

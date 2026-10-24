@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}New project{% endblock %}
+{% block page_title %}New project{% endblock %}
+
+
+{% block content %}
+<form method="POST" class="card panel-medium" style="max-width: 640px;">
+    <div class="card-body">
+        <div class="form-group">
+            <label for="customer_id" class="form-label">Customer *</label>
+            <select id="customer_id" name="customer_id" class="form-select" required>
+                <option value="">Select a customer</option>
+                {% for c in customers %}<option value="{{ c.customer_id }}" {% if c.customer_id == customer_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="title" class="form-label">Project name *</label>
+            <input type="text" id="title" name="title" class="form-input" required maxlength="200" placeholder="Welding fixture for Line 3">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="reference" class="form-label">Customer reference</label>
+                <input type="text" id="reference" name="reference" class="form-input" maxlength="100" placeholder="Enquiry / RFQ no.">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="notes" class="form-label">Notes</label>
+            <textarea id="notes" name="notes" class="form-textarea" rows="3"></textarea>
+        </div>
+        <div class="form-actions" style="display: flex; gap: var(--spacing-sm);">
+            <button type="submit" class="btn btn-primary">Create project</button>
+            <a href="{{ url_for('projects_bp.list_projects') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </div>
+</form>
+{% endblock %}

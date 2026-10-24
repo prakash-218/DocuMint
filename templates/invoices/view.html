@@ -1,211 +1,191 @@
 {% extends "base.html" %}
+{% from "projects/_files.html" import files_card %}
 
-{% block title %}Invoice {{ invoice.invoice_id[:8] }} - Invoice System{% endblock %}
-{% block page_title %}Invoice Details{% endblock %}
+{% block title %}{{ invoice | doc_number }}{% endblock %}
+{% block page_title %}{{ invoice | doc_number }}{% endblock %}
+{% block page_description %}<p class="header-description">{{ doc_type_info(invoice.doc_type).label }} · {{ invoice.customer_name }}</p>{% endblock %}
 
-{% block content %}
-<div class="card mb-lg">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-md);">
-        <h2 class="card-title" style="margin: 0;">Invoice Information</h2>
-        <div style="display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap;">
-            <span class="badge badge-{{ 'success' if invoice.status == 'paid' else 'warning' if invoice.status == 'pending' else 'info' }}">
-                {{ invoice.status or 'draft' }}
-            </span>
-            <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id) }}" 
-               class="btn btn-secondary btn-sm" 
-               target="_blank"
-               title="Download as PDF">
-                Download PDF
-            </a>
-            {% if (invoice.status or 'draft') == 'draft' %}
-            <a href="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id) }}" 
-               class="btn btn-primary btn-sm">
-                Edit
-            </a>
-            <form method="POST" action="{{ url_for('invoices_bp.delete_invoice', invoice_id=invoice.invoice_id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this invoice? This action cannot be undone.');">
-                <button type="submit" class="btn btn-danger btn-sm">
-                    Delete
-                </button>
-            </form>
-            <form method="POST" action="{{ url_for('invoices_bp.finalize_invoice', invoice_id=invoice.invoice_id) }}" style="display: inline;">
-                <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Are you sure you want to finalize this invoice? Once finalized, customers will be able to view it.')">
-                    Finalize Invoice
-                </button>
-            </form>
-            {% endif %}
-        </div>
-    </div>
-    <div class="card-body">
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-lg);">
-            <div>
-                <strong>Invoice ID:</strong><br>
-                <code>{{ invoice.invoice_id }}</code>
-            </div>
-            <div>
-                <strong>Customer:</strong><br>
-                {{ invoice.customer_name }}
-            </div>
-            <div>
-                <strong>Template:</strong><br>
-                {{ invoice.template_name or 'N/A' }}
-            </div>
-            <div>
-                <strong>Currency:</strong><br>
-                {{ invoice.currency_code }}
-            </div>
-            <div>
-                <strong>Issue Date:</strong><br>
-                {{ invoice.issue_date or 'N/A' }}
-            </div>
-            <div>
-                <strong>Due Date:</strong><br>
-                {{ invoice.due_date or 'N/A' }}
-            </div>
-        </div>
-    </div>
-</div>
-
-{% if sections_data %}
-<div class="card mb-lg">
-    <div class="card-header">
-        <h2 class="card-title">Invoice Values</h2>
-    </div>
-    <div class="card-body">
-        {% for section_title, section_info in sections_data.items() %}
-            <div style="margin-bottom: var(--spacing-xl);">
-                <h3 style="margin-bottom: var(--spacing-md); color: var(--color-primary);">
-                    {{ section_title }}
-                    {% if section_info.type == 'line_item' %}
-                        <span class="badge badge-info">Line Item</span>
-                    {% endif %}
-                </h3>
-                
-                {% if section_info.type == 'line_item' %}
-                    {# Display as table for line items #}
-                    {% if section_info.line_item_headers and section_info.line_item_rows %}
-                    <div class="table-container">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    {% for header in section_info.line_item_headers %}
-                                        <th>{{ header }}</th>
-                                    {% endfor %}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for row in section_info.line_item_rows %}
-                                    <tr>
-                                        {% for value in row %}
-                                            <td>
-                                                {% if value %}
-                                                    {% if value.data_type == 'number' %}
-                                                        {% if value.is_currency %}
-                                                            {{ value.val_number | currency if value.val_number else 'N/A' }}
-                                                        {% else %}
-                                                            {{ value.val_number | number if value.val_number else 'N/A' }}
-                                                        {% endif %}
-                                                    {% elif value.data_type == 'date' %}
-                                                        {{ value.val_date or 'N/A' }}
-                                                    {% elif value.data_type == 'boolean' %}
-                                                        {{ 'Yes' if value.val_boolean else 'No' }}
-                                                    {% else %}
-                                                        {{ value.val_string or 'N/A' }}
-                                                    {% endif %}
-                                                {% else %}
-                                                    N/A
-                                                {% endif %}
-                                            </td>
-                                        {% endfor %}
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <p>No line item data available.</p>
-                    {% endif %}
-                {% else %}
-                    {# Display as fields for normal sections #}
-                    {% for value in section_info.fields %}
-                        <div class="card-nested" style="margin-bottom: var(--spacing-md); padding: var(--spacing-md); border-radius: var(--border-radius-lg); border: 1px solid var(--border-color);">
-                            <strong>{{ value.field_label }}:</strong>
-                            {% if value.data_type == 'number' %}
-                                {% if value.is_currency %}
-                                    {{ value.val_number | currency if value.val_number else 'N/A' }}
-                                {% else %}
-                                    {{ value.val_number | number if value.val_number else 'N/A' }}
-                                {% endif %}
-                            {% elif value.data_type == 'date' %}
-                                {{ value.val_date or 'N/A' }}
-                            {% elif value.data_type == 'boolean' %}
-                                {{ 'Yes' if value.val_boolean else 'No' }}
-                            {% else %}
-                                {{ value.val_string or 'N/A' }}
-                            {% endif %}
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            </div>
+{% block header_actions %}
+{% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
+<details class="menu">
+    <summary class="btn btn-secondary"><i data-lucide="download"></i><span class="btn-label">PDF</span><i data-lucide="chevron-down" class="hide-mobile"></i></summary>
+    <div class="menu-items">
+        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id) }}" target="_blank" rel="noopener"><i data-lucide="file-down"></i>{{ 'All copies' if t.takes_payments else 'Download PDF' }}</a>
+        {% if t.takes_payments %}
+        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id, copies=1) }}" target="_blank" rel="noopener"><i data-lucide="file"></i>Original only</a>
+        {% endif %}
+        {% for pg in extra_pages %}
+        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id, page=pg.key) }}" target="_blank" rel="noopener"><i data-lucide="{{ 'package' if pg.kind == 'packing' else 'file-plus' }}"></i>{{ pg.title or 'Extra page' }}</a>
         {% endfor %}
-    </div>
-</div>
-{% endif %}
-
-{% if payments %}
-<div class="card mb-lg">
-    <div class="card-header">
-        <h2 class="card-title">Payments</h2>
-    </div>
-    <div class="card-body">
-        <div class="table-container">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Amount</th>
-                        <th>Method</th>
-                        <th>Reference</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for payment in payments %}
-                    <tr>
-                        <td>{{ payment.payment_date }}</td>
-                        <td>{{ payment.amount | currency }}</td>
-                        <td>{{ payment.method or 'N/A' }}</td>
-                        <td>{{ payment.reference_number or 'N/A' }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title">Add Payment</h2>
-    </div>
-    <div class="card-body">
-        <form method="POST" action="{{ url_for('invoices_bp.add_payment', invoice_id=invoice.invoice_id) }}">
-            <div class="form-group">
-                <label for="amount" class="form-label">Amount *</label>
-                <input type="number" step="0.01" id="amount" name="amount" class="form-input" required>
-            </div>
-            <div class="form-group">
-                <label for="method" class="form-label">Payment Method</label>
-                <input type="text" id="method" name="method" class="form-input" placeholder="e.g., Credit Card, Bank Transfer">
-            </div>
-            <div class="form-group">
-                <label for="reference_number" class="form-label">Reference Number</label>
-                <input type="text" id="reference_number" name="reference_number" class="form-input">
-            </div>
-            <div class="form-group">
-                <button type="submit" class="btn btn-primary">Record Payment</button>
-            </div>
+        {% if has_packing and can_edit %}
+        <hr><a href="{{ url_for('invoices_bp.packing', invoice_id=invoice.invoice_id) }}"><i data-lucide="package-open"></i>Edit packing</a>
+        {% endif %}
+        {% if current_org_role in ('owner', 'admin') and status == 'draft' %}
+        <hr>
+        <form method="POST" action="{{ url_for('invoices_bp.delete_invoice', invoice_id=invoice.invoice_id) }}" data-confirm="Delete this draft? This can't be undone.">
+            <button type="submit" class="danger"><i data-lucide="trash-2"></i>Delete draft</button>
         </form>
+        {% endif %}
     </div>
-</div>
+</details>
+{% if status == 'draft' and can_edit %}
+<a href="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-secondary">
+    <i data-lucide="pencil"></i><span class="btn-label">Edit</span>
+</a>
+<form method="POST" action="{{ url_for('invoices_bp.finalize_invoice', invoice_id=invoice.invoice_id) }}"
+      data-confirm="{{ 'Mark ' ~ (invoice | doc_number) ~ ' as sent?' if t.sent_status == 'sent' else 'Finalize ' ~ (invoice | doc_number) ~ '?' }} It can't be edited afterwards.">
+    <button type="submit" class="btn btn-primary"><i data-lucide="send"></i><span class="btn-label">{{ 'Mark as sent' if t.sent_status == 'sent' else 'Finalize' }}</span></button>
+</form>
+{% endif %}
 {% endblock %}
 
+{% block content %}
+{% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
+{% if status == 'revised' %}
+<div class="alert alert-warning">This version was revised. The newest revision is the one to send or convert.</div>
+{% endif %}
+<div class="invoice-layout">
+    <div>
+        {% include "invoices/_document.html" %}
+    </div>
+
+    <aside>
+        {% include "invoices/_summary.html" %}
+
+        {% include "projects/_project_card.html" %}
+
+        {% if can_edit and t.key == 'quote' and status in ('sent', 'accepted', 'declined') %}
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Customer's answer</h2></div>
+            <div class="card-body">
+                <div class="btn-group" style="width: 100%;">
+                    {% for value, label, icon in [('accepted', 'Accepted', 'circle-check'), ('declined', 'Declined', 'circle-x')] %}
+                    <form method="POST" action="{{ url_for('invoices_bp.set_status', invoice_id=invoice.invoice_id) }}" style="flex: 1;">
+                        <input type="hidden" name="status" value="{{ value if status != value else 'sent' }}">
+                        <button type="submit" class="btn {{ 'btn-primary' if status == value else 'btn-secondary' }} btn-block">
+                            <i data-lucide="{{ icon }}"></i>{{ label }}
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+                <p class="form-text">Click again to undo.</p>
+                <form method="POST" action="{{ url_for('invoices_bp.revise', invoice_id=invoice.invoice_id) }}" style="margin-top: var(--spacing-md);"
+                      data-confirm="Create a new revision of {{ invoice | doc_number }}? This version will be marked as revised.">
+                    <button type="submit" class="btn btn-secondary btn-block"><i data-lucide="file-diff"></i>Revise quotation</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if revisions %}
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Revisions</h2></div>
+            <div class="card-body">
+                <ul class="timeline">
+                    {% for r in revisions %}
+                    <li>
+                        <span class="dot" style="{{ '' if r.invoice_id == invoice.invoice_id else 'background: var(--surface-2); color: var(--ink-3);' }}"><i data-lucide="{{ 'eye' if r.invoice_id == invoice.invoice_id else 'file' }}"></i></span>
+                        <div>
+                            {% if r.invoice_id == invoice.invoice_id %}<strong>{{ r | doc_number }}</strong>
+                            {% else %}<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=r.invoice_id) }}">{{ r | doc_number }}</a>{% endif %}
+                            <div class="when">{{ r.issue_date | date }} · {{ r.status }}</div>
+                        </div>
+                        <span class="num">{{ r.total_amount | currency(r.currency_code) }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if can_edit and t.converts_to and status not in ('draft', 'declined', 'revised') %}
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Next step</h2></div>
+            <div class="card-body">
+                {% if status == 'converted' %}<p class="text-tertiary">Already converted. You can convert it again if needed.</p>{% endif %}
+                <form method="POST" action="{{ url_for('invoices_bp.convert', invoice_id=invoice.invoice_id) }}">
+                    <div class="form-group">
+                        <label for="target" class="form-label">Convert to</label>
+                        <select id="target" name="target" class="form-select">
+                            {% for key in t.converts_to %}<option value="{{ key }}" data-template="{{ convert_defaults.get(key, '') }}">{{ doc_type_info(key).short }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="convert_template" class="form-label">Using template</label>
+                        <select id="convert_template" name="template_id" class="form-select">
+                            {% for tpl in templates %}
+                            <option value="{{ tpl.template_id }}" {% if tpl.template_id == convert_defaults.get(t.converts_to[0]) %}selected{% endif %}>{{ tpl.name }}</option>
+                            {% endfor %}
+                        </select>
+                        
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block"><i data-lucide="arrow-right-left"></i>Convert</button>
+                </form>
+                <script>
+                document.getElementById('target').addEventListener('change', function () {
+                    var tpl = this.selectedOptions[0].dataset.template;
+                    if (tpl) document.getElementById('convert_template').value = tpl;
+                });
+                </script>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if can_edit and t.takes_payments and status == 'pending' %}
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Record a payment</h2></div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('invoices_bp.add_payment', invoice_id=invoice.invoice_id) }}">
+                    <div class="form-group">
+                        <label for="amount" class="form-label">Amount ({{ invoice.currency_code }})</label>
+                        <input type="number" step="0.01" min="0.01" id="amount" name="amount" class="form-input"
+                               value="{{ '%.2f' | format(summary.balance) if summary.balance }}" required>
+                    </div>
+                    {% if invoice.currency_code != base_currency %}
+                    <div class="form-group">
+                        <label for="received_amount" class="form-label">Credited to your bank ({{ base_currency }}) <span class="text-tertiary">(optional)</span></label>
+                        <input type="number" step="0.01" min="0" id="received_amount" name="received_amount" class="form-input" placeholder="e.g. from the bank advice / FIRC">
+                        <p class="form-text" id="fx_hint"></p>
+                    </div>
+                    <script>
+                    (function () {
+                        var amt = document.getElementById('amount'), rec = document.getElementById('received_amount'), hint = document.getElementById('fx_hint');
+                        function upd() {
+                            var a = parseFloat(amt.value), r = parseFloat(rec.value);
+                            if (a > 0 && r > 0) hint.textContent = 'Exchange rate: 1 {{ invoice.currency_code }} = ' + (r / a).toFixed(2) + ' {{ base_currency }}';
+                        }
+                        amt.addEventListener('input', upd); rec.addEventListener('input', upd);
+                    })();
+                    </script>
+                    {% endif %}
+                    <div class="form-group">
+                        <label for="payment_date" class="form-label">Received on</label>
+                        <input type="date" id="payment_date" name="payment_date" class="form-input" value="{{ today }}" max="{{ today }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="method" class="form-label">Method</label>
+                        <select id="method" name="method" class="form-select">
+                            <option>Bank transfer</option>
+                            <option>NEFT / RTGS</option>
+                            <option>SWIFT (foreign remittance)</option>
+                            <option>UPI</option>
+                            <option>Card</option>
+                            <option>Cheque</option>
+                            <option>Cash</option>
+                            <option>Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="reference_number" class="form-label">Reference <span class="text-tertiary">(optional)</span></label>
+                        <input type="text" id="reference_number" name="reference_number" class="form-input">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Record payment</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {{ files_card(files, {'invoice_id': invoice.invoice_id}, file_kinds, can_edit, title='Customer documents', po_hint=project is not none) }}
+    </aside>
+</div>
+{% endblock %}

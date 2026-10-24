@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import flash_messages %}
+
+{% block auth_content %}
+<div class="auth-shell">
+    <aside class="auth-aside">
+        <a href="{{ url_for('index') }}" class="sidebar-logo">
+            <span class="logo-icon">DM</span>
+            <span class="logo-text">DocuMint</span>
+        </a>
+        <div style="position: relative; z-index: 1;">
+            <h2>Quotes to invoices, without the spreadsheet.</h2>
+            <p>Quotations, proforma, GST and export invoices that add up and print the way your customers expect.</p>
+            <ul class="auth-points">
+                <li><i data-lucide="briefcase"></i><span>Each project keeps the quote, PO, proforma and invoice together</span></li>
+                <li><i data-lucide="receipt-indian-rupee"></i><span>CGST/SGST, IGST and LUT exports, in any currency</span></li>
+                <li><i data-lucide="globe"></i><span>A portal where customers download their documents</span></li>
+            </ul>
+        </div>
+        <p style="font-size: var(--font-size-xs); color: #898781; margin: 0; position: relative; z-index: 1;">© DocuMint</p>
+    </aside>
+    <main class="auth-main">
+        <div class="auth-card">
+            <a href="{{ url_for('index') }}" class="sidebar-logo auth-mobile-logo">
+                <span class="logo-icon">DM</span>
+                <span class="logo-text">DocuMint</span>
+            </a>
+            {{ flash_messages() }}
+            {% block auth_form %}{% endblock %}
+        </div>
+    </main>
+</div>
+{% endblock %}

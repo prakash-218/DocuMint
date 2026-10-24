@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% from "projects/_files.html" import files_card %}
+
+{% block title %}{{ project.title }} · {{ project | project_label }}{% endblock %}
+{% block page_title %}{{ project.title }}{% endblock %}
+{% block page_description %}<p class="header-description">{{ project | project_label }} · <a href="{{ url_for('customers_bp.view_customer', customer_id=project.customer_id) }}">{{ project.customer_name }}</a>{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</p>{% endblock %}
+
+{% block header_actions %}
+{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
+<span class="badge badge-{{ {'open': 'info', 'completed': 'success', 'cancelled': 'secondary'}[project.status] }}" style="align-self: center;">{{ statuses[project.status] }}</span>
+{% if can_edit and project.status == 'open' %}
+<a href="{{ url_for('invoices_bp.create_invoice', doc_type='quote', project_id=project.project_id) }}" class="btn btn-secondary"><i data-lucide="file-pen-line"></i><span class="btn-label">New quotation</span></a>
+<a href="{{ url_for('invoices_bp.create_invoice', doc_type='invoice', project_id=project.project_id) }}" class="btn btn-secondary"><i data-lucide="plus"></i><span class="btn-label">New invoice</span></a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
+<div class="invoice-layout">
+    <div class="stack">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Documents</h2>
+                    
+                </div>
+            </div>
+            <div class="project-stages">
+                {% for stage in stages %}
+                <section class="project-stage">
+                    <h3 class="project-stage-title">{{ stage.label }} <span class="count">{{ stage.docs | length + stage.uploads | length }}</span></h3>
+                    {% if stage.docs or stage.uploads %}
+                    <ul class="project-docs">
+                        {% for d in stage.docs %}
+                        <li>
+                            <div>
+                                <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}" class="cell-primary">{{ d | doc_number }}</a>
+                                <span class="cell-secondary">{{ d.doc_type | doc_label }} · {{ d.issue_date | date or 'no date' }}</span>
+                            </div>
+                            <div class="project-doc-right">
+                                <span class="num">{{ d.total_amount | currency(d.currency_code) }}</span>
+                                {{ status_badge(d) }}
+                                {% if can_edit %}
+                                <form method="POST" action="{{ url_for('projects_bp.project_document', project_id=project.project_id) }}" data-confirm="Take {{ d | doc_number }} out of this project? The document itself is kept.">
+                                    <input type="hidden" name="invoice_id" value="{{ d.invoice_id }}"><input type="hidden" name="action" value="remove">
+                                    <button type="submit" class="btn btn-ghost btn-xs" title="Remove from project" aria-label="Remove {{ d | doc_number }} from project"><i data-lucide="x"></i></button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </li>
+                        {% endfor %}
+                        {% for f in stage.uploads %}
+                        <li>
+                            <div>
+                                <a href="{{ url_for('projects_bp.download_file', attachment_id=f.attachment_id) }}" target="_blank" rel="noopener" class="cell-primary">{{ f.reference_no or f.title }}</a>
+                                <span class="cell-secondary">Uploaded · {{ f.doc_date | date if f.doc_date else f.file_name }}</span>
+                            </div>
+                            <div class="project-doc-right">
+                                {% if f.amount %}<span class="num">{{ f.amount | currency(f.currency) }}</span>{% endif %}
+                                <span class="badge badge-secondary">File</span>
+                                {% if can_edit %}
+                                <form method="POST" action="{{ url_for('projects_bp.delete_file', attachment_id=f.attachment_id) }}" data-confirm="Delete {{ f.file_name }}?">
+                                    <button type="submit" class="btn btn-ghost btn-xs" title="Delete" aria-label="Delete {{ f.file_name }}"><i data-lucide="x"></i></button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% elif can_edit and project.status == 'open' %}
+                    <p class="text-tertiary project-empty">
+                        None yet.
+                        {% if stage.key == 'quote' %}<a href="{{ url_for('invoices_bp.create_invoice', doc_type='quote', project_id=project.project_id) }}">Create a quotation</a>
+                        {% elif stage.key == 'proforma' %}Convert the quotation, or <a href="{{ url_for('invoices_bp.create_invoice', doc_type='proforma', project_id=project.project_id) }}">create a proforma</a>
+                        {% else %}Convert the proforma, or <a href="{{ url_for('invoices_bp.create_invoice', doc_type='invoice', project_id=project.project_id) }}">create an invoice</a>{% endif %}
+                        · <a href="#upload" data-upload-kind="our_{{ stage.key }}">upload one made earlier</a>
+                    </p>
+                    {% else %}
+                    <p class="text-tertiary project-empty">None.</p>
+                    {% endif %}
+                </section>
+                {% endfor %}
+            </div>
+            {% if can_edit and addable %}
+            <div class="card-body" style="border-top: 1px solid var(--line-1);">
+                <form method="POST" action="{{ url_for('projects_bp.project_document', project_id=project.project_id) }}" class="inline-form">
+                    <label for="add_doc" class="form-label" style="margin: 0;">Add an existing document</label>
+                    <select id="add_doc" name="invoice_id" class="form-select" required>
+                        <option value="">{{ project.customer_name }}'s documents not in a project…</option>
+                        {% for d in addable %}<option value="{{ d.invoice_id }}">{{ d | doc_number }} · {{ d.doc_type | doc_label }} · {{ d.total_amount | currency(d.currency_code) }}</option>{% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-secondary btn-sm">Add</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+
+        <section class="card">
+            <div class="card-header">
+                <h2 class="card-title">Emails</h2>
+                <span class="text-tertiary">{{ threads | length }}</span>
+            </div>
+            {% if threads %}
+            <ul class="pick-list thread-list">
+                {% for t in threads %}
+                <li>
+                    <a href="{{ url_for('emails_bp.thread', thread_id=t.thread_id) }}">
+                        <span class="pick-main">
+                            <span class="pick-title">{{ t.subject }}{% if t.message_count > 1 %} <span class="text-tertiary">({{ t.message_count }})</span>{% endif %}</span>
+                            <span class="pick-sub">{{ t.last_from_name or t.last_from_address }}{% if t.file_count %} · <i data-lucide="paperclip" class="inline-icon"></i>{{ t.file_count }}{% endif %}</span>
+                        </span>
+                        <span class="text-tertiary thread-when">{{ t.last_message_at | when }}</span>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="card-body"><p class="text-tertiary" style="margin: 0;">No emails yet. Put <strong>{{ project | project_label }}</strong> in a subject line and the thread lands here.</p></div>
+            {% endif %}
+        </section>
+
+        {{ files_card(files, {'project_id': project.project_id}, kinds, can_edit, po_hint=True) }}
+
+        {% if other_files %}
+        <p class="text-tertiary" style="font-size: var(--font-size-sm);">
+            {{ project.customer_name }} also has {{ other_files | length }} file{{ '' if other_files | length == 1 else 's' }} not in a project;
+            <a href="{{ url_for('customers_bp.view_customer', customer_id=project.customer_id) }}#files">move them here from the customer page</a>.
+        </p>
+        {% endif %}
+    </div>
+
+    <aside>
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Money</h2></div>
+            <div class="card-body">
+                <dl class="kv">
+                    {% for key, label in [('quoted', 'Quoted'), ('invoiced', 'Invoiced'), ('received', 'Received'), ('due', 'Still due')] %}
+                    <dt>{{ label }}</dt>
+                    <dd class="num">
+                        {% for cur, amount in money[key].items() %}<div>{{ amount | currency(cur) }}</div>{% else %}<span class="text-tertiary">—</span>{% endfor %}
+                    </dd>
+                    {% endfor %}
+                </dl>
+                {% if po %}
+                <p class="form-text" style="margin-top: var(--spacing-md);"><i data-lucide="file-badge" style="width: 14px; height: 14px; vertical-align: -2px;"></i>
+                    PO {{ po.reference_no }}{% if po.doc_date %} dated {{ po.doc_date | date }}{% endif %}{% if po.amount %} for {{ po.amount | currency(po.currency) }}{% endif %}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Activity</h2></div>
+            <div class="card-body">
+                {% if events %}
+                <ul class="activity-list">
+                    {% for e in events %}
+                    <li>
+                        <span class="dot"><i data-lucide="{{ event_icon(e.kind) }}"></i></span>
+                        <div>
+                            {% if e.link %}<a href="{{ e.link }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}
+                            <div class="meta">{{ e.created_at | when }}{% if e.actor_email %} · {{ e.actor_email.split('@')[0] }}{% endif %}</div>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-tertiary" style="margin: 0;">Nothing yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if can_edit %}
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Project details</h2></div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('projects_bp.edit_project', project_id=project.project_id) }}">
+                    <div class="form-group">
+                        <label for="project_title" class="form-label">Name</label>
+                        <input type="text" id="project_title" name="title" class="form-input" value="{{ project.title }}" maxlength="200" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="project_ref" class="form-label">Customer reference</label>
+                        <input type="text" id="project_ref" name="reference" class="form-input" value="{{ project.reference or '' }}" maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="project_status" class="form-label">Status</label>
+                        <select id="project_status" name="status" class="form-select">
+                            {% for k, label in statuses.items() %}<option value="{{ k }}" {% if k == project.status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="project_notes" class="form-label">Notes</label>
+                        <textarea id="project_notes" name="notes" class="form-textarea" rows="3">{{ project.notes or '' }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-secondary btn-block">Save</button>
+                </form>
+                {% if current_org_role in ('owner', 'admin') %}
+                <form method="POST" action="{{ url_for('projects_bp.delete_project', project_id=project.project_id) }}" style="margin-top: var(--spacing-md);"
+                      data-confirm="Delete this project? Its documents and files are kept; they just won't be grouped any more.">
+                    <button type="submit" class="btn btn-ghost btn-block"><i data-lucide="trash-2"></i>Delete project</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% elif project.notes %}
+        <div class="card"><div class="card-header"><h2 class="card-title">Notes</h2></div><div class="card-body">{{ project.notes | multiline }}</div></div>
+        {% endif %}
+    </aside>
+</div>
+{% endblock %}

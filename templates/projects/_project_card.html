@@ -1,0 +1,39 @@
+{# Document page sidebar: the project this document belongs to, or a way to put it in one.
+   Expects project, project_docs, customer_projects, invoice, can_edit #}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Project</h2>
+        {% if project %}<a href="{{ url_for('projects_bp.view_project', project_id=project.project_id) }}" class="btn btn-ghost btn-xs">Open</a>{% endif %}
+    </div>
+    <div class="card-body">
+        {% if project %}
+        <p style="margin: 0 0 var(--spacing-sm);">
+            <a href="{{ url_for('projects_bp.view_project', project_id=project.project_id) }}"><strong>{{ project.title }}</strong></a><br>
+            <span class="text-tertiary" style="font-size: var(--font-size-xs);">{{ project | project_label }}{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</span>
+        </p>
+        {% set others = project_docs | rejectattr('invoice_id', 'equalto', invoice.invoice_id) | list %}
+        {% if others %}
+        <ul class="project-card-docs">
+            {% for d in others %}
+            <li><a href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}">{{ d | doc_number }}</a>
+                <span class="text-tertiary">{{ d.doc_type | doc_label }}</span></li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% elif not can_edit %}
+        <p class="text-tertiary" style="margin: 0;">Not part of a project.</p>
+        {% endif %}
+        {% if can_edit %}
+        <form method="POST" action="{{ url_for('projects_bp.document_project', invoice_id=invoice.invoice_id) }}" class="inline-form">
+            <label for="doc_project" class="sr-only">Project</label>
+            <select id="doc_project" name="project_id" class="form-select form-select-sm">
+                {% if project %}<option value="{{ project.project_id }}" selected>{{ project | project_label }} · {{ project.title }}</option>{% endif %}
+                {% for j in customer_projects if not project or j.project_id != project.project_id %}<option value="{{ j.project_id }}">{{ j | project_label }} · {{ j.title }}</option>{% endfor %}
+                <option value="new" {% if not project %}selected{% endif %}>Start a new project</option>
+                {% if project %}<option value="">Remove from project</option>{% endif %}
+            </select>
+            <button type="submit" class="btn btn-secondary btn-sm">{{ 'Change' if project else 'Add to project' }}</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
