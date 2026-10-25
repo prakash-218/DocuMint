@@ -7,8 +7,14 @@ Configuration (Railway variables on the worker; passwords never go in the code):
     INFO_IMAP_HOST=mail.kkrengineering.com  INFO_IMAP_PORT=993  INFO_IMAP_SSL=1
     INFO_IMAP_USER=info@kkrengineering.com  INFO_IMAP_PASSWORD=...
     INFO_IMAP_FOLDERS=INBOX,INBOX.Sent      optional; default INBOX plus the folder marked \\Sent
+    INFO_IMAP_MATCH=kkrengineering.com      optional; only mail from/to/cc these addresses or domains
     EMAIL_ORG_DOMAIN=kkrengineering.com     optional; default: the mailbox's own domain
     EMAIL_SYNC_DAYS=90                      how far back the first sync goes
+
+A personal Gmail that collects the company mail (POP "check mail from other accounts"):
+    EMAIL_ACCOUNTS=GMAIL  GMAIL_IMAP_HOST=imap.gmail.com  GMAIL_IMAP_USER=you@gmail.com
+    GMAIL_IMAP_PASSWORD=<app password>  GMAIL_IMAP_FOLDERS=[Gmail]/All Mail
+    GMAIL_IMAP_MATCH=kkrengineering.com     so personal mail stays out
 
 Mail is read with BODY.PEEK, so nothing is marked as read on the server, and each
 folder remembers the last message (UID) it copied.
@@ -57,6 +63,7 @@ def accounts_from_env() -> List[Dict]:
             'port': int(env('PORT', '993' if ssl else '143')), 'ssl': ssl, 'user': user,
             'password': env('PASSWORD'),
             'folders': [f.strip() for f in (env('FOLDERS') or '').split(',') if f.strip()],
+            'match': [m.strip().strip('"') for m in (env('MATCH') or '').split(',') if m.strip().strip('"')],
             'org_domain': (os.getenv('EMAIL_ORG_DOMAIN') or user.split('@')[-1]).lower(),
         })
     return out
@@ -224,6 +231,20 @@ def _connect(cfg):
     return box
 
 
+LIST_LINE = re.compile(r'^\((?P<flags>[^)]*)\)\s+(?:"(?:[^"\\]|\\.)*"|NIL)\s+(?P<name>"(?:[^"\\]|\\.)*"|\S+)\s*$')
+
+
+def folder_name(list_line: str) -> Optional[str]:
+    """The folder in a LIST reply line: (\\HasNoChildren \\Sent) "/" "[Gmail]/Sent Mail" -> [Gmail]/Sent Mail"""
+    m = LIST_LINE.match(list_line.strip())
+    if not m:
+        return None
+    name = m.group('name')
+    if name.startswith('"'):
+        name = re.sub(r'\\(.)', r'\1', name[1:-1])
+    return name
+
+
 def _folders(box, cfg) -> List[str]:
     if cfg['folders']:
         return cfg['folders']
@@ -232,8 +253,8 @@ def _folders(box, cfg) -> List[str]:
     for line in data or []:
         text = line.decode(errors='replace') if isinstance(line, bytes) else str(line)
         if '\\Sent' in text:
-            name = text.rsplit(' ', 1)[-1].strip().strip('"')
-            if name not in folders:
+            name = folder_name(text)
+            if name and name not in folders:
                 folders.append(name)
     return folders
 
@@ -242,7 +263,31 @@ def _quote(folder: str) -> str:
     return '"' + folder.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
 
-def sync_folder(box, folder, state: Dict, store_one, since_days: int) -> int:
+def involves(headers: bytes, terms: List[str]) -> bool:
+    """Is any From/To/Cc address one of these addresses, or at one of these domains (or a subdomain)?"""
+    msg = email.message_from_bytes(headers or b'')
+    addresses = [a.lower() for _, a in getaddresses(sum((msg.get_all(h) or [] for h in ('From', 'To', 'Cc')), []))]
+    for term in (t.lower() for t in terms):
+        if any(a == term if '@' in term else a.endswith('@' + term) or a.endswith('.' + term) for a in addresses):
+            return True
+    return False
+
+
+def _matching_uids(box, uids: List[int], terms: List[str], chunk: int = 200) -> set:
+    """Fetch just the address headers (servers disagree on SEARCH FROM/TO semantics) and filter here."""
+    wanted = set()
+    for i in range(0, len(uids), chunk):
+        typ, parts = box.uid('FETCH', ','.join(map(str, uids[i:i + chunk])),
+                             '(UID BODY.PEEK[HEADER.FIELDS (FROM TO CC)])')
+        for part in parts or []:
+            if isinstance(part, tuple) and len(part) > 1:
+                m = re.search(rb'\bUID (\d+)', part[0])
+                if m and involves(part[1], terms):
+                    wanted.add(int(m.group(1)))
+    return wanted
+
+
+def sync_folder(box, folder, state: Dict, store_one, since_days: int, match: Optional[List[str]] = None) -> int:
     typ, _ = box.select(_quote(folder), readonly=True)
     if typ != 'OK':
         logger.warning('Cannot open folder %s', folder)
@@ -258,14 +303,15 @@ def sync_folder(box, folder, state: Dict, store_one, since_days: int) -> int:
         since = (datetime.now() - timedelta(days=since_days)).strftime('%d-%b-%Y')
         typ, data = box.uid('SEARCH', None, f'SINCE {since}')
     uids = sorted(int(u) for u in (data[0].split() if data and data[0] else []) if int(u) > last)
+    wanted = _matching_uids(box, uids, match) if match else set(uids)
     count = 0
     for uid in uids:
-        typ, parts = box.uid('FETCH', str(uid), '(BODY.PEEK[])')
-        raw = next((p[1] for p in parts or [] if isinstance(p, tuple) and len(p) > 1), None)
-        if raw:
-            if store_one(raw, uid):
+        if uid in wanted:
+            typ, parts = box.uid('FETCH', str(uid), '(BODY.PEEK[])')
+            raw = next((p[1] for p in parts or [] if isinstance(p, tuple) and len(p) > 1), None)
+            if raw and store_one(raw, uid):
                 count += 1
-        state['last_uid'] = uid
+        state['last_uid'] = uid                       # skipped mail isn't looked at again either
     return count
 
 
@@ -293,7 +339,7 @@ def sync_account(cfg: Dict, since_days: Optional[int] = None) -> Dict:
         try:
             for folder in _folders(box, cfg):
                 folder_state = state.setdefault(folder, {})
-                stored += sync_folder(box, folder, folder_state, store_one, since_days)
+                stored += sync_folder(box, folder, folder_state, store_one, since_days, cfg['match'])
                 db.execute_proc('sp_save_email_account_state', (account['account_id'], state, None), fetch=False)
         finally:
             try:

@@ -105,6 +105,30 @@ def test_email_sync_links_threads_to_projects(client, gst_org, monkeypatch):
     login(client, OWNER)
 
 
+@pytest.mark.skipif(not _port_open(3143), reason='GreenMail (IMAP on 3143) is not running')
+def test_email_sync_match_keeps_personal_mail_out(gst_org, monkeypatch):
+    """A personal mailbox that collects the company mail only copies the company's threads."""
+    import emailsync
+    from db import db
+    mailbox = f'me.{uuid.uuid4().hex[:6]}@gmail.test'
+    for k, v in {'EMAIL_ACCOUNTS': 'ME', 'ME_IMAP_HOST': '127.0.0.1', 'ME_IMAP_PORT': '3143', 'ME_IMAP_SSL': '0',
+                 'ME_IMAP_USER': mailbox, 'ME_IMAP_PASSWORD': 'x', 'ME_IMAP_FOLDERS': 'INBOX',
+                 'ME_IMAP_MATCH': 'techflow.com, acme-tools.com', 'EMAIL_ORG_DOMAIN': 'techflow.com'}.items():
+        monkeypatch.setenv(k, v)
+    tag = uuid.uuid4().hex[:6]
+    _send('Ravi <ravi@acme-tools.com>', mailbox, f'Fixture drawings {tag}')
+    _send('Bank <alerts@bank.example>', mailbox, f'Your statement {tag}')
+    _send('Mom <mom@family.example>', f'{mailbox}, Sales <sales@techflow.com>', f'Dinner {tag}')   # cc'd/to company
+
+    [result] = emailsync.sync_all()
+    assert result['error'] is None and result['stored'] == 2
+    subjects = {t['subject'] for t in db.execute_proc('sp_list_email_threads', (gst_org, None, None, False, 200))}
+    assert {f'Fixture drawings {tag}', f'Dinner {tag}'} <= subjects and f'Your statement {tag}' not in subjects
+    _send('Bank <alerts@bank.example>', mailbox, f'Another statement {tag}')
+    _send('Ravi <ravi@acme-tools.com>', mailbox, f'Re: Fixture drawings {tag}')
+    assert emailsync.sync_all()[0]['stored'] == 1                    # later runs filter too
+
+
 def test_notifications_and_admin_role(client, gst_org):
     """Owners and admins hear about project activity; admins run the business but can't touch owners."""
     import projects

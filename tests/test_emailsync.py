@@ -1,6 +1,7 @@
 from email.message import EmailMessage
 
-from emailsync import external_addresses, html_to_text, normalize_subject, parse_message, project_number_in
+from emailsync import (external_addresses, folder_name, html_to_text, involves, normalize_subject,
+                       parse_message, project_number_in)
 
 
 def _raw(**kw):
@@ -57,3 +58,16 @@ def test_message_without_id_gets_a_stable_one():
     raw = _raw(message_id='')
     assert parse_message(raw)['message_id'] == parse_message(raw)['message_id'].strip()
     assert parse_message(raw)['message_id'].startswith('<sync-')
+
+
+def test_address_matching_and_folder_names():
+    headers = b'From: Mom <mom@family.example>\r\nTo: me@gmail.com,\r\n  Sales <Sales@KKRengineering.com>\r\n'
+    assert involves(headers, ['kkrengineering.com'])
+    assert involves(headers, ['sales@kkrengineering.com']) and not involves(headers, ['info@kkrengineering.com'])
+    assert involves(b'Cc: a@mail.kkrengineering.com\r\n', ['kkrengineering.com'])          # subdomain
+    assert not involves(b'From: x@notkkrengineering.com\r\n', ['kkrengineering.com'])
+    assert not involves(headers, []) and not involves(b'', ['kkrengineering.com'])
+    assert folder_name(r'(\HasNoChildren \Sent) "/" "[Gmail]/Sent Mail"') == '[Gmail]/Sent Mail'
+    assert folder_name(r'(\HasNoChildren \Sent) "." INBOX.Sent') == 'INBOX.Sent'
+    assert folder_name(r'(\Sent) "/" "Say \"hi\""') == 'Say "hi"'
+    assert folder_name('garbage') is None
