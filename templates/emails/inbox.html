@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state %}
+{% from "_macros.html" import empty_state, pager %}
 
 {% block title %}Emails{% endblock %}
 {% block page_title %}Emails{% endblock %}
@@ -46,6 +46,7 @@
         </li>
         {% endfor %}
     </ul>
+    {{ pager(page, 'threads') }}
 {% else %}
     {{ empty_state('mail', 'Nothing to sort' if show == 'unlinked' else 'No emails yet',
                    'Emails mentioning a project number (PRJ-012) or a document number go to that project on their own.') }}

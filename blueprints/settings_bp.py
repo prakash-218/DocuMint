@@ -476,11 +476,11 @@ def audit_log():
         return redirect(url_for('settings_bp.index'))
     
     try:
+        from pagination import Page
         table_filter = request.args.get('table_name')
-        limit = request.args.get('limit', 100, type=int)
-        offset = request.args.get('offset', 0, type=int)
-        
-        audit_logs = db.execute_proc('sp_get_audit_log', (org_id, table_filter or None, limit, offset)) or []
+        count = db.execute_proc_single('sp_count_audit_log', (org_id, table_filter or None)) or {}
+        page = Page.from_count(count.get('n'), per_page=50)
+        audit_logs = db.execute_proc('sp_get_audit_log', (org_id, table_filter or None, page.per_page, page.offset)) or []
         from app_helpers import describe_audit
         docs = {d['invoice_id']: d for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []}
         for log in audit_logs:
@@ -488,6 +488,7 @@ def audit_log():
 
         return render_template('settings/audit_log.html',
                              audit_logs=audit_logs,
+                             page=page,
                              current_org_role=current_role,
                              table_filter=table_filter)
     except DatabaseError as e:

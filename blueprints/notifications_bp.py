@@ -16,9 +16,13 @@ def _user_id():
 @notifications_bp.route('/')
 @require_org
 def index():
+    from pagination import Page
     unread_only = request.args.get('show') != 'all'
-    items = db.execute_proc('sp_list_notifications', (_user_id(), g.current_org_id, 100, unread_only)) or []
-    return render_template('notifications/index.html', items=items, unread_only=unread_only)
+    count = db.execute_proc_single('sp_count_notifications', (_user_id(), g.current_org_id, unread_only)) or {}
+    page = Page.from_count(count.get('n'))
+    items = db.execute_proc('sp_list_notifications', (_user_id(), g.current_org_id, page.per_page, unread_only,
+                                                       page.offset)) or []
+    return render_template('notifications/index.html', items=items, page=page, unread_only=unread_only)
 
 
 @notifications_bp.route('/<notification_id>/open')

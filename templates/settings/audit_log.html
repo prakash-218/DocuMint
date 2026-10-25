@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state %}
+{% from "_macros.html" import empty_state, pager %}
 
 {% block title %}Audit log{% endblock %}
 {% block page_title %}Audit log{% endblock %}
@@ -31,6 +31,7 @@
         </li>
         {% endfor %}
     </ul>
+    {{ pager(page, 'entries') }}
 {% else %}
     {{ empty_state('history', 'Nothing here yet') }}
 {% endif %}

@@ -242,6 +242,8 @@ def create_app(config_name=None):
             return value or ''
         return f"{d.strftime('%b')} {d.day}, {d.year}"
 
+    from pagination import page_url
+    app.add_template_global(page_url, 'page_url')
     app.add_template_global(invoice_is_overdue, 'is_overdue')
     app.add_template_global(DOC_TYPES, 'DOC_TYPES')
     app.add_template_global(get_type, 'doc_type_info')

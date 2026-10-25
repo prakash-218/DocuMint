@@ -130,3 +130,28 @@ def test_thread_files_join_the_project(client, gst_org):
     assert projects.list_attachments(org_id, project_id=other) == []
     assert 'Drawing B rev1.dwg' in client.get(f'/emails/{thread_id}').get_data(as_text=True)
 
+
+
+def test_every_list_page_is_paged(client, gst_org):
+    """Each list renders on any page number (past the end shows the last page), with a pager when it's long."""
+    import emailsync
+    from db import db
+    org_id = gst_org
+    account = db.execute_proc_single('sp_upsert_email_account', (org_id, 'info@techflow.com', 'TEST'))
+    linker = emailsync.Linker(org_id, {'techflow.com'})
+    tag = uuid.uuid4().hex[:6]
+    for i in range(30):                                           # more than a page of threads
+        linker.store(account['account_id'], emailsync.parse_message(
+            _mail(f'Paging check {tag} #{i:02d}', [], f'<p{i}.{tag}@acme-tools.com>'), org_domains={'techflow.com'}))
+    first = client.get('/emails/?show=all').get_data(as_text=True)
+    assert 'class="pager"' in first and '?show=all&amp;page=2' in first
+    total = db.execute_proc_single('sp_count_email_threads', (org_id, None, None, False))['n']
+    assert f'1–25 of {total} threads' in first
+    last = client.get('/emails/?show=all&page=999').get_data(as_text=True)
+    assert f'of {total} threads' in last and 'aria-current="page"' in last
+
+    for path in ['/quotes/', '/proformas/', '/invoices/', '/projects/?status=all', '/customers/', '/templates/',
+                 '/notifications/?show=all', '/settings/audit-log']:
+        for page in (1, 2, 999, 'x'):
+            response = client.get(f"{path}{'&' if '?' in path else '?'}page={page}")
+            assert response.status_code == 200, (path, page, response.status_code)

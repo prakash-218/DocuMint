@@ -55,7 +55,10 @@ def list_projects():
         logger.exception("Failed to list projects")
         flash('Could not load projects', 'error')
         rows, counts, ungrouped, customers = [], {}, 0, []
-    return render_template('projects/list.html', projects=rows, status=status, counts=counts, customers=customers,
+    from pagination import paginate
+    page = paginate(rows)
+    return render_template('projects/list.html', projects=page.items, page=page, status=status, counts=counts,
+                           customers=customers,
                            customer_id=customer_id, ungrouped=ungrouped, statuses=J.PROJECT_STATUSES,
                            current_org_role=get_current_org_role())
 

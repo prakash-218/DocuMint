@@ -42,7 +42,9 @@ def list_templates():
         logger.exception("Failed to list templates for %s", org_id)
         flash('Error loading templates', 'error')
         cards = []
-    return render_template('templates/list.html', templates=cards, include_archived=include_archived,
+    from pagination import paginate
+    page = paginate(cards, per_page=12)                 # cards: a grid of 12
+    return render_template('templates/list.html', templates=page.items, page=page, include_archived=include_archived,
                            current_org_role=get_current_org_role())
 
 

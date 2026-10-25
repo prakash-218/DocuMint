@@ -24,10 +24,15 @@ def _guard():
 @require_org
 def inbox():
     _guard()
+    from pagination import Page
     show = request.args.get('show', 'unlinked')
-    threads = db.execute_proc('sp_list_email_threads', (g.current_org_id, None, None, show == 'unlinked', 200)) or []
+    unlinked = show == 'unlinked'
+    count = db.execute_proc_single('sp_count_email_threads', (g.current_org_id, None, None, unlinked)) or {}
+    page = Page.from_count(count.get('n'))
+    threads = db.execute_proc('sp_list_email_threads', (g.current_org_id, None, None, unlinked,
+                                                         page.per_page, page.offset)) or []
     accounts = db.execute_proc('sp_list_email_accounts', (g.current_org_id,)) or []
-    return render_template('emails/inbox.html', threads=threads, show=show, accounts=accounts,
+    return render_template('emails/inbox.html', threads=threads, page=page, show=show, accounts=accounts,
                            current_org_role=get_current_org_role())
 
 

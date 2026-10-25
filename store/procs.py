@@ -202,8 +202,15 @@ def get_audit_log(conn, org_id, table_name, limit, offset):
     return [_rows(conn, """SELECT audit_id, table_name, record_id, action_type, field_name, old_value, new_value,
                                   changed_by, changed_at, additional_info
                            FROM audit_log WHERE org_id = :o AND (CAST(:t AS text) IS NULL OR table_name = :t)
-                           ORDER BY changed_at DESC LIMIT :l OFFSET :off""",
+                           ORDER BY changed_at DESC, audit_id DESC LIMIT :l OFFSET :off""",
                   o=org_id, t=table_name, l=limit or 100, off=offset or 0)]
+
+
+@proc('sp_count_audit_log')
+def count_audit_log(conn, org_id, table_name):
+    return [[_one(conn, """SELECT COUNT(*) AS n FROM audit_log
+                           WHERE org_id = :o AND (CAST(:t AS text) IS NULL OR table_name = :t)""",
+                  o=org_id, t=table_name)]]
 
 
 # ================================================================ Customers
@@ -1050,15 +1057,22 @@ def record_event(conn, org_id, project_id, kind, title, body, link, actor_user_i
 
 
 @proc('sp_list_notifications')
-def list_notifications(conn, user_id, org_id, limit, unread_only):
+def list_notifications(conn, user_id, org_id, limit, unread_only, offset=0):
     return [_rows(conn, """SELECT n.notification_id, n.read_at, e.event_id, e.kind, e.title, e.body, e.link, e.created_at,
                                   e.project_id, p.project_no, p.title AS project_title, u.email AS actor_email
                            FROM notification n JOIN event e ON e.event_id = n.event_id
                            LEFT JOIN project p ON p.project_id = e.project_id
                            LEFT JOIN users u ON u.user_id = e.actor_user_id
                            WHERE n.user_id = :u AND e.org_id = :o AND (NOT :unread OR n.read_at IS NULL)
-                           ORDER BY e.created_at DESC LIMIT :l""",
-                  u=user_id, o=org_id, l=limit or 50, unread=bool(unread_only))]
+                           ORDER BY e.created_at DESC LIMIT :l OFFSET :off""",
+                  u=user_id, o=org_id, l=limit or 50, unread=bool(unread_only), off=offset or 0)]
+
+
+@proc('sp_count_notifications')
+def count_notifications(conn, user_id, org_id, unread_only):
+    return [[_one(conn, """SELECT COUNT(*) AS n FROM notification n JOIN event e ON e.event_id = n.event_id
+                           WHERE n.user_id = :u AND e.org_id = :o AND (NOT :unread OR n.read_at IS NULL)""",
+                  u=user_id, o=org_id, unread=bool(unread_only))]]
 
 
 @proc('sp_count_unread_notifications')
@@ -1272,13 +1286,22 @@ THREAD_LIST = """SELECT t.thread_id, t.subject, t.project_id, p.project_no, p.ti
 
 
 @proc('sp_list_email_threads')
-def list_email_threads(conn, org_id, project_id, customer_id, unlinked_only, limit):
+def list_email_threads(conn, org_id, project_id, customer_id, unlinked_only, limit, offset=0):
     return [_rows(conn, f"""{THREAD_LIST}
                             WHERE t.org_id = :o AND (CAST(:p AS uuid) IS NULL OR t.project_id = CAST(:p AS uuid))
                               AND (CAST(:c AS uuid) IS NULL OR t.customer_id = CAST(:c AS uuid))
                               AND (NOT :u OR t.project_id IS NULL)
-                            ORDER BY t.last_message_at DESC NULLS LAST LIMIT :l""",
-                  o=org_id, p=project_id, c=customer_id, u=bool(unlinked_only), l=limit or 100)]
+                            ORDER BY t.last_message_at DESC NULLS LAST, t.thread_id LIMIT :l OFFSET :off""",
+                  o=org_id, p=project_id, c=customer_id, u=bool(unlinked_only), l=limit or 100, off=offset or 0)]
+
+
+@proc('sp_count_email_threads')
+def count_email_threads(conn, org_id, project_id, customer_id, unlinked_only):
+    return [[_one(conn, """SELECT COUNT(*) AS n FROM email_thread t
+                           WHERE t.org_id = :o AND (CAST(:p AS uuid) IS NULL OR t.project_id = CAST(:p AS uuid))
+                             AND (CAST(:c AS uuid) IS NULL OR t.customer_id = CAST(:c AS uuid))
+                             AND (NOT :u OR t.project_id IS NULL)""",
+                  o=org_id, p=project_id, c=customer_id, u=bool(unlinked_only))]]
 
 
 @proc('sp_get_email_thread')

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state %}
+{% from "_macros.html" import empty_state, pager %}
 
 {% block title %}Templates{% endblock %}
 {% block page_title %}Templates{% endblock %}
@@ -38,6 +38,7 @@
     </a>
     {% endfor %}
 </div>
+{{ pager(page, 'templates') }}
 {% else %}
 <div class="card">
     {{ empty_state('layout-template', 'No templates yet',

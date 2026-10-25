@@ -35,7 +35,7 @@ def list_invoices():
     query = (request.args.get('q') or '').strip()
 
     try:
-        documents = db.execute_proc('sp_list_invoices', (org_id, None, 1000, 0)) or []
+        documents = db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []
     except DatabaseError:
         logger.exception("Failed to list documents for org %s", org_id)
         flash('Error loading documents', 'error')
@@ -54,10 +54,12 @@ def list_invoices():
     if status_filter not in tabs:
         status_filter = 'all'
     counts = {name: sum(1 for d in documents if match(d)) for name, (_, match) in tabs.items()}
-    shown = [d for d in documents if tabs[status_filter][1](d)]
+    from pagination import paginate
+    page = paginate([d for d in documents if tabs[status_filter][1](d)])
 
     return render_template('invoices/list.html',
-                           invoices=shown,
+                           invoices=page.items,
+                           page=page,
                            counts=counts,
                            tabs=[(k, label) for k, (label, _) in tabs.items()],
                            group=group,

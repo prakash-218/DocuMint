@@ -1,5 +1,5 @@
 {% extends "customer/base.html" %}
-{% from "_macros.html" import status_badge, invoice_number, empty_state %}
+{% from "_macros.html" import status_badge, invoice_number, empty_state, pager %}
 
 {% block title %}My documents{% endblock %}
 {% block page_title %}My documents{% endblock %}
@@ -58,6 +58,7 @@
             </tbody>
         </table>
     </div>
+    {{ pager(page) }}
     {% else %}
     {{ empty_state('receipt', 'No documents yet') }}
     {% endif %}

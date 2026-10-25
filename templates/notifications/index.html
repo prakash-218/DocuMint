@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state %}
+{% from "_macros.html" import empty_state, pager %}
 
 {% block title %}Notifications{% endblock %}
 {% block page_title %}Notifications{% endblock %}
@@ -38,6 +38,7 @@
         </li>
         {% endfor %}
     </ul>
+    {{ pager(page) }}
 {% else %}
     {{ empty_state('bell', 'All caught up' if unread_only else 'No notifications yet') }}
 {% endif %}

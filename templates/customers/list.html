@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state %}
+{% from "_macros.html" import empty_state, pager %}
 
 {% block title %}Customers{% endblock %}
 {% block page_title %}Customers{% endblock %}
@@ -53,6 +53,7 @@
             </tbody>
         </table>
     </div>
+    {{ pager(page) }}
 {% elif query %}
     {{ empty_state('search-x', 'No customers match', 'Try another name or city.') }}
 {% else %}

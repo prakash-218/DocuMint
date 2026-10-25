@@ -59,7 +59,9 @@ def list_customers():
         customers = db.execute_proc('sp_list_customers', (org_id, include_archived)) or []
         query = (request.args.get('q') or '').strip()
         customers = C.search(customers, query)
-        return render_template('customers/list.html', customers=customers, groups=C.group(customers),
+        from pagination import paginate
+        page = paginate(C.group(customers))         # whole groups, so a site stays with its customer
+        return render_template('customers/list.html', customers=customers, groups=page.items, page=page,
                                include_archived=include_archived,
                                query=query, current_org_role=current_role)
     except DatabaseError:

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge, empty_state %}
+{% from "_macros.html" import status_badge, empty_state, pager %}
 {% set new_type = doc_type_info(group_info.new_type) %}
 
 {% block title %}{{ group_info.title }}{% endblock %}
@@ -72,6 +72,7 @@
             </tbody>
         </table>
     </div>
+    {{ pager(page) }}
 {% elif query or status_filter != 'all' %}
     {{ empty_state('search-x', 'Nothing matches', 'Try a different filter or search term.') }}
 {% else %}

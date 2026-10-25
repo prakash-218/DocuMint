@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state, customer_options %}
+{% from "_macros.html" import empty_state, customer_options, pager %}
 
 {% block title %}Projects{% endblock %}
 {% block page_title %}Projects{% endblock %}
@@ -70,6 +70,7 @@
             </tbody>
         </table>
     </div>
+    {{ pager(page, 'projects') }}
 {% elif status != 'all' or customer_id %}
     {{ empty_state('search-x', 'No projects here', 'Try another status or customer.') }}
 {% else %}

@@ -95,7 +95,9 @@ def dashboard():
             'overdue': sum(1 for i in payable if invoice_is_overdue(i)),
             'paid': sum_by_currency(invoices, lambda i: i.get('paid_amount')),
         }
-        return render_template('customer/dashboard.html', invoices=invoices, stats=stats)
+        from pagination import paginate
+        page = paginate(invoices)
+        return render_template('customer/dashboard.html', invoices=page.items, page=page, stats=stats)
     except DatabaseError as e:
         flash(f'Error loading invoices: {str(e)}', 'error')
         return render_template('customer/dashboard.html', invoices=[], stats={'outstanding': {}, 'overdue': 0, 'paid': {}})

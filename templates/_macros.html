@@ -66,3 +66,21 @@
 {% endif %}
 {% endfor %}
 {% endmacro %}
+
+{# Page links under a list: "26–50 of 312   ‹ 1 2 [3] 4 … 13 ›". p is a pagination.Page #}
+{% macro pager(p, noun='') %}
+{% if p and p.pages > 1 %}
+<nav class="pager" aria-label="Pages">
+    <span class="pager-count">{{ p.first }}–{{ p.last }} of {{ p.total }}{% if noun %} {{ noun }}{% endif %}</span>
+    <span class="pager-links">
+        {% if p.has_prev %}<a href="{{ page_url(p.page - 1) }}" rel="prev" aria-label="Previous page"><i data-lucide="chevron-left"></i></a>{% else %}<span class="disabled" aria-hidden="true"><i data-lucide="chevron-left"></i></span>{% endif %}
+        {% for n in p.numbers() %}
+        {% if n is none %}<span class="gap">…</span>
+        {% elif n == p.page %}<span class="current" aria-current="page">{{ n }}</span>
+        {% else %}<a href="{{ page_url(n) }}">{{ n }}</a>{% endif %}
+        {% endfor %}
+        {% if p.has_next %}<a href="{{ page_url(p.page + 1) }}" rel="next" aria-label="Next page"><i data-lucide="chevron-right"></i></a>{% else %}<span class="disabled" aria-hidden="true"><i data-lucide="chevron-right"></i></span>{% endif %}
+    </span>
+</nav>
+{% endif %}
+{% endmacro %}
