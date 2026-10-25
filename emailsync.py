@@ -175,8 +175,11 @@ class Linker:
 
     def customer_for(self, m: Dict):
         rows = db.execute_proc('sp_match_customers_by_email', (self.org_id, external_addresses(m, self.org_domains)))
-        rows = rows or []
-        return rows[0]['customer_id'] if len(rows) == 1 else None
+        # One customer, or several sites of one customer (then the parent: which site isn't known yet)
+        families = {r.get('parent_id') or r['customer_id'] for r in rows or []}
+        if len(rows or []) == 1:
+            return rows[0]['customer_id']
+        return families.pop() if len(families) == 1 else None
 
     def store(self, account_id, m: Dict) -> Optional[Dict]:
         """Save one parsed message. Returns {'thread_id', 'project_id', 'customer_id', 'new_thread'} or None if known."""
@@ -193,21 +196,33 @@ class Linker:
             since = (m['sent_at'] - timedelta(days=90)).isoformat()
             thread = db.execute_proc_single('sp_find_thread_by_subject', (self.org_id, subject, customer_id, since))
         new_thread = thread is None
+        just_linked = False
         if new_thread:
             row = db.execute_proc_single('sp_create_email_thread', (self.org_id, subject, project_id, customer_id, linked_by))
             thread = {'thread_id': row['thread_id'], 'project_id': project_id, 'customer_id': customer_id}
         elif project_id and not thread.get('project_id'):
             db.execute_proc('sp_set_thread_project', (thread['thread_id'], self.org_id, project_id, linked_by), fetch=False)
             thread['project_id'] = project_id
+            just_linked = True
         saved = db.execute_proc_single('sp_add_email_message', (self.org_id, account_id, thread['thread_id'], m))
         if not saved:
             return None
         for f in m.get('files') or []:
             db.execute_proc('sp_add_email_file', (self.org_id, saved['message_id'], f['name'], f['type'], f['data']))
+        if thread.get('project_id') and (m.get('files') or just_linked):
+            self._copy_files(thread, None if just_linked else saved['message_id'])
         result = {'thread_id': thread['thread_id'], 'project_id': thread.get('project_id'),
                   'customer_id': thread.get('customer_id') or customer_id, 'new_thread': new_thread}
         self._notify(m, result)
         return result
+
+    def _copy_files(self, thread: Dict, message_id: Optional[str]):
+        """Put the attachments into the project's files too (all of the thread's when it was just linked)."""
+        import projects
+        try:
+            projects.add_email_files(self.org_id, thread['project_id'], thread['thread_id'], message_id)
+        except Exception:                   # the mail is stored; take the thread out of the project and back to redo it
+            logger.exception('Could not copy email files into project %s', thread['project_id'])
 
     def _notify(self, m: Dict, r: Dict):
         import activity

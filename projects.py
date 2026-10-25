@@ -9,6 +9,7 @@ itself as the work moves along.
 Customer documents are files from or about the customer - their PO, drawings,
 specs - attached to the customer and optionally to a project or one document. A PO
 uploaded to a project fills "Buyer's order no. / date" on the project's drafts.
+Attachments of the email threads in a project are copied into its files, once each.
 """
 
 import logging
@@ -312,6 +313,96 @@ def add_attachment(org_id, customer_id, form, upload, user_id=None, project_id=N
 
 def list_attachments(org_id, customer_id=None, project_id=None, invoice_id=None) -> List[Dict]:
     return db.execute_proc('sp_list_attachments', (org_id, customer_id, project_id, invoice_id)) or []
+
+
+# ---------------------------------------------------------------- Files from email
+
+CAD_EXTS = {'dwg', 'dxf', 'step', 'stp', 'igs', 'iges'}
+MIN_EMAIL_IMAGE_BYTES = 30_000          # smaller images in mail are logos and signatures
+
+
+def _word(pattern):
+    """A pattern that isn't part of a longer word ("PO 4500" and "po_4500" yes, "report" no)."""
+    return re.compile(rf'(?<![a-z]){pattern}(?![a-z])')
+
+
+KIND_PATTERNS = [
+    ('drawing', _word(r'(?:drg|drgs|drawings?|dwg)')),
+    ('po', re.compile(r'(?<![a-z])p\.?o(?![a-z])|purchase[\s_-]*order')),
+    ('enquiry', re.compile(r'(?<![a-z])rfq(?![a-z])|enquiry|inquiry')),
+    ('report', re.compile(r'inspection|test[\s_-]*report|(?<![a-z])report(?![a-z])')),
+    ('specification', re.compile(r'(?<![a-z])spec(?:s|ification)?(?![a-z])')),
+]
+# Only for files we sent: our own quotation / proforma / invoice from before DocuMint
+OUR_KIND_PATTERNS = [
+    ('our_proforma', re.compile(r'proforma|(?<![a-z])pi(?![a-z])')),
+    ('our_invoice', re.compile(r'invoice|(?<![a-z])inv(?![a-z])')),
+    ('our_quote', re.compile(r'quot|(?<![a-z])q\s*0*\d')),
+]
+
+
+def guess_kind(file_name: str, outgoing: bool = False) -> str:
+    """The document kind a file name suggests ("PO 4500123.pdf" -> po, "KKR Q020(26-27).pdf" we sent -> our_quote)."""
+    name = (file_name or '').lower()
+    if name.rsplit('.', 1)[-1] in CAD_EXTS:
+        return 'drawing'
+    for kind, pattern in (OUR_KIND_PATTERNS if outgoing else []) + KIND_PATTERNS:
+        if pattern.search(name):
+            return kind
+    return 'other'
+
+
+def email_file_wanted(f: Dict, data: bytes) -> bool:
+    """A real document: an allowed type whose bytes match it, and not a logo or signature image."""
+    name = f.get('file_name') or ''
+    ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+    if ext not in FILE_TYPES or not data:
+        return False
+    if FILE_TYPES[ext].startswith('image/') and len(data) < MIN_EMAIL_IMAGE_BYTES:
+        return False
+    magic = _MAGIC.get(ext)
+    return not magic or data.startswith(magic)
+
+
+def add_email_files(org_id, project_id, thread_id, message_id=None) -> Dict:
+    """Copy an email thread's attachments (or one message's) into the project's files, once each:
+    a file whose bytes the project already has - the same drawing in every reply - is skipped.
+    Returns {'added': n, 'duplicates': n, 'skipped': n} (skipped: logos, signatures, unsupported types)."""
+    import storage
+    from store.procs import sha256
+    project = get_project(project_id, org_id)
+    counts = {'added': 0, 'duplicates': 0, 'skipped': 0}
+    if not project:
+        return counts
+    have = {r['content_hash'] for r in db.execute_proc('sp_project_file_hashes', (org_id, project_id)) or []}
+    for f in db.execute_proc('sp_list_thread_files', (org_id, thread_id, message_id)) or []:
+        data = storage.get(f['storage_key'])
+        digest = f.get('content_hash') or sha256(data)
+        if not f.get('content_hash'):
+            db.execute_proc('sp_set_email_file_hash', (f['file_id'], digest), fetch=False)
+        if digest in have:
+            counts['duplicates'] += 1
+            continue
+        if not email_file_wanted(f, data):
+            counts['skipped'] += 1
+            continue
+        name = f['file_name']
+        kind = guess_kind(name, outgoing=f.get('direction') == 'out')
+        who = f.get('from_name') or f.get('from_address') or ''
+        db.execute_proc('sp_add_attachment', (
+            org_id, project['customer_id'], project_id, None, kind, os.path.splitext(name)[0][:200] or name, '',
+            f['sent_at'].date().isoformat() if f.get('sent_at') else None, None, '',
+            f"From email: {f.get('subject') or ''}" + (f' ({who})' if who else ''), name[:200],
+            FILE_TYPES[name.rsplit('.', 1)[-1].lower()], data, None, f['message_id']))
+        have.add(digest)
+        counts['added'] += 1
+    return counts
+
+
+def remove_email_files(org_id, project_id, thread_id) -> int:
+    """Take the files copied from a thread back out of a project."""
+    row = db.execute_proc_single('sp_remove_thread_files_from_project', (org_id, project_id, thread_id))
+    return (row or {}).get('removed', 0)
 
 
 def get_attachment(attachment_id, org_id) -> Optional[Dict]:

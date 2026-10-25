@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state %}
+{% from "_macros.html" import empty_state, customer_options %}
 
 {% block title %}Projects{% endblock %}
 {% block page_title %}Projects{% endblock %}
@@ -34,7 +34,7 @@
         <label for="customer_filter" class="sr-only">Customer</label>
         <select id="customer_filter" name="customer_id" class="form-select" onchange="this.form.submit()">
             <option value="">All customers</option>
-            {% for c in customers %}<option value="{{ c.customer_id }}" {% if c.customer_id == customer_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+            {{ customer_options(customers, customer_id) }}
         </select>
     </form>
 </div>
@@ -58,9 +58,9 @@
                 <tr data-href="{{ url_for('projects_bp.view_project', project_id=j.project_id) }}">
                     <td>
                         <a href="{{ url_for('projects_bp.view_project', project_id=j.project_id) }}" class="cell-primary" style="color: inherit;">{{ j.title }}</a>
-                        <span class="cell-secondary">{{ j | project_label }}{% if j.reference %} · {{ j.reference }}{% endif %}<span class="show-mobile"> · {{ j.customer_name }}</span></span>
+                        <span class="cell-secondary">{{ j | project_label }}{% if j.reference %} · {{ j.reference }}{% endif %}<span class="show-mobile"> · {{ j | customer_label }}</span></span>
                     </td>
-                    <td class="hide-mobile">{{ j.customer_name }}</td>
+                    <td class="hide-mobile">{{ j | customer_label }}</td>
                     <td class="num">{{ j.document_count }}</td>
                     <td class="num hide-mobile">{{ j.file_count or '—' }}</td>
                     <td class="num hide-mobile" data-sort="{{ j.last_issue_date or j.created_at }}">{{ (j.last_issue_date or j.created_at) | date }}</td>

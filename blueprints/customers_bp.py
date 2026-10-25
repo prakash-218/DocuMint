@@ -7,8 +7,24 @@ from db import db, DatabaseError
 from auth import require_org, get_current_org_role
 from access import get_org_customer
 from documents import load_json
+import customers as C
 
 customers_bp = Blueprint('customers_bp', __name__)
+
+
+def _form_context(org_id, customer=None, defaults=None):
+    """What the customer form needs besides the customer: who it can be a site of, and its own sites."""
+    everyone = db.execute_proc('sp_list_customers', (org_id, True)) or []
+    customer_id = (customer or {}).get('customer_id')
+    site_count = sum(1 for c in everyone if customer_id and c.get('parent_id') == customer_id)
+    return {'parents': C.parent_choices(everyone, customer_id), 'site_count': site_count,
+            'defaults': defaults or {}, 'custom_defs': _custom_defs(org_id)}
+
+
+def _save_parent(customer_id, org_id, form):
+    if 'parent_id' in form:                  # the form leaves it out for a customer that has sites
+        db.execute_proc('sp_set_customer_parent', (customer_id, org_id, form.get('parent_id') or None,
+                                                   form.get('site_name')), fetch=False)
 
 
 def _custom_defs(org_id):
@@ -42,15 +58,13 @@ def list_customers():
         include_archived = request.args.get('include_archived', 'false').lower() == 'true'
         customers = db.execute_proc('sp_list_customers', (org_id, include_archived)) or []
         query = (request.args.get('q') or '').strip()
-        if query:
-            q = query.lower()
-            customers = [c for c in customers if any(q in (c.get(k) or '').lower() for k in ('name', 'city', 'country', 'tax_id'))]
-        customers.sort(key=lambda c: (bool(c.get('is_archived')), (c.get('name') or '').lower()))
-        return render_template('customers/list.html', customers=customers, include_archived=include_archived,
+        customers = C.search(customers, query)
+        return render_template('customers/list.html', customers=customers, groups=C.group(customers),
+                               include_archived=include_archived,
                                query=query, current_org_role=current_role)
     except DatabaseError:
         flash('Error loading customers', 'error')
-        return render_template('customers/list.html', customers=[], include_archived=False, query='',
+        return render_template('customers/list.html', customers=[], groups=[], include_archived=False, query='',
                                current_org_role=current_role)
 
 
@@ -76,7 +90,7 @@ def create_customer():
 
         if not name:
             flash('Customer name is required', 'error')
-            return render_template('customers/create.html', custom_defs=_custom_defs(org_id), custom_values={})
+            return render_template('customers/create.html', custom_values={}, **_form_context(org_id, defaults=request.form))
 
         try:
 
@@ -84,6 +98,7 @@ def create_customer():
             if result and len(result) > 0:
                 customer_id = result[0].get('customer_id')
                 _save_email_domains(customer_id, org_id, request.form)
+                _save_parent(customer_id, org_id, request.form)
                 defs = _custom_defs(org_id)
                 if defs:
                     _save_custom(customer_id, org_id, request.form, defs)
@@ -94,7 +109,13 @@ def create_customer():
         except DatabaseError as e:
             flash(f'Error creating customer: {str(e)}', 'error')
 
-    return render_template('customers/create.html', custom_defs=_custom_defs(org_id), custom_values={})
+    defaults = {}
+    parent, _ = get_org_customer(request.args['parent_id'], org_id) if request.args.get('parent_id') else (None, [])
+    if parent and not parent.get('parent_id'):          # "Add site": start from the parent's details
+        defaults = {k: parent.get(k) for k in ('name', 'tax_id', 'state', 'country')}
+        defaults['parent_id'] = parent['customer_id']
+    return render_template('customers/create.html', custom_values={},
+                           **_form_context(org_id, defaults=request.form if request.method == 'POST' else defaults))
 
 
 @customers_bp.route('/<customer_id>')
@@ -125,13 +146,19 @@ def view_customer(customer_id):
 
         import projects
         from documents import balance_of, sum_by_currency
+        # A customer with sites shows theirs too: documents, what's outstanding, projects
+        sites = db.execute_proc('sp_list_customer_sites', (g.current_org_id, customer_id)) or []
+        family = {customer_id} | {s['customer_id'] for s in sites}
         docs = [d for d in db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
-                if d.get('customer_id') == customer_id]
+                if d.get('customer_id') in family]
         unpaid = [d for d in docs if d.get('doc_type') in ('invoice', 'export_invoice') and d.get('status') == 'pending']
+        family_projects = projects.list_projects(g.current_org_id, customer_id)
         return render_template('customers/view.html',
                              docs=docs,
                              outstanding=sum_by_currency(unpaid, balance_of),
-                             projects=projects.list_projects(g.current_org_id, customer_id),
+                             projects=family_projects,
+                             own_projects=[j for j in family_projects if j['customer_id'] == customer_id],
+                             sites=sites,
                              files=projects.list_attachments(g.current_org_id, customer_id=customer_id),
                              file_kinds=projects.DOCUMENT_KINDS,
                              custom_defs=_custom_defs(g.current_org_id),
@@ -263,8 +290,8 @@ def edit_customer(customer_id):
 
         if not name:
             flash('Customer name is required', 'error')
-            return render_template('customers/edit.html', customer=customer, custom_defs=_custom_defs(org_id),
-                                   custom_values=load_json(customer.get('custom')))
+            return render_template('customers/edit.html', customer=customer, custom_values=load_json(customer.get('custom')),
+                                   **_form_context(org_id, customer))
 
         try:
             db.execute_proc('sp_update_customer', (
@@ -278,6 +305,7 @@ def edit_customer(customer_id):
                 country
             ), fetch=False)
             _save_email_domains(customer_id, org_id, request.form)
+            _save_parent(customer_id, org_id, request.form)
             defs = _custom_defs(org_id)
             if defs:
                 _save_custom(customer_id, org_id, request.form, defs)
@@ -287,8 +315,8 @@ def edit_customer(customer_id):
         except DatabaseError as e:
             flash(f'Error updating customer: {str(e)}', 'error')
 
-    return render_template('customers/edit.html', customer=customer, custom_defs=_custom_defs(org_id),
-                           custom_values=load_json(customer.get('custom')))
+    return render_template('customers/edit.html', customer=customer, custom_values=load_json(customer.get('custom')),
+                           **_form_context(org_id, customer))
 
 
 @customers_bp.route('/<customer_id>/delete', methods=['POST'])

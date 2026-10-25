@@ -53,11 +53,11 @@
                     <td>
                         <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="cell-primary" style="color: inherit;">{{ invoice | doc_number }}</a>
                         <span class="cell-secondary">
-                            <span class="show-mobile">{{ invoice.customer_name }}</span>
+                            <span class="show-mobile">{{ invoice | customer_label }}</span>
                             <span class="hide-mobile">{{ invoice.doc_type | doc_label if group == 'invoices' else (invoice.template_name or '') }}</span>
                         </span>
                     </td>
-                    <td class="hide-mobile">{{ invoice.customer_name }}</td>
+                    <td class="hide-mobile">{{ invoice | customer_label }}</td>
                     <td class="num hide-mobile" style="white-space: nowrap;" data-sort="{{ invoice.issue_date or '' }}">{{ invoice.issue_date | date or '—' }}</td>
                     <td class="num hide-mobile" style="white-space: nowrap;" data-sort="{{ invoice.due_date or '' }}">{{ invoice.due_date | date or '—' }}</td>
                     <td>{{ status_badge(invoice) }}</td>

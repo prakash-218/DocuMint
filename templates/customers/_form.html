@@ -1,12 +1,33 @@
-{# Customer create / edit form. Expects customer (or none), custom_defs, custom_values, action, cancel_url #}
-{% set c = customer or {} %}
+{# Customer create / edit form. Expects customer (or none), defaults (values for a new one), parents (who it
+   can be a site of), site_count, custom_defs, custom_values, action, cancel_url #}
+{% set c = customer or defaults or {} %}
 <form method="POST" action="{{ action }}" class="panel-medium">
     <section class="card">
         <div class="card-body">
             <div class="form-group">
                 <label for="name" class="form-label">Name</label>
                 <input type="text" id="name" name="name" class="form-input" value="{{ c.name or '' }}" required autofocus>
+                <p class="form-text">The legal name printed on documents.</p>
             </div>
+            {% if site_count %}
+            <p class="form-text">{{ site_count }} site{{ '' if site_count == 1 else 's' }} belong{{ 's' if site_count == 1 else '' }} to this customer, so it can't be a site itself.</p>
+            {% else %}
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="parent_id" class="form-label">Site of</label>
+                    <select id="parent_id" name="parent_id" class="form-select">
+                        <option value="">— A customer of its own —</option>
+                        {% for p in parents %}<option value="{{ p.customer_id }}" {% if p.customer_id == c.parent_id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+                    </select>
+                    <p class="form-text">A plant, branch, division or sister company of another customer.</p>
+                </div>
+                <div class="form-group">
+                    <label for="site_name" class="form-label">Site name</label>
+                    <input type="text" id="site_name" name="site_name" class="form-input" maxlength="100" value="{{ c.site_name or '' }}" placeholder="Gears Division, Madurai plant">
+                    <p class="form-text">Tells it apart from the other sites. Defaults to the city.</p>
+                </div>
+            </div>
+            {% endif %}
             <div class="form-row">
                 <div class="form-group">
                     <label for="tax_id" class="form-label">GSTIN / Tax ID</label>
@@ -15,6 +36,7 @@
                 <div class="form-group">
                     <label for="email_domains" class="form-label">Email domains</label>
                     <input type="text" id="email_domains" name="email_domains" class="form-input" value="{{ c.email_domains or '' }}" placeholder="wipro.com, givon.com">
+                    {% if c.parent_email_domains %}<p class="form-text">{{ c.parent_name }} has {{ c.parent_email_domains }}; add only this site's own domains.</p>{% endif %}
                 </div>
             </div>
             <div class="form-group">

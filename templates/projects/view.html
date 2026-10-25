@@ -4,7 +4,7 @@
 
 {% block title %}{{ project.title }} · {{ project | project_label }}{% endblock %}
 {% block page_title %}{{ project.title }}{% endblock %}
-{% block page_description %}<p class="header-description">{{ project | project_label }} · <a href="{{ url_for('customers_bp.view_customer', customer_id=project.customer_id) }}">{{ project.customer_name }}</a>{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</p>{% endblock %}
+{% block page_description %}<p class="header-description">{{ project | project_label }} · <a href="{{ url_for('customers_bp.view_customer', customer_id=project.customer_id) }}">{{ project | customer_label }}</a>{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</p>{% endblock %}
 
 {% block header_actions %}
 {% set can_edit = current_org_role in ('owner', 'admin', 'member') %}

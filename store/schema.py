@@ -92,6 +92,10 @@ customer = Table(
     Column('email_domains', Text),          # comma separated, to match incoming email to the customer
     Column('custom', JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     Column('is_archived', Boolean, nullable=False, server_default=text('false')),
+    # A site (plant, branch, division, sister company) of another customer: one level deep.
+    # Each site is billed with its own name, GSTIN and address; email domains of the parent cover its sites.
+    _ref('parent_id', 'customer.customer_id', 'RESTRICT', nullable=True),
+    Column('site_name', String(100)),       # "Gears Division", "Madurai plant"; defaults to the city
     _created(),
 )
 
@@ -283,6 +287,7 @@ attachment = Table(
     Column('content_type', String(100), nullable=False),
     Column('file_size', BigInteger, nullable=False),
     Column('storage_key', String(300), nullable=False),
+    Column('content_hash', String(64)),     # sha256 of the bytes: the same drawing in five replies is one file
     Column('uploaded_by', UUID(as_uuid=False)),
     _created(),
 )
@@ -378,6 +383,7 @@ email_file = Table(
     Column('content_type', String(100), nullable=False),
     Column('file_size', BigInteger, nullable=False),
     Column('storage_key', String(300), nullable=False),
+    Column('content_hash', String(64)),
 )
 
 audit_log = Table(

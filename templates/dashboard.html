@@ -166,9 +166,9 @@
                     <tr data-href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}">
                         <td>
                             <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="cell-primary" style="color: inherit;">{{ (invoice | doc_number) }}</a>
-                            <span class="cell-secondary"><span class="show-mobile">{{ invoice.customer_name }}</span><span class="hide-mobile">{{ invoice.doc_type | doc_label }} · {{ invoice.issue_date | date or 'no date' }}</span></span>
+                            <span class="cell-secondary"><span class="show-mobile">{{ invoice | customer_label }}</span><span class="hide-mobile">{{ invoice.doc_type | doc_label }} · {{ invoice.issue_date | date or 'no date' }}</span></span>
                         </td>
-                        <td class="hide-mobile">{{ invoice.customer_name }}</td>
+                        <td class="hide-mobile">{{ invoice | customer_label }}</td>
                         <td>{{ status_badge(invoice) }}</td>
                         <td class="num">{{ invoice.total_amount | currency(invoice.currency_code) }}</td>
                     </tr>
@@ -191,7 +191,7 @@
                             <i data-lucide="{{ 'alarm-clock' if late else 'clock' }}"></i>
                         </span>
                         <div style="min-width: 0;">
-                            <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" style="color: inherit;">{{ invoice.customer_name }}</a>
+                            <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" style="color: inherit;">{{ invoice | customer_label }}</a>
                             <div class="when">
                                 {% if late %}Overdue · was due {{ invoice.due_date | date }}{% elif invoice.due_date %}Due {{ invoice.due_date | date }}{% else %}No due date{% endif %}
                             </div>

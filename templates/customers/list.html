@@ -27,7 +27,8 @@
 <div class="card">
 {% if customers %}
     <div class="table-container" style="border: 0; box-shadow: none;">
-        <table class="table" data-sortable>
+        {# Sorting would pull sites away from their customer, so tables with sites don't sort #}
+        <table class="table" {% if not groups | selectattr('sites') | list %}data-sortable{% endif %}>
             <thead>
                 <tr>
                     <th>Name</th>
@@ -36,15 +37,18 @@
                 </tr>
             </thead>
             <tbody>
-                {% for c in customers %}
-                <tr data-href="{{ url_for('customers_bp.view_customer', customer_id=c.customer_id) }}" {% if c.is_archived %}class="row-muted"{% endif %}>
+                {% for grp in groups %}
+                {% for c in [grp.customer] + grp.sites %}
+                {% set is_site = not loop.first %}
+                <tr data-href="{{ url_for('customers_bp.view_customer', customer_id=c.customer_id) }}" class="{{ 'row-muted' if c.is_archived }} {{ 'row-site' if is_site }}">
                     <td>
-                        <a href="{{ url_for('customers_bp.view_customer', customer_id=c.customer_id) }}" class="cell-primary" style="color: inherit;">{{ c.name }}</a>
-                        <span class="cell-secondary">{{ [c.city, c.country] | select | join(', ') or '—' }}{% if c.is_archived %} · Archived{% endif %}</span>
+                        <a href="{{ url_for('customers_bp.view_customer', customer_id=c.customer_id) }}" class="cell-primary" style="color: inherit;">{% if is_site %}{{ c.site or c.name }}{% else %}{{ c | customer_label }}{% endif %}</a>
+                        <span class="cell-secondary">{% if is_site and c.site and c.name != grp.customer.name %}{{ c.name }} · {% endif %}{{ [c.city, c.country] | select | join(', ') or '—' }}{% if not is_site and grp.sites %} · {{ grp.sites | length }} site{{ '' if grp.sites | length == 1 else 's' }}{% endif %}{% if c.is_archived %} · Archived{% endif %}</span>
                     </td>
                     <td class="hide-mobile">{{ c.tax_id or '—' }}</td>
                     <td class="num">{{ c.invoice_count or 0 }}</td>
                 </tr>
+                {% endfor %}
                 {% endfor %}
             </tbody>
         </table>

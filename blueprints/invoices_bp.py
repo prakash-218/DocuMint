@@ -401,7 +401,8 @@ def view_invoice(invoice_id):
                            convert_defaults=convert_defaults,
                            project=project,
                            project_docs=projects.project_documents(project['project_id'], g.current_org_id) if project else [],
-                           customer_projects=projects.list_projects(g.current_org_id, invoice_header['customer_id'], 'open'),
+                           customer_projects=[j for j in projects.list_projects(g.current_org_id, invoice_header['customer_id'], 'open')
+                                              if j['customer_id'] == invoice_header['customer_id']],   # not its sites'
                            files=files, file_kinds=projects.DOCUMENT_KINDS,
                            extra_pages=[p for p in pages if not p['with_document']],
                            has_packing=any(p['kind'] == 'packing' for p in pages),

@@ -50,7 +50,7 @@
                     <select id="project_id" name="project_id" class="form-select">
                         <option value="">Not in a project</option>
                         {% for p in projects %}
-                        <option value="{{ p.project_id }}" {% if p.project_id == thread.project_id %}selected{% endif %}>{{ p | project_label }} · {{ p.title }}{% if not thread.customer_id %} ({{ p.customer_name }}){% endif %}</option>
+                        <option value="{{ p.project_id }}" {% if p.project_id == thread.project_id %}selected{% endif %}>{{ p | project_label }} · {{ p.title }}{% if not thread.customer_id %} ({{ p | customer_label }}){% endif %}</option>
                         {% endfor %}
                         {% if thread.project_id and thread.project_id not in projects | map(attribute='project_id') | list %}
                         <option value="{{ thread.project_id }}" selected>{{ thread | project_label }} · {{ thread.project_title }}</option>

@@ -190,6 +190,16 @@ def create_app(config_name=None):
         from projects import project_label
         return project_label(project or {})
 
+    @app.template_filter('customer_label')
+    def customer_label_filter(row):
+        import customers
+        return customers.label(row or {})
+
+    @app.template_filter('customer_groups')
+    def customer_groups_filter(rows):
+        import customers
+        return customers.group(rows or [])
+
     @app.template_filter('filesize')
     def filesize_filter(n):
         from projects import human_size

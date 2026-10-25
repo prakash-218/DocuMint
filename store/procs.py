@@ -209,14 +209,20 @@ def get_audit_log(conn, org_id, table_name, limit, offset):
 # ================================================================ Customers
 
 
+# How a site is told apart from its siblings: its site name, else its city
+CUSTOMER_SITE = "COALESCE(c.site_name, CASE WHEN c.parent_id IS NOT NULL THEN c.city END)"
+
+
 @proc('sp_list_customers')
 def list_customers(conn, org_id, include_archived):
-    return [_rows(conn, """SELECT c.customer_id, c.name, c.tax_id, c.street_address, c.city, c.state, c.zip_code,
-                                  c.country, c.is_archived, c.created_at, c.email_domains,
-                                  (SELECT COUNT(*) FROM invoice i WHERE i.customer_id = c.customer_id) AS invoice_count
-                           FROM customer c
-                           WHERE c.org_id = :o AND (:a OR NOT c.is_archived)
-                           ORDER BY c.is_archived, c.created_at DESC""", o=org_id, a=bool(include_archived))]
+    return [_rows(conn, f"""SELECT c.customer_id, c.name, c.tax_id, c.street_address, c.city, c.state, c.zip_code,
+                                   c.country, c.is_archived, c.created_at, c.email_domains, c.parent_id, c.site_name,
+                                   {CUSTOMER_SITE} AS site, parent.name AS parent_name,
+                                   (SELECT COUNT(*) FROM invoice i WHERE i.customer_id = c.customer_id) AS invoice_count,
+                                   (SELECT COUNT(*) FROM customer s WHERE s.parent_id = c.customer_id) AS site_count
+                            FROM customer c LEFT JOIN customer parent ON parent.customer_id = c.parent_id
+                            WHERE c.org_id = :o AND (:a OR NOT c.is_archived)
+                            ORDER BY c.is_archived, c.created_at DESC""", o=org_id, a=bool(include_archived))]
 
 
 @proc('sp_create_customer')
@@ -231,9 +237,12 @@ def create_customer(conn, org_id, name, tax_id, street, city, state, zip_code, c
 
 @proc('sp_get_customer_details')
 def get_customer_details(conn, customer_id):
-    customer = _rows(conn, """SELECT customer_id, org_id, name, tax_id, street_address, city, state, zip_code, country,
-                                     custom, email_domains, is_archived, created_at
-                              FROM customer WHERE customer_id = :c""", c=customer_id)
+    customer = _rows(conn, f"""SELECT c.customer_id, c.org_id, c.name, c.tax_id, c.street_address, c.city, c.state,
+                                      c.zip_code, c.country, c.custom, c.email_domains, c.is_archived, c.created_at,
+                                      c.parent_id, c.site_name, {CUSTOMER_SITE} AS site, parent.name AS parent_name,
+                                      parent.email_domains AS parent_email_domains
+                               FROM customer c LEFT JOIN customer parent ON parent.customer_id = c.parent_id
+                               WHERE c.customer_id = :c""", c=customer_id)
     contacts = _rows(conn, """SELECT p.person_id, p.email, p.full_name, cca.role
                               FROM customer_contact_assignment cca JOIN person p ON cca.person_id = p.person_id
                               WHERE cca.customer_id = :c""", c=customer_id)
@@ -247,6 +256,37 @@ def update_customer(conn, customer_id, name, tax_id, street, city, state, zip_co
                    state = :st, zip_code = :z, country = :co WHERE customer_id = :c""",
           c=customer_id, n=name, t=tax_id, s=street, ci=city, st=state, z=zip_code, co=country)
     return []
+
+
+@proc('sp_set_customer_parent')
+def set_customer_parent(conn, customer_id, org_id, parent_id, site_name):
+    """Make the customer a site of parent_id (or a customer of its own when parent_id is empty). One level deep."""
+    _require(conn, "SELECT 1 FROM customer WHERE customer_id = :c AND org_id = :o", 'Customer does not exist',
+             c=customer_id, o=org_id)
+    parent_id = parent_id or None
+    if parent_id:
+        if str(parent_id) == str(customer_id):
+            raise ProcError('A customer cannot be a site of itself')
+        parent = _one(conn, "SELECT parent_id FROM customer WHERE customer_id = CAST(:p AS uuid) AND org_id = :o",
+                      p=_as_uuid(parent_id), o=org_id)
+        if not parent:
+            raise ProcError('The parent customer does not exist')
+        if parent['parent_id']:
+            raise ProcError('That customer is itself a site; choose its parent instead')
+        if _one(conn, "SELECT 1 FROM customer WHERE parent_id = :c LIMIT 1", c=customer_id):
+            raise ProcError('This customer has sites of its own, so it cannot be a site')
+    _exec(conn, "UPDATE customer SET parent_id = CAST(:p AS uuid), site_name = NULLIF(:s, '') WHERE customer_id = :c",
+          c=customer_id, p=parent_id, s=(site_name or '').strip()[:100])
+    return []
+
+
+@proc('sp_list_customer_sites')
+def list_customer_sites(conn, org_id, parent_id):
+    return [_rows(conn, f"""SELECT c.customer_id, c.name, c.tax_id, c.city, c.state, c.country, c.site_name,
+                                   {CUSTOMER_SITE} AS site, c.is_archived, c.parent_id,
+                                   (SELECT COUNT(*) FROM invoice i WHERE i.customer_id = c.customer_id) AS invoice_count
+                            FROM customer c WHERE c.org_id = :o AND c.parent_id = :p
+                            ORDER BY c.is_archived, lower({CUSTOMER_SITE}), lower(c.name)""", o=org_id, p=parent_id)]
 
 
 @proc('sp_update_customer_custom')
@@ -293,6 +333,8 @@ def delete_customer(conn, customer_id, org_id):
              'Customer does not exist or does not belong to organization', c=customer_id, o=org_id)
     if _one(conn, "SELECT 1 FROM invoice WHERE customer_id = :c LIMIT 1", c=customer_id):
         raise ProcError('Cannot delete customer with existing invoices. Delete invoices first.')
+    if _one(conn, "SELECT 1 FROM customer WHERE parent_id = :c LIMIT 1", c=customer_id):
+        raise ProcError('Cannot delete a customer that has sites. Move or delete its sites first.')
     _exec(conn, "DELETE FROM customer WHERE customer_id = :c", c=customer_id)
     return []
 
@@ -704,6 +746,7 @@ def get_document_type(conn, invoice_id):
 
 
 DOC_LIST = f"""SELECT i.invoice_id, i.doc_type, i.doc_number, i.source_invoice_id, i.customer_id, c.name AS customer_name,
+                     {CUSTOMER_SITE} AS customer_site,
                       i.template_id, t.name AS template_name, {CURRENCY} AS currency_code, i.issue_date, i.due_date,
                       i.status, {PAID} AS paid_amount, i.total_amount, i.project_id
                FROM invoice i JOIN customer c ON i.customer_id = c.customer_id {TEMPLATE_JOIN}"""
@@ -851,20 +894,22 @@ def update_project(conn, project_id, org_id, title, reference, status, notes):
 
 @proc('sp_get_project')
 def get_project(conn, project_id, org_id):
-    return [_rows(conn, """SELECT p.*, c.name AS customer_name FROM project p JOIN customer c ON c.customer_id = p.customer_id
+    return [_rows(conn, f"""SELECT p.*, c.name AS customer_name, {CUSTOMER_SITE} AS customer_site
+                            FROM project p JOIN customer c ON c.customer_id = p.customer_id
                            WHERE p.project_id = CAST(:p AS uuid) AND p.org_id = :o""", p=_as_uuid(project_id), o=org_id)]
 
 
 @proc('sp_list_projects')
 def list_projects(conn, org_id, customer_id, status):
-    return [_rows(conn, """SELECT p.project_id, p.project_no, p.title, p.reference, p.status, p.customer_id,
-                                  c.name AS customer_name, p.created_at, p.updated_at,
+    return [_rows(conn, f"""SELECT p.project_id, p.project_no, p.title, p.reference, p.status, p.customer_id,
+                                  c.name AS customer_name, {CUSTOMER_SITE} AS customer_site, p.created_at, p.updated_at,
                                   (SELECT COUNT(*) FROM invoice i WHERE i.project_id = p.project_id) AS document_count,
                                   (SELECT COUNT(*) FROM attachment a WHERE a.project_id = p.project_id) AS file_count,
                                   (SELECT COUNT(*) FROM email_thread e WHERE e.project_id = p.project_id) AS thread_count,
                                   (SELECT MAX(i.issue_date) FROM invoice i WHERE i.project_id = p.project_id) AS last_issue_date
                            FROM project p JOIN customer c ON c.customer_id = p.customer_id
-                           WHERE p.org_id = :o AND (CAST(:c AS uuid) IS NULL OR p.customer_id = CAST(:c AS uuid))
+                           WHERE p.org_id = :o AND (CAST(:c AS uuid) IS NULL OR p.customer_id = CAST(:c AS uuid)
+                                                    OR c.parent_id = CAST(:c AS uuid))      -- and its sites'
                              AND (CAST(:s AS text) IS NULL OR p.status = :s)
                            ORDER BY p.project_no DESC""", o=org_id, c=customer_id, s=status)]
 
@@ -903,10 +948,16 @@ def list_org_document_links(conn, org_id):
 ATTACHMENT_LIST = """SELECT a.attachment_id, a.customer_id, c.name AS customer_name, a.project_id, p.project_no,
                             a.invoice_id, i.doc_number, i.doc_type, a.email_message_id, a.kind, a.title, a.reference_no,
                             a.doc_date, a.amount, a.currency, a.notes, a.file_name, a.content_type, a.file_size,
-                            a.storage_key, a.created_at
+                            a.storage_key, a.content_hash, a.created_at, em.thread_id AS email_thread_id
                      FROM attachment a JOIN customer c ON c.customer_id = a.customer_id
                      LEFT JOIN project p ON p.project_id = a.project_id
-                     LEFT JOIN invoice i ON i.invoice_id = a.invoice_id"""
+                     LEFT JOIN invoice i ON i.invoice_id = a.invoice_id
+                     LEFT JOIN email_message em ON em.message_id = a.email_message_id"""
+
+
+def sha256(data: bytes) -> str:
+    import hashlib
+    return hashlib.sha256(data or b'').hexdigest()
 
 
 @proc('sp_add_attachment')
@@ -926,12 +977,12 @@ def add_attachment(conn, org_id, customer_id, project_id, invoice_id, kind, titl
     key = storage.put(f'{org_id}/{aid}/{file_name}', data, content_type)
     _exec(conn, """INSERT INTO attachment (attachment_id, org_id, customer_id, project_id, invoice_id, email_message_id,
                                            kind, title, reference_no, doc_date, amount, currency, notes, file_name,
-                                           content_type, file_size, storage_key, uploaded_by)
+                                           content_type, file_size, storage_key, content_hash, uploaded_by)
                    VALUES (:a, :o, :c, :p, :i, :m, :k, :t, NULLIF(:r, ''), CAST(:d AS date), :am, NULLIF(:cur, ''),
-                           NULLIF(:n, ''), :fn, :ct, :sz, :key, :u)""",
+                           NULLIF(:n, ''), :fn, :ct, :sz, :key, :h, :u)""",
           a=aid, o=org_id, c=customer_id, p=project_id or None, i=invoice_id or None, m=email_message_id, k=kind,
           t=title, r=reference_no or '', d=doc_date or None, am=amount, cur=currency or '', n=notes or '',
-          fn=file_name, ct=content_type, sz=len(data), key=key, u=user_id)
+          fn=file_name, ct=content_type, sz=len(data), key=key, h=sha256(data), u=user_id)
     return [[{'attachment_id': aid}]]
 
 
@@ -1131,11 +1182,57 @@ def add_email_file(conn, org_id, message_id, file_name, content_type, data):
     import storage
     fid = _new_id()
     key = storage.put(f'{org_id}/email/{fid}/{file_name}', data, content_type)
-    _exec(conn, """INSERT INTO email_file (file_id, org_id, message_id, file_name, content_type, file_size, storage_key)
-                   VALUES (:f, :o, :m, :n, :c, :s, :k)""",
+    _exec(conn, """INSERT INTO email_file (file_id, org_id, message_id, file_name, content_type, file_size, storage_key,
+                                           content_hash)
+                   VALUES (:f, :o, :m, :n, :c, :s, :k, :h)""",
           f=fid, o=org_id, m=message_id, n=file_name[:255], c=(content_type or 'application/octet-stream')[:100],
-          s=len(data), k=key)
+          s=len(data), k=key, h=sha256(data))
     return [[{'file_id': fid}]]
+
+
+@proc('sp_list_thread_files')
+def list_thread_files(conn, org_id, thread_id, message_id=None):
+    """A thread's email files (or one message's), with the message they came in, oldest first."""
+    return [_rows(conn, """SELECT f.file_id, f.file_name, f.content_type, f.file_size, f.storage_key, f.content_hash,
+                                  m.message_id, m.subject, m.sent_at, m.direction, m.from_name, m.from_address
+                           FROM email_file f JOIN email_message m ON m.message_id = f.message_id
+                           WHERE f.org_id = :o AND m.thread_id = CAST(:t AS uuid)
+                             AND (CAST(:m AS uuid) IS NULL OR m.message_id = CAST(:m AS uuid))
+                           ORDER BY m.sent_at NULLS LAST, m.created_at, f.file_name""",
+                  o=org_id, t=_as_uuid(thread_id), m=message_id)]
+
+
+@proc('sp_project_file_hashes')
+def project_file_hashes(conn, org_id, project_id):
+    """Content hashes of a project's files, filling in any missing ones (files from before hashes) from storage."""
+    import storage
+    rows = _rows(conn, "SELECT attachment_id, content_hash, storage_key FROM attachment WHERE org_id = :o AND project_id = :p",
+                 o=org_id, p=project_id)
+    for r in rows:
+        if not r['content_hash']:
+            r['content_hash'] = sha256(storage.get(r['storage_key']))
+            _exec(conn, "UPDATE attachment SET content_hash = :h WHERE attachment_id = :a", h=r['content_hash'],
+                  a=r['attachment_id'])
+    return [[{'content_hash': r['content_hash']} for r in rows]]
+
+
+@proc('sp_set_email_file_hash')
+def set_email_file_hash(conn, file_id, content_hash):
+    _exec(conn, "UPDATE email_file SET content_hash = :h WHERE file_id = :f", f=file_id, h=content_hash)
+    return []
+
+
+@proc('sp_remove_thread_files_from_project')
+def remove_thread_files_from_project(conn, org_id, project_id, thread_id):
+    """Delete the project files that were copied from this thread's emails (the emails keep theirs)."""
+    import storage
+    rows = _rows(conn, """DELETE FROM attachment a USING email_message m
+                          WHERE a.email_message_id = m.message_id AND m.thread_id = :t
+                            AND a.org_id = :o AND a.project_id = :p RETURNING a.storage_key""",
+                 o=org_id, p=project_id, t=thread_id)
+    for r in rows:
+        storage.delete(r['storage_key'])
+    return [[{'removed': len(rows)}]]
 
 
 @proc('sp_get_email_file')
@@ -1207,7 +1304,7 @@ def match_customers_by_email(conn, org_id, addresses):
     if not addresses:
         return []
     domains = list({a.split('@', 1)[1] for a in addresses})
-    return [_rows(conn, """SELECT DISTINCT c.customer_id, c.name FROM customer c
+    return [_rows(conn, """SELECT DISTINCT c.customer_id, c.name, c.parent_id FROM customer c
                            WHERE c.org_id = :o AND NOT c.is_archived AND (
                              EXISTS (SELECT 1 FROM unnest(string_to_array(lower(COALESCE(c.email_domains, '')), ',')) AS d(x)
                                      WHERE trim(d.x) <> '' AND trim(leading '@' from trim(d.x)) = ANY(:d))

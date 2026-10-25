@@ -1009,6 +1009,8 @@ input[type="date"].form-input { padding-right: 8px; }
 .file-icon [data-lucide] { width: 16px; height: 16px; }
 .file-title { font-weight: var(--font-weight-medium); overflow-wrap: anywhere; }
 .file-meta { display: flex; flex-wrap: wrap; gap: 4px var(--spacing-sm); align-items: center; margin-top: 2px; font-size: var(--font-size-xs); color: var(--ink-2); overflow-wrap: anywhere; }
+.file-meta a { display: inline-flex; align-items: center; gap: 3px; }
+.file-meta a [data-lucide] { width: 12px; height: 12px; }
 .file-actions { display: flex; gap: 2px; }
 .file-actions form { margin: 0; }
 .file-move { grid-column: 2 / -1; margin: 0; max-width: 320px; }
@@ -1093,6 +1095,8 @@ input[type="date"].form-input { padding-right: 8px; }
 .details-list dt:first-child { margin-top: 0; }
 .details-list dd { margin: 0; color: var(--ink-1); overflow-wrap: anywhere; }
 .row-muted { opacity: .6; }
+.row-site td:first-child { padding-left: 40px; position: relative; }
+.row-site td:first-child::before { content: ''; position: absolute; left: 22px; top: 0; bottom: 50%; width: 10px; border-left: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
 .form-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-sm); margin-top: var(--spacing-lg); }
 
 /* ---------------------------------------------------------------- Layout fixes (all pages) */

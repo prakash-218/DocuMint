@@ -5,7 +5,7 @@
 
 {% block title %}{{ customer.name }}{% endblock %}
 {% block page_title %}{{ customer.name }}{% endblock %}
-{% block page_description %}<p class="header-description">{{ [customer.city, customer.country] | select | join(', ') }}{% if customer.is_archived %} · Archived{% endif %}</p>{% endblock %}
+{% block page_description %}<p class="header-description">{% if customer.parent_id %}Site of <a href="{{ url_for('customers_bp.view_customer', customer_id=customer.parent_id) }}">{{ customer.parent_name }}</a> · {% endif %}{{ [customer.city, customer.country] | select | join(', ') }}{% if customer.is_archived %} · Archived{% endif %}</p>{% endblock %}
 
 {% block header_actions %}
 {% if can_edit and not customer.is_archived %}
@@ -30,7 +30,7 @@
                         <tr data-href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}">
                             <td>
                                 <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}" class="cell-primary" style="color: inherit;">{{ d | doc_number }}</a>
-                                <span class="cell-secondary">{{ d.doc_type | doc_label }}</span>
+                                <span class="cell-secondary">{{ d.doc_type | doc_label }}{% if d.customer_id != customer.customer_id %} · {{ d.customer_site or d.customer_name }}{% endif %}</span>
                             </td>
                             <td class="num hide-mobile">{{ d.issue_date | date or '—' }}</td>
                             <td>{{ status_badge(d) }}</td>
@@ -54,7 +54,7 @@
                     <a href="{{ url_for('projects_bp.view_project', project_id=j.project_id) }}">
                         <span class="pick-main">
                             <span class="pick-title">{{ j.title }}</span>
-                            <span class="pick-sub">{{ j | project_label }} · {{ j.document_count }} document{{ '' if j.document_count == 1 else 's' }}</span>
+                            <span class="pick-sub">{{ j | project_label }}{% if j.customer_id != customer.customer_id %} · {{ j.customer_site or j.customer_name }}{% endif %} · {{ j.document_count }} document{{ '' if j.document_count == 1 else 's' }}</span>
                         </span>
                         <span class="badge badge-{{ {'open': 'info', 'completed': 'success', 'cancelled': 'secondary'}[j.status] }}">{{ j.status }}</span>
                     </a>
@@ -67,7 +67,7 @@
         </section>
 
         <div id="files">
-        {{ files_card(files, {'customer_id': customer.customer_id}, file_kinds, can_edit, projects=projects, show_where=True) }}
+        {{ files_card(files, {'customer_id': customer.customer_id}, file_kinds, can_edit, projects=own_projects, show_where=True) }}
         </div>
     </div>
 
@@ -105,6 +105,34 @@
                 </dl>
             </div>
         </div>
+
+        {% if not customer.parent_id %}
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Sites</h2>
+                {% if current_org_role in ('owner', 'admin') and not customer.is_archived %}
+                <a href="{{ url_for('customers_bp.create_customer', parent_id=customer.customer_id) }}" class="btn btn-ghost btn-xs"><i data-lucide="plus"></i>Add site</a>
+                {% endif %}
+            </div>
+            {% if sites %}
+            <ul class="pick-list">
+                {% for s in sites %}
+                <li>
+                    <a href="{{ url_for('customers_bp.view_customer', customer_id=s.customer_id) }}">
+                        <span class="pick-main">
+                            <span class="pick-title">{{ s.site or s.name }}</span>
+                            <span class="pick-sub">{% if s.site and s.name != customer.name %}{{ s.name }} · {% endif %}{{ s.tax_id or 'No GSTIN' }}{% if s.is_archived %} · Archived{% endif %}</span>
+                        </span>
+                        <span class="text-tertiary">{{ s.invoice_count }}</span>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="card-body"><p class="text-tertiary" style="margin: 0;">Plants, branches or sister companies billed separately go here.</p></div>
+            {% endif %}
+        </div>
+        {% endif %}
 
         <div class="card">
             <div class="card-header"><h2 class="card-title">Customer portal</h2></div>

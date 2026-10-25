@@ -51,3 +51,18 @@
     {% if action_url %}<a href="{{ action_url }}" class="btn btn-primary"><i data-lucide="plus"></i>{{ action_label }}</a>{% endif %}
 </div>
 {% endmacro %}
+
+{# <option>s for a customer picker: customers with sites become a group ("Wipro": main, Chennai, US ...) #}
+{% macro customer_options(customers, selected=None) %}
+{% for g in customers | customer_groups %}
+{% set c = g.customer %}
+{% if g.sites %}
+<optgroup label="{{ c.name }}">
+    <option value="{{ c.customer_id }}" {% if c.customer_id == selected %}selected{% endif %}>{{ c.name }}{% if c.city %} — {{ c.city }}{% endif %}</option>
+    {% for s in g.sites %}<option value="{{ s.customer_id }}" {% if s.customer_id == selected %}selected{% endif %}>{{ s.site or s.name }}{% if s.name != c.name and s.site %} — {{ s.name }}{% endif %}</option>{% endfor %}
+</optgroup>
+{% else %}
+<option value="{{ c.customer_id }}" {% if c.customer_id == selected %}selected{% endif %}>{{ c | customer_label }}</option>
+{% endif %}
+{% endfor %}
+{% endmacro %}

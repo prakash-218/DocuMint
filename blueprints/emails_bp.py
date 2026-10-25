@@ -55,22 +55,41 @@ def thread(thread_id):
 @require_org
 def link_project(thread_id):
     _guard()
+    import projects
+    org_id = g.current_org_id
     project_id = request.form.get('project_id') or None
+    result = db.execute_proc('sp_get_email_thread', (thread_id, org_id))
+    if not result:
+        abort(404)
+    current = (result[0] if isinstance(result[0], list) else result)[0]
+    back = redirect(url_for('emails_bp.thread', thread_id=thread_id))
+    if (current.get('project_id') or None) == project_id:
+        return back
     try:
-        db.execute_proc('sp_set_thread_project', (thread_id, g.current_org_id, project_id, 'manual'), fetch=False)
+        db.execute_proc('sp_set_thread_project', (thread_id, org_id, project_id, 'manual'), fetch=False)
+        removed = projects.remove_email_files(org_id, current['project_id'], thread_id) if current.get('project_id') else 0
+        counts = projects.add_email_files(org_id, project_id, thread_id) if project_id else {}
     except DatabaseError as e:
+        logger.exception('Could not move thread %s to project %s', thread_id, project_id)
         flash(str(e), 'error')
-        return redirect(url_for('emails_bp.thread', thread_id=thread_id))
+        return back
     if project_id:
         import activity
-        result = db.execute_proc('sp_get_email_thread', (thread_id, g.current_org_id))
-        subject = (result[0][0] if result and isinstance(result[0], list) else {}).get('subject', 'Email')
-        activity.record('email_received', f'Email thread added: {subject}', project_id=project_id,
+        activity.record('email_received', f"Email thread added: {current.get('subject') or 'Email'}", project_id=project_id,
                         link=url_for('emails_bp.thread', thread_id=thread_id), notify=False)
-        flash('Added to the project', 'success')
+        flash('Added to the project' + _files_note(counts), 'success')
     else:
-        flash('Removed from the project', 'success')
-    return redirect(url_for('emails_bp.thread', thread_id=thread_id))
+        flash('Removed from the project' + (f', with the {removed} file{"" if removed == 1 else "s"} it had added'
+                                            if removed else ''), 'success')
+    return back
+
+
+def _files_note(counts) -> str:
+    added, dupes = counts.get('added', 0), counts.get('duplicates', 0)
+    if not added and not dupes:
+        return ''
+    note = f", with {added} file{'' if added == 1 else 's'}" if added else ', no new files'
+    return note + (f" ({dupes} already there)" if dupes else '')
 
 
 @emails_bp.route('/files/<file_id>')
