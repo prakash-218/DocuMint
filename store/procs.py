@@ -784,7 +784,8 @@ def record_payment(conn, invoice_id, amount, method, reference, _out=None):
           p=pid, i=invoice_id, a=amount, m=method, r=reference)
     _audit(conn, row['org_id'], 'payment', pid, 'INSERT', 'amount', None, amount,
            f"Invoice: {invoice_id} | Method: {method or 'N/A'} | Reference: {reference or 'N/A'}")
-    update_invoice_total(conn, invoice_id)
+    # The stored total is the grand total with GST (kept by the app on every save); a payment
+    # doesn't change it. Recomputing it here from template fields alone would drop the tax.
     paid_up = _one(conn, f"SELECT {PAID} >= i.total_amount AS ok FROM invoice i WHERE i.invoice_id = :i", i=invoice_id)
     if paid_up and paid_up['ok']:
         _status_change(conn, invoice_id, 'paid')

@@ -172,9 +172,13 @@ def test_quote_to_proforma_to_invoice(client, app, gst_org):
     assert load_json(i_header['details']).get('buyer_order_no') == '2010031535'
 
     assert client.post(f'/invoices/{invoice_id}/finalize').status_code == 302
-    client.post(f'/invoices/{invoice_id}/payment', data={'amount': '13924', 'method': 'NEFT / RTGS'})
+    # Paying the pre-tax amount leaves the GST due: the total keeps its tax and the invoice stays pending
+    client.post(f'/invoices/{invoice_id}/payment', data={'amount': '11800', 'method': 'NEFT / RTGS'})
     i_header, _ = _summary(invoice_id)
-    assert i_header['status'] == 'paid'
+    assert (float(i_header['total_amount']), i_header['status']) == (13924, 'pending')
+    client.post(f'/invoices/{invoice_id}/payment', data={'amount': '2124', 'method': 'NEFT / RTGS'})
+    i_header, _ = _summary(invoice_id)
+    assert (float(i_header['total_amount']), i_header['status']) == (13924, 'paid')
 
     # Every document renders, and every PDF generates
     for doc_id in (quote_id, proforma_id, invoice_id):
