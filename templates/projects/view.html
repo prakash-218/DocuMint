@@ -96,6 +96,33 @@
             {% endif %}
         </div>
 
+        {% if current_org_role in ('owner', 'admin') %}
+        <section class="card" id="costings">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Costings</h2>
+                    <p class="card-subtitle">Work out the prices before the quote. Only owners and admins see these.</p>
+                </div>
+                <form method="POST" action="{{ url_for('costings_bp.create') }}">
+                    <input type="hidden" name="project_id" value="{{ project.project_id }}">
+                    <button type="submit" class="btn btn-secondary btn-sm"><i data-lucide="calculator"></i>New costing</button>
+                </form>
+            </div>
+            {% if costings %}
+            <ul class="pick-list costing-list">
+                {% for k in costings %}
+                <li><a href="{{ url_for('costings_bp.edit', costing_id=k.costing_id) }}">
+                    <span class="pick-main">
+                        <span class="pick-title">Version {{ k.version }} · {{ k.title }}</span>
+                        <span class="pick-sub">Cost {{ k.total_cost | currency(k.currency) }} · Price {{ k.total_price | currency(k.currency) }}{% if k.profit_on_cost is not none %} · {{ k.profit_on_cost }}% profit{% endif %}{% if k.quote_number %} · <span class="k-quote">{{ k.quote_number }}</span>{% endif %}</span>
+                    </span>
+                    <i data-lucide="chevron-right"></i></a></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </section>
+        {% endif %}
+
         <section class="card">
             <div class="card-header">
                 <h2 class="card-title">Emails</h2>

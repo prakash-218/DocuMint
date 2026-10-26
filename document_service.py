@@ -47,18 +47,40 @@ def series_key(doc_type: str, profile: Dict) -> str:
     return doc_type
 
 
+MAX_SKIPPED_NUMBERS = 1000
+
+
+def _taken(org_id, doc_type: str, profile: Dict, number: str) -> bool:
+    """Numbers typed in by hand (earlier documents, a corrected number) don't move the series on,
+    so the series can reach a number that's already used; GST numbers must stay unique."""
+    key = series_key(doc_type, profile)
+    sharing = [t for t in DOC_TYPES if series_key(t, profile) == key]
+    row = db.execute_proc_single('sp_document_number_taken', (org_id, sharing, number)) or {}
+    return bool(row.get('taken'))
+
+
 def preview_number(org_id, doc_type: str, profile: Dict, on: Optional[date] = None) -> str:
     """The number the next document of this type will get (doesn't reserve it)."""
     fy = _fy(profile, on)
     row = db.execute_proc_single('sp_peek_document_number', (org_id, series_key(doc_type, profile), fy)) or {}
-    return format_number(number_format(profile, doc_type), int(row.get('number') or 1), fy, on)
+    n = int(row.get('number') or 1)
+    for _ in range(MAX_SKIPPED_NUMBERS):
+        number = format_number(number_format(profile, doc_type), n, fy, on)
+        if not _taken(org_id, doc_type, profile, number):
+            return number
+        n += 1
+    return number
 
 
 def allocate_number(org_id, doc_type: str, profile: Dict, on: Optional[date] = None) -> Tuple[str, str]:
-    """Reserve the next number in the series. Returns (formatted number, fiscal year)."""
+    """Reserve the next free number in the series, skipping any already used. Returns (number, fiscal year)."""
     fy = _fy(profile, on)
-    row = db.execute_proc_single('sp_next_document_number', (org_id, series_key(doc_type, profile), fy)) or {}
-    return format_number(number_format(profile, doc_type), int(row.get('number') or 1), fy, on), fy
+    for _ in range(MAX_SKIPPED_NUMBERS):
+        row = db.execute_proc_single('sp_next_document_number', (org_id, series_key(doc_type, profile), fy)) or {}
+        number = format_number(number_format(profile, doc_type), int(row.get('number') or 1), fy, on)
+        if not _taken(org_id, doc_type, profile, number):
+            return number, fy
+    raise DocumentError('Could not find a free document number; set the next number in Settings → Business profile')
 
 
 def series_status(org_id, profile: Dict, on: Optional[date] = None) -> List[Dict]:

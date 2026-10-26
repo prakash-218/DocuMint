@@ -863,6 +863,14 @@ def next_document_number(conn, org_id, doc_type, fy):
     return [[row]]
 
 
+@proc('sp_document_number_taken')
+def document_number_taken(conn, org_id, doc_types, number):
+    """Is this number already on a document of these types (the types that share a series)?"""
+    row = _one(conn, """SELECT 1 AS taken FROM invoice WHERE org_id = :o AND doc_number = :n
+                        AND doc_type = ANY(CAST(:t AS text[])) LIMIT 1""", o=org_id, n=number, t=list(doc_types))
+    return [[{'taken': bool(row)}]]
+
+
 @proc('sp_set_document_series')
 def set_document_series(conn, org_id, doc_type, fy, next_number):
     if not next_number or int(next_number) < 1:
@@ -1350,3 +1358,70 @@ def list_document_numbers(conn, org_id):
     return [_rows(conn, """SELECT doc_number, project_id, customer_id FROM invoice
                            WHERE org_id = :o AND doc_number IS NOT NULL AND length(doc_number) >= 6
                            ORDER BY length(doc_number) DESC""", o=org_id)]
+
+
+# ================================================================ Costings
+
+COSTING_COLUMNS = """k.costing_id, k.org_id, k.project_id, k.version, k.title, k.mode, k.profit_percent, k.target_total,
+                     k.round_to, k.currency, k.sheet, k.total_cost, k.total_price, k.quote_id, k.notes, k.created_by,
+                     k.created_at, k.updated_at, p.project_no, p.title AS project_title, p.customer_id,
+                     c.name AS customer_name, i.doc_number AS quote_number, i.status AS quote_status"""
+COSTING_FROM = """costing k JOIN project p ON p.project_id = k.project_id JOIN customer c ON c.customer_id = p.customer_id
+                  LEFT JOIN invoice i ON i.invoice_id = k.quote_id"""
+
+
+@proc('sp_create_costing')
+def create_costing(conn, org_id, project_id, title, mode, profit_percent, target_total, round_to, currency, sheet,
+                   total_cost, total_price, notes, user_id):
+    """A new costing for the project, numbered after its others (v1, v2 ...)."""
+    _require(conn, "SELECT 1 FROM project WHERE project_id = :p AND org_id = :o", 'Project not found',
+             p=project_id, o=org_id)
+    version = _one(conn, "SELECT COALESCE(MAX(version), 0) + 1 AS v FROM costing WHERE project_id = :p",
+                   p=project_id)['v']
+    cid = _new_id()
+    _exec(conn, """INSERT INTO costing (costing_id, org_id, project_id, version, title, mode, profit_percent, target_total,
+                                        round_to, currency, sheet, total_cost, total_price, notes, created_by)
+                   VALUES (:k, :o, :p, :v, :t, :m, :pp, :tt, :r, :cur, CAST(:s AS jsonb), :tc, :tp, NULLIF(:n, ''), :u)""",
+          k=cid, o=org_id, p=project_id, v=version, t=title, m=mode, pp=profit_percent, tt=target_total, r=round_to,
+          cur=currency, s=_json(sheet) or '{"items": []}', tc=total_cost, tp=total_price, n=notes or '', u=user_id)
+    return [[{'costing_id': cid, 'version': version}]]
+
+
+@proc('sp_update_costing')
+def update_costing(conn, costing_id, org_id, title, mode, profit_percent, target_total, round_to, currency, sheet,
+                   total_cost, total_price, notes):
+    n = _exec(conn, """UPDATE costing SET title = :t, mode = :m, profit_percent = :pp, target_total = :tt, round_to = :r,
+                       currency = :cur, sheet = CAST(:s AS jsonb), total_cost = :tc, total_price = :tp,
+                       notes = NULLIF(:n, ''), updated_at = now()
+                       WHERE costing_id = :k AND org_id = :o""",
+              k=costing_id, o=org_id, t=title, m=mode, pp=profit_percent, tt=target_total, r=round_to, cur=currency,
+              s=_json(sheet) or '{"items": []}', tc=total_cost, tp=total_price, n=notes or '')
+    if not n:
+        raise ProcError('Costing not found')
+    return []
+
+
+@proc('sp_get_costing')
+def get_costing(conn, costing_id, org_id):
+    return [_rows(conn, f"SELECT {COSTING_COLUMNS} FROM {COSTING_FROM} WHERE k.costing_id = CAST(:k AS uuid) AND k.org_id = :o",
+                  k=_as_uuid(costing_id), o=org_id)]
+
+
+@proc('sp_list_costings')
+def list_costings(conn, org_id, project_id):
+    return [_rows(conn, f"""SELECT {COSTING_COLUMNS} FROM {COSTING_FROM}
+                            WHERE k.org_id = :o AND k.project_id = CAST(:p AS uuid) ORDER BY k.version DESC""",
+                  o=org_id, p=_as_uuid(project_id))]
+
+
+@proc('sp_set_costing_quote')
+def set_costing_quote(conn, costing_id, org_id, quote_id):
+    _exec(conn, "UPDATE costing SET quote_id = CAST(:q AS uuid), updated_at = now() WHERE costing_id = :k AND org_id = :o",
+          k=costing_id, o=org_id, q=quote_id)
+    return []
+
+
+@proc('sp_delete_costing')
+def delete_costing(conn, costing_id, org_id):
+    _exec(conn, "DELETE FROM costing WHERE costing_id = :k AND org_id = :o", k=costing_id, o=org_id)
+    return []

@@ -257,6 +257,34 @@ payment = Table(
     CheckConstraint('amount > 0', name='amount_positive'),
 )
 
+# Working out a quote's prices before making it: internal, owners and admins only.
+# sheet: {"items": [{name, description, qty, unit, cost_each, profit_percent, price_each,
+#                    lines: [{description, make, qty, unit, unit_cost, markup}]}]}
+# 'build' adds profit to the costs; 'target' starts from a total and shows the cost budget.
+costing = Table(
+    'costing', metadata,
+    _id('costing_id'),
+    _ref('org_id', 'organization.org_id', 'CASCADE'),
+    _ref('project_id', 'project.project_id', 'CASCADE'),
+    Column('version', Integer, nullable=False),
+    Column('title', String(200), nullable=False),
+    Column('mode', String(10), nullable=False, server_default='build'),
+    Column('profit_percent', Numeric(7, 3), nullable=False, server_default='15'),
+    Column('target_total', MONEY),
+    Column('round_to', Integer, nullable=False, server_default='0'),
+    Column('currency', String(3), nullable=False, server_default='INR'),
+    Column('sheet', JSONB, nullable=False, server_default=text("'{\"items\": []}'::jsonb")),
+    Column('total_cost', MONEY, nullable=False, server_default='0'),     # worked out from the sheet, for lists
+    Column('total_price', MONEY, nullable=False, server_default='0'),
+    _ref('quote_id', 'invoice.invoice_id', 'SET NULL', nullable=True),  # the quote made from it
+    Column('notes', Text),
+    Column('created_by', UUID(as_uuid=False)),
+    _created(),
+    Column('updated_at', TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    UniqueConstraint('project_id', 'version', name='uq_costing_project_version'),
+    CheckConstraint("mode IN ('build', 'target')", name='mode'),
+)
+
 document_series = Table(
     'document_series', metadata,
     _ref('org_id', 'organization.org_id', 'CASCADE', index=False),

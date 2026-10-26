@@ -1256,3 +1256,90 @@ input[type="date"].form-input { padding-right: 8px; }
 .email-files { list-style: none; margin: 0; padding: var(--spacing-sm) var(--spacing-lg) var(--spacing-md); display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--font-size-sm); border-top: 1px solid var(--line-1); }
 .email-files [data-lucide] { width: 14px; height: 14px; vertical-align: -2px; margin-right: 3px; }
 @media (max-width: 768px) { .email-head, .email-body { padding-left: var(--spacing-md); padding-right: var(--spacing-md); } }
+
+/* Costing editor: a spreadsheet, so it gets the full width */
+.k-form [hidden] { display: none !important; }
+.k-top { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--spacing-lg); align-items: start; margin-bottom: var(--spacing-lg); }
+.k-bottom { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--spacing-lg); align-items: start; margin-top: var(--spacing-lg); }
+.k-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0 var(--spacing-md); }
+.k-modes label { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; color: var(--ink-2); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); cursor: pointer; }
+.k-modes label.active { background: var(--surface-1); color: var(--ink-1); box-shadow: var(--shadow-1); }
+.k-modes label:focus-within { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
+.k-form[data-mode="build"] .k-target-only, .k-form[data-mode="target"] .k-build-only,
+.k-form[data-mode="target"] .col-profit-in { display: none; }
+
+/* Item table: fixed columns; the item column takes what's left. Scrolls inside the card when narrow. */
+.k-items { table-layout: fixed; min-width: 1020px; }
+.k-items > thead .col-no { width: 40px; }
+.k-items .c-qty { width: 78px; }
+.k-items .c-unit { width: 80px; }
+.k-items .c-cost, .k-items .c-price { width: 120px; }
+.k-items .c-pct { width: 84px; }
+.k-items .c-amount { width: 128px; }
+.k-items .c-gain { width: 116px; }
+.k-items > thead .col-x { width: 100px; }
+.k-items .long { width: auto; min-width: 0; }
+.k-items td .form-input, .k-items td .form-textarea { min-width: 0 !important; width: 100% !important; }
+/* As in the document editor: typed-in values and their headings on the left, worked-out amounts on the right */
+.k-items th.c-qty, .k-items th.c-cost, .k-items th.c-pct, .k-items th.c-price,
+.k-lines th.c-qty, .k-lines th.c-ucost, .k-lines th.c-markup { text-align: left; }
+.k-items td.num .form-input, .k-items td.short.num { text-align: left; }
+.k-items .k-name { margin-bottom: 6px; font-weight: var(--font-weight-medium); }
+.k-items output { display: block; padding: 8px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.k-items .k-sub { display: block; margin-top: -6px; font-size: var(--font-size-xs); color: var(--ink-3); text-align: right; }
+.k-items .k-cost-out { color: var(--ink-2); }
+.k-item + .k-item .k-item-row > td { border-top: 2px solid var(--line-1); }
+.k-item.manual .k-price { border-color: var(--accent-ink); background: var(--accent-soft); }
+.k-items td.col-x { white-space: nowrap; padding-top: 10px; text-align: right; }
+.k-items td.col-x .btn { padding-left: 6px; padding-right: 6px; }
+.k-line-count { font-size: var(--font-size-xs); margin-left: 2px; font-variant-numeric: tabular-nums; }
+
+/* Cost lines, under their item */
+.k-lines-row > td { padding-top: 0; border-bottom: 0; }
+.k-lines-cell { padding: 0 var(--spacing-md) var(--spacing-md) 0 !important; }
+.k-lines { table-layout: fixed; width: 100%; background: var(--surface-2); border-radius: 8px; overflow: hidden; margin-bottom: 4px; }
+.k-lines th { background: transparent; border-top: 0; }
+.k-lines th:first-child, .k-lines td:first-child { padding-left: var(--spacing-sm); }
+.k-lines .long { width: auto; min-width: 0; }
+.k-lines .c-make { width: 150px; }
+.k-lines .c-qty { width: 78px; }
+.k-lines .c-unit { width: 80px; }
+.k-lines .c-ucost { width: 118px; }
+.k-lines .c-markup { width: 84px; }
+.k-lines .c-lcost { width: 124px; }
+.k-lines > thead .col-x { width: 40px; }
+.k-lines td { border-bottom-color: var(--line-1); }
+.k-lines tbody tr:last-child td { border-bottom: 0; }
+
+.k-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-sm) var(--spacing-lg); flex-wrap: wrap; border-top: 1px solid var(--line-1); }
+.k-foot-totals { font-size: var(--font-size-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; padding-right: var(--spacing-sm); }
+.k-foot-totals strong { color: var(--ink-1); font-weight: var(--font-weight-medium); }
+
+.k-summary .kv dd.k-over { color: var(--critical-ink); font-weight: var(--font-weight-medium); }
+.k-summary .k-pcts { font-size: var(--font-size-xs); }
+.k-summary .kv .grand { padding-top: 8px; border-top: 1px solid var(--line-1); font-weight: var(--font-weight-medium); font-size: var(--font-size-base); }
+.k-summary .btn-block { margin-top: var(--spacing-md); }
+.costing-list .pick-sub .k-quote { color: var(--ink-2); }
+
+@media (max-width: 1100px) {
+    .k-top, .k-bottom { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 768px) {
+    /* Each item, and each cost line, becomes a small card */
+    .k-items, .k-lines { min-width: 0; table-layout: auto; }
+    .k-items .long, .k-lines .long { width: auto; }
+    .k-items .k-sub { text-align: left; margin-top: 0; }
+    .k-items td.col-x { text-align: left; }
+    .k-items output { padding: 7px 0; }
+    .k-item + .k-item .k-item-row > td { border-top: 0; }
+    .k-item + .k-item .k-item-row { border-top: 2px solid var(--line-1); }
+    .k-items td.col-x { padding-top: 0; }
+    .k-lines-row { display: block !important; padding: 0 var(--spacing-md) var(--spacing-md); }
+    .k-lines-row[hidden] { display: none !important; }
+    .k-lines-row > td { display: block; padding: 0 !important; }
+    .k-lines-row > td.k-lines-gap { display: none; }
+    .k-lines-row > td::before { content: none; }
+    .k-lines tr { border-top: 1px solid var(--line-1); }
+    .k-lines tbody tr:first-child { border-top: 0; }
+    .k-foot { flex-direction: column; align-items: flex-start; }
+}

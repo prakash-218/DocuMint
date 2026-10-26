@@ -31,6 +31,7 @@ from blueprints.customer_portal_bp import customer_portal_bp
 from blueprints.projects_bp import projects_bp
 from blueprints.notifications_bp import notifications_bp
 from blueprints.emails_bp import emails_bp
+from blueprints.costings_bp import costings_bp
 import doc_urls
 
 
@@ -64,6 +65,7 @@ def create_app(config_name=None):
     app.register_blueprint(projects_bp, url_prefix='/projects')
     app.register_blueprint(notifications_bp, url_prefix='/notifications')
     app.register_blueprint(emails_bp, url_prefix='/emails')
+    app.register_blueprint(costings_bp, url_prefix='/costings')
 
 
     @app.context_processor

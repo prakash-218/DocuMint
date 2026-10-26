@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{# A costing: the quote's items, each with a typed cost or cost lines, and a profit; or a known
+   total worked back. Numbers are worked out on the server (costing.py); costing.js sends the
+   sheet as it's edited and fills in what comes back. Laid out full width: it's a spreadsheet. #}
+
+{% macro num(v) -%}
+    {%- if v is not none and v != '' -%}{{ ('%.4f' | format(v | float)).rstrip('0').rstrip('.') }}{%- endif -%}
+{%- endmacro %}
+
+{% macro line_row(l, cur) %}
+<tr class="k-line">
+    <td class="long" data-label="Cost line"><input type="text" class="form-input" data-k="description" value="{{ l.description or '' }}" placeholder="Material, machining, bought-out…" aria-label="Cost line"></td>
+    <td class="short" data-label="Make / spec"><input type="text" class="form-input" data-k="make" value="{{ l.make or '' }}" aria-label="Make or specification"></td>
+    <td class="short num" data-label="Qty"><input type="number" step="any" class="form-input" data-k="qty" value="{{ num(l.qty) }}" placeholder="1" aria-label="Quantity"></td>
+    <td class="short" data-label="Unit"><input type="text" class="form-input" data-k="unit" value="{{ l.unit or '' }}" aria-label="Unit"></td>
+    <td class="short num" data-label="Unit cost"><input type="number" step="any" class="form-input" data-k="unit_cost" value="{{ num(l.unit_cost) }}" aria-label="Unit cost"></td>
+    <td class="short num" data-label="Markup %"><input type="number" step="any" class="form-input" data-k="markup" value="{{ num(l.markup) }}" placeholder="0" aria-label="Markup percent"></td>
+    <td class="calc num" data-label="Cost"><output data-out="line_cost">{{ l.cost | currency(cur) if l.cost is defined else '—' }}</output></td>
+    <td class="col-x"><button type="button" class="btn btn-ghost btn-xs k-remove-line" aria-label="Remove cost line"><i data-lucide="x"></i></button></td>
+</tr>
+{% endmacro %}
+
+{% macro item_body(it, cur) %}
+{% set has_lines = it.lines | length > 0 %}
+<tbody class="k-item{% if it.manual_price %} manual{% endif %}">
+    <tr class="k-item-row">
+        <td class="col-no" data-label="#"><span class="row-no"></span></td>
+        <td class="long" data-label="Item">
+            <input type="text" class="form-input k-name" data-k="name" value="{{ it.name or '' }}" placeholder="What the customer sees on the quote" aria-label="Item">
+            <textarea rows="1" class="form-textarea line-text k-desc" data-k="description" placeholder="Description (optional)" aria-label="Description">{{ it.description or '' }}</textarea>
+        </td>
+        <td class="short num" data-label="Qty"><input type="number" step="any" class="form-input" data-k="qty" value="{{ num(it.qty) }}" placeholder="1" aria-label="Quantity"></td>
+        <td class="short" data-label="Unit"><input type="text" class="form-input" data-k="unit" value="{{ it.unit or '' }}" aria-label="Unit"></td>
+        <td class="short num" data-label="Cost / unit">
+            <input type="number" step="any" class="form-input k-cost-input" data-k="cost_each" value="{{ num(it.cost_each) if not has_lines else '' }}" aria-label="Cost per unit" {% if has_lines %}hidden{% endif %}>
+            <output class="k-cost-out" data-out="cost_each" title="The total of the cost lines" {% if not has_lines %}hidden{% endif %}>{{ it.cost_each | currency(cur) if it.cost_each is defined else '—' }}</output>
+        </td>
+        <td class="short num col-profit-in" data-label="Profit %"><input type="number" step="any" class="form-input" data-k="profit_percent" value="{{ num(it.profit_percent) }}" placeholder="{{ num(result.profit_percent) }}" aria-label="Profit percent for this item"></td>
+        <td class="short num" data-label="Price / unit"><input type="number" step="any" class="form-input k-price" data-k="price_each" value="{{ num(it.price_each) if it.manual_price else '' }}" placeholder="{{ num(it.price) if it.price is defined else '' }}" aria-label="Price per unit (leave empty to work it out)" title="Type a price to set it; clear it to work it out again"></td>
+        <td class="calc num" data-label="Amount"><output data-out="amount">{{ it.amount | currency(cur) if it.amount is defined else '—' }}</output></td>
+        <td class="calc num" data-label="Profit"><output data-out="profit">{{ it.profit | currency(cur) if it.profit is defined else '—' }}</output><span class="k-sub" data-out="profit_on_cost">{% if it.profit_on_cost is defined and it.profit_on_cost is not none %}{{ it.profit_on_cost }}%{% endif %}</span></td>
+        <td class="col-x">
+            <button type="button" class="btn btn-ghost btn-xs k-toggle-lines" aria-expanded="{{ 'true' if has_lines else 'false' }}" title="Cost lines"><i data-lucide="list-tree"></i><span class="k-line-count">{{ it.lines | length or '' }}</span></button>
+            <button type="button" class="btn btn-ghost btn-xs k-remove-item" aria-label="Remove item"><i data-lucide="x"></i></button>
+        </td>
+    </tr>
+    <tr class="k-lines-row" {% if not has_lines %}hidden{% endif %}>
+        <td class="k-lines-gap"></td>
+        <td colspan="9" class="k-lines-cell">
+            <table class="items-editor k-lines">
+                <thead><tr><th class="long">Cost line</th><th class="c-make">Make / spec</th><th class="c-qty num">Qty</th><th class="c-unit">Unit</th><th class="c-ucost num">Unit cost</th><th class="c-markup num">Markup %</th><th class="c-lcost num">Cost</th><th class="col-x"></th></tr></thead>
+                <tbody>{% for l in it.lines %}{{ line_row(l, cur) }}{% endfor %}</tbody>
+            </table>
+            <button type="button" class="btn btn-ghost btn-sm k-add-line"><i data-lucide="plus"></i>Add cost line</button>
+        </td>
+    </tr>
+</tbody>
+{% endmacro %}
+
+{% set cur = costing.currency %}
+{% set t = result.totals %}
+{% block title %}Costing v{{ costing.version }} · {{ costing.title }}{% endblock %}
+{% block page_title %}Costing v{{ costing.version }}{% endblock %}
+{% block page_description %}<p class="header-description"><a href="{{ url_for('projects_bp.view_project', project_id=costing.project_id) }}">{{ costing | project_label }} · {{ costing.project_title }}</a> · {{ costing.customer_name }} · <span class="text-tertiary">Only owners and admins see costings</span></p>{% endblock %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('costings_bp.save', costing_id=costing.costing_id) }}" class="k-form" data-costing
+      data-preview="{{ url_for('costings_bp.preview', costing_id=costing.costing_id) }}" data-mode="{{ result.mode }}">
+    <input type="hidden" name="sheet_json" value="">
+
+    <div class="k-top">
+        <section class="card">
+            <div class="card-body">
+                <div class="form-group">
+                    <label for="title" class="form-label">Costing for</label>
+                    <input type="text" id="title" name="title" class="form-input" value="{{ costing.title }}" maxlength="200" required>
+                    <p class="form-text">Becomes the quote's subject.</p>
+                </div>
+                <div class="form-group">
+                    <span class="form-label">How are you pricing this?</span>
+                    <div class="segmented k-modes" role="radiogroup" aria-label="Pricing">
+                        {% for key, label in modes.items() %}
+                        <label class="{{ 'active' if result.mode == key }}"><input type="radio" name="mode" value="{{ key }}" class="sr-only" {% if result.mode == key %}checked{% endif %}>{{ label }}</label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="k-settings">
+                    <div class="form-group k-target-only">
+                        <label for="target_total" class="form-label">Known total</label>
+                        <input type="number" step="any" id="target_total" name="target_total" class="form-input" value="{{ num(costing.target_total) }}" placeholder="What the customer will pay">
+                    </div>
+                    <div class="form-group">
+                        <label for="profit_percent" class="form-label">Profit on cost, %</label>
+                        <input type="number" step="any" id="profit_percent" name="profit_percent" class="form-input" value="{{ num(result.profit_percent) }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="round_to" class="form-label">Round prices to</label>
+                        <select id="round_to" name="round_to" class="form-select">
+                            {% for r in rounding %}<option value="{{ r }}" {% if r == result.round_to %}selected{% endif %}>{{ 'No rounding' if not r else 'nearest ' ~ ('{:,}'.format(r)) }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="currency" class="form-label">Currency</label>
+                        <select id="currency" name="currency" class="form-select">
+                            {% for c in currencies %}<option value="{{ c }}" {% if c == cur %}selected{% endif %}>{{ c }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <p class="form-text k-build-only" style="margin-bottom: 0;">Each item's price is its cost plus the profit (an item can have its own %). Type a price to set one yourself.</p>
+                <p class="form-text k-target-only" style="margin-bottom: 0;">The known total is shared over the items by their cost; the cost budget is what's left after your profit. Type a price to fix one item's share.</p>
+            </div>
+        </section>
+
+        <section class="card k-summary">
+            <div class="card-header"><h2 class="card-title">Summary</h2></div>
+            <div class="card-body">
+                <dl class="kv">
+                    <dt class="k-target-only">Known total</dt><dd class="k-target-only" data-total="target">{{ t.target | currency(cur) if t.target is defined else '—' }}</dd>
+                    <dt class="k-target-only">Cost budget at <span data-total="profit_percent">{{ num(result.profit_percent) }}</span>%</dt><dd class="k-target-only" data-total="budget">{{ t.budget | currency(cur) if t.budget is defined and t.budget is not none else '—' }}</dd>
+                    <dt>Costs</dt><dd data-total="cost">{{ t.cost | currency(cur) }}</dd>
+                    <dt class="k-target-only">Left in the budget</dt><dd class="k-target-only k-left{% if t.left is defined and t.left is not none and t.left < 0 %} k-over{% endif %}" data-total="left">{{ t.left | currency(cur) if t.left is defined and t.left is not none else '—' }}</dd>
+                    <dt>Profit</dt><dd data-total="profit">{{ t.profit | currency(cur) }}</dd>
+                    <dt></dt><dd class="text-tertiary k-pcts"><span data-total="profit_on_cost">{{ t.profit_on_cost if t.profit_on_cost is not none else '—' }}</span>% on cost · <span data-total="margin_of_price">{{ t.margin_of_price if t.margin_of_price is not none else '—' }}</span>% of price</dd>
+                    <dt class="grand">Quote total</dt><dd class="grand" data-total="price">{{ t.price | currency(cur) }}</dd>
+                </dl>
+                <p class="form-text k-off" {% if not t.off_target %}hidden{% endif %}>Rounding leaves the total <span data-total="off_target">{{ t.off_target | currency(cur) if t.off_target else '' }}</span> off the known total.</p>
+                <p class="form-text k-status" aria-live="polite"></p>
+                <button type="submit" name="action" value="save" class="btn btn-primary btn-block"><i data-lucide="save"></i>Save costing</button>
+            </div>
+        </section>
+    </div>
+
+    <section class="card items-card">
+        <div class="card-header"><h2 class="card-title">Items</h2><span class="text-tertiary">Cost lines stay here; the quote gets the items and prices.</span></div>
+        <div class="items-wrap">
+            <table class="items-editor k-items">
+                <thead>
+                    <tr>
+                        <th class="col-no">#</th><th class="long">Item</th><th class="c-qty num">Qty</th><th class="c-unit">Unit</th>
+                        <th class="c-cost num">Cost / unit</th><th class="c-pct num col-profit-in">Profit %</th><th class="c-price num">Price / unit</th>
+                        <th class="c-amount num">Amount</th><th class="c-gain num">Profit</th><th class="col-x"><span class="sr-only">Actions</span></th>
+                    </tr>
+                </thead>
+                {% for it in result['items'] %}{{ item_body(it, cur) }}{% endfor %}
+            </table>
+        </div>
+        {% set blank_item = {'name': '', 'description': '', 'qty': none, 'unit': '', 'cost_each': none, 'profit_percent': none,
+                             'price_each': none, 'lines': [], 'manual_price': False} %}
+        <template id="k-item-template">{{ item_body(blank_item, cur) }}</template>
+        <template id="k-line-template"><table><tbody>{{ line_row({'description': '', 'make': '', 'qty': none, 'unit': '', 'unit_cost': none, 'markup': none}, cur) }}</tbody></table></template>
+        <div class="items-foot k-foot">
+            <button type="button" class="btn btn-ghost btn-sm k-add-item"><i data-lucide="plus"></i>Add item</button>
+            <span class="k-foot-totals">Costs <strong data-total="cost">{{ t.cost | currency(cur) }}</strong>
+                · Profit <strong data-total="profit">{{ t.profit | currency(cur) }}</strong>
+                · Quote total <strong data-total="price">{{ t.price | currency(cur) }}</strong></span>
+        </div>
+    </section>
+
+    <div class="k-bottom">
+        <section class="card">
+            <div class="card-header"><h2 class="card-title">Quote</h2></div>
+            <div class="card-body">
+                {% if costing.quote_id %}
+                <p style="margin-top: 0;"><a href="{{ url_for('invoices_bp.view_invoice', invoice_id=costing.quote_id) }}">{{ costing.quote_number or 'The quote' }}</a> · {{ costing.quote_status or 'draft' }}</p>
+                {% if (costing.quote_status or 'draft') == 'draft' %}
+                <button type="submit" name="action" value="update_quote" class="btn btn-secondary btn-block"><i data-lucide="refresh-cw"></i>Update the quote's prices</button>
+                {% else %}
+                <p class="form-text">The quote has gone out, so it stays as it is. To requote, start a new version.</p>
+                {% endif %}
+                <details class="fold"><summary>Make another quote</summary>
+                {% endif %}
+                <div class="form-group">
+                    <label for="template_id" class="form-label">Template</label>
+                    <select id="template_id" name="template_id" class="form-select">
+                        {% for tpl in templates %}<option value="{{ tpl.template_id }}">{{ tpl.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <button type="submit" name="action" value="quote" class="btn btn-{{ 'secondary' if costing.quote_id else 'primary' }} btn-block"><i data-lucide="file-pen-line"></i>Save and make the quote</button>
+                <p class="form-text" style="margin-bottom: 0;">A draft quotation with these items and prices; the costs stay here.</p>
+                {% if costing.quote_id %}</details>{% endif %}
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-header"><h2 class="card-title">Versions</h2></div>
+            {% if other_versions %}
+            <ul class="pick-list">
+                {% for v in other_versions %}
+                <li><a href="{{ url_for('costings_bp.edit', costing_id=v.costing_id) }}">
+                    <span class="pick-main"><span class="pick-title">Version {{ v.version }}</span>
+                    <span class="pick-sub">{{ v.total_price | currency(v.currency) }}{% if v.profit_on_cost is not none %} · {{ v.profit_on_cost }}% profit{% endif %}{% if v.quote_number %} · {{ v.quote_number }}{% endif %}</span></span>
+                    <i data-lucide="chevron-right"></i></a></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            <div class="card-body">
+                <button type="submit" form="k-new-version" class="btn btn-secondary btn-block"><i data-lucide="copy-plus"></i>Start a new version from this</button>
+                <p class="form-text">Save first: the new version copies what's saved.</p>
+                <button type="submit" form="k-delete" class="btn btn-ghost btn-block"><i data-lucide="trash-2"></i>Delete this version</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-header"><h2 class="card-title">Notes for yourselves</h2></div>
+            <div class="card-body">
+                <label for="notes" class="sr-only">Notes</label>
+                <textarea id="notes" name="notes" rows="4" class="form-textarea" placeholder="Rates used, supplier quotes, assumptions…">{{ costing.notes or '' }}</textarea>
+            </div>
+        </section>
+    </div>
+</form>
+<form id="k-new-version" method="POST" action="{{ url_for('costings_bp.create') }}">
+    <input type="hidden" name="project_id" value="{{ costing.project_id }}"><input type="hidden" name="copy_of" value="{{ costing.costing_id }}">
+</form>
+<form id="k-delete" method="POST" action="{{ url_for('costings_bp.delete', costing_id=costing.costing_id) }}" data-confirm="Delete costing version {{ costing.version }}? This can't be undone."></form>
+{% endblock %}
+
+{% block extra_js %}<script src="{{ url_for('static', filename='js/costing.js') }}" defer></script>{% endblock %}

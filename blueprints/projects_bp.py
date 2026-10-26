@@ -13,6 +13,7 @@ from auth import can_delete_invoice, can_edit_invoice, get_current_org_role, req
 from db import DatabaseError, db
 import projects as J
 import activity
+import costing
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,7 @@ def view_project(project_id):
                            events=db.execute_proc('sp_list_project_events', (project_id, org_id, 30)) or [],
                            threads=db.execute_proc('sp_list_email_threads', (org_id, project_id, None, False, 50)) or []
                            if get_current_org_role() in ('owner', 'admin', 'member') else [],
+                           costings=costing.list_for(org_id, project_id) if get_current_org_role() in ('owner', 'admin') else [],
                            current_org_role=get_current_org_role())
 
 
