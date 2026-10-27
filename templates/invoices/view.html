@@ -135,15 +135,43 @@
         </div>
         {% endif %}
 
-        {% if can_edit and t.takes_payments and status == 'pending' %}
+        {% if can_edit and t.takes_payments and open_advances %}
         <div class="card">
-            <div class="card-header"><h2 class="card-title">Record a payment</h2></div>
+            <div class="card-header"><h2 class="card-title">Apply an advance</h2></div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('invoices_bp.apply_advances', invoice_id=invoice.invoice_id) }}">
+                    <p class="form-text" style="margin-top: 0;">Received on {{ invoice.customer_name }}'s proformas and not on an invoice yet.</p>
+                    {% for a in open_advances %}
+                    <label class="advance-pick">
+                        <input type="checkbox" name="payment_id" value="{{ a.payment_id }}" {% if project and a.project_id == project.project_id %}checked{% endif %}>
+                        <span><strong>{{ a.amount | currency(invoice.currency_code) }}</strong> on {{ a.proforma_number }}
+                            <span class="text-tertiary">· {{ a.payment_date | date }}{% if a.reference_number %} · {{ a.reference_number }}{% endif %}</span></span>
+                    </label>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-secondary btn-block" style="margin-top: var(--spacing-sm);"><i data-lucide="corner-down-right"></i>Apply to {{ invoice | doc_number }}</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {% set takes_advance = t.takes_advances and status in ('sent', 'converted') %}
+        {% if can_edit and ((t.takes_payments and status == 'pending') or takes_advance) %}
+        {% if takes_advance %}
+        {% set suggested = (summary.advance.amount - advance_received) if summary.advance else (summary.total - advance_received) %}
+        {% else %}
+        {% set suggested = summary.balance %}
+        {% endif %}
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">{{ 'Record an advance' if takes_advance else 'Record a payment' }}</h2></div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('invoices_bp.add_payment', invoice_id=invoice.invoice_id) }}">
+                    {% if takes_advance %}
+                    <p class="form-text" style="margin-top: 0;">Money received against this proforma. It moves to the invoice when the proforma is converted.</p>
+                    {% endif %}
                     <div class="form-group">
                         <label for="amount" class="form-label">Amount ({{ invoice.currency_code }})</label>
                         <input type="number" step="0.01" min="0.01" id="amount" name="amount" class="form-input"
-                               value="{{ '%.2f' | format(summary.balance) if summary.balance }}" required>
+                               value="{{ '%.2f' | format(suggested) if suggested and suggested > 0 }}" required>
                     </div>
                     {% if invoice.currency_code != base_currency %}
                     <div class="form-group">
@@ -183,7 +211,7 @@
                         <label for="reference_number" class="form-label">Reference <span class="text-tertiary">(optional)</span></label>
                         <input type="text" id="reference_number" name="reference_number" class="form-input">
                     </div>
-                    <button type="submit" class="btn btn-primary btn-block">Record payment</button>
+                    <button type="submit" class="btn btn-primary btn-block">{{ 'Record advance' if takes_advance else 'Record payment' }}</button>
                 </form>
             </div>
         </div>

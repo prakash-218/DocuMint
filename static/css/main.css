@@ -1431,3 +1431,10 @@ input[type="date"].form-input { padding-right: 8px; }
     .k-import-as { grid-template-columns: minmax(0, 1fr); }
     .items-card .card-header { flex-wrap: wrap; }
 }
+
+/* Advances: applying one to an invoice, taking it off again */
+.advance-pick { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; font-size: var(--font-size-sm); cursor: pointer; border-top: 1px solid var(--line-1); }
+.advance-pick:first-of-type { border-top: 0; }
+.advance-pick input { width: 16px; height: 16px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.link-button { padding: 0; border: 0; background: none; color: var(--accent-ink); font: inherit; font-size: var(--font-size-xs); cursor: pointer; }
+.link-button:hover { text-decoration: underline; }

@@ -36,6 +36,7 @@ class DocType:
     default_format: str
     converts_to: Tuple[str, ...] = ()
     takes_payments: bool = False
+    takes_advances: bool = False   # money received before the invoice, applied to it later (advances.py)
     counts_as_revenue: bool = False
     details: Tuple[DetailField, ...] = field(default_factory=tuple)
     icon: str = 'file-text'
@@ -86,6 +87,7 @@ DOC_TYPES: Dict[str, DocType] = {
         sent_status='sent',
         default_format='PI {num:03}({fy})',
         converts_to=('invoice',),
+        takes_advances=True,
         details=_ORDER + _DISPATCH,
     ),
     'invoice': DocType(

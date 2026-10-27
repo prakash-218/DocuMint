@@ -254,6 +254,9 @@ payment = Table(
     Column('payment_date', TIMESTAMP(timezone=True), nullable=False, server_default=func.now()),
     Column('received_amount', MONEY),
     Column('received_currency', String(3)),
+    # An advance paid against a proforma: recorded on the PI (invoice_id = advance_of), and moved to
+    # the invoice it's applied to (invoice_id changes, advance_of stays), so it counts once
+    _ref('advance_of', 'invoice.invoice_id', 'SET NULL', nullable=True),
     CheckConstraint('amount > 0', name='amount_positive'),
 )
 

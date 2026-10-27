@@ -701,6 +701,9 @@ def delete_invoice_values_by_fields(conn, invoice_id, field_ids):
 @proc('sp_delete_invoice')
 def delete_invoice(conn, invoice_id):
     _require(conn, "SELECT 1 FROM invoice WHERE invoice_id = :i", 'Invoice does not exist', i=invoice_id)
+    # Advances applied to it go back to their proforma; its own payments go with it
+    _exec(conn, "UPDATE payment SET invoice_id = advance_of WHERE invoice_id = :i AND advance_of IS NOT NULL AND advance_of <> :i",
+          i=invoice_id)
     _exec(conn, "DELETE FROM payment WHERE invoice_id = :i", i=invoice_id)
     _exec(conn, "DELETE FROM invoice WHERE invoice_id = :i", i=invoice_id)
     return []
@@ -768,27 +771,108 @@ def list_invoices(conn, org_id, status, limit, offset):
 
 @proc('sp_get_invoice_payments')
 def get_invoice_payments(conn, invoice_id):
-    return [_rows(conn, """SELECT payment_id, amount, method, reference_number, payment_date, received_amount, received_currency
-                           FROM payment WHERE invoice_id = :i ORDER BY payment_date DESC""", i=invoice_id)]
+    """Payments counted on this document (an invoice's own, and advances applied to it; a proforma's
+    advances not applied yet), with the proforma an advance came in on."""
+    return [_rows(conn, """SELECT p.payment_id, p.amount, p.method, p.reference_number, p.payment_date, p.received_amount,
+                                  p.received_currency, p.advance_of, a.doc_number AS advance_number
+                           FROM payment p LEFT JOIN invoice a ON a.invoice_id = p.advance_of AND p.advance_of <> p.invoice_id
+                           WHERE p.invoice_id = :i ORDER BY p.payment_date DESC""", i=invoice_id)]
+
+
+INVOICE_TYPES = ('invoice', 'export_invoice')
+
+
+def _settle(conn, invoice_id):
+    """A finalized invoice is paid once its payments reach its total, and pending again if they don't."""
+    row = _one(conn, f"""SELECT i.doc_type, i.status, {PAID} >= i.total_amount AS paid_up FROM invoice i
+                          WHERE i.invoice_id = :i""", i=invoice_id)
+    if not row or row['doc_type'] not in INVOICE_TYPES or row['status'] not in ('pending', 'paid'):
+        return
+    _status_change(conn, invoice_id, 'paid' if row['paid_up'] else 'pending')
+
+
+@proc('sp_settle_invoice')
+def settle_invoice(conn, invoice_id):
+    _settle(conn, invoice_id)
+    return []
+
+
+@proc('sp_list_advances')
+def list_advances(conn, proforma_id):
+    """Every advance received on a proforma, and the invoice it was applied to (if it was)."""
+    return [_rows(conn, """SELECT p.payment_id, p.amount, p.method, p.reference_number, p.payment_date, p.received_amount,
+                                  p.received_currency, p.invoice_id AS applied_to, i.doc_type AS applied_type,
+                                  i.doc_number AS applied_number, p.invoice_id <> p.advance_of AS applied
+                           FROM payment p JOIN invoice i ON i.invoice_id = p.invoice_id
+                           WHERE p.advance_of = :i ORDER BY p.payment_date""", i=proforma_id)]
+
+
+@proc('sp_list_open_advances')
+def list_open_advances(conn, org_id, customer_id, currency):
+    """Advances still on the customer's proformas (in that currency), to apply to an invoice."""
+    return [_rows(conn, f"""SELECT p.payment_id, p.amount, p.payment_date, p.reference_number, i.invoice_id AS proforma_id,
+                                   i.doc_number AS proforma_number, i.project_id
+                            FROM payment p JOIN invoice i ON i.invoice_id = p.invoice_id {TEMPLATE_JOIN}
+                            WHERE i.org_id = :o AND i.customer_id = :c AND i.doc_type = 'proforma'
+                              AND p.advance_of = i.invoice_id AND {CURRENCY} = :cur
+                            ORDER BY p.payment_date""", o=org_id, c=customer_id, cur=currency)]
+
+
+@proc('sp_apply_advance')
+def apply_advance(conn, payment_id, invoice_id, org_id):
+    """Move an advance from its proforma to an invoice of the same customer and currency."""
+    pay = _one(conn, f"""SELECT p.payment_id, p.advance_of, i.customer_id, i.org_id, {CURRENCY} AS currency
+                          FROM payment p JOIN invoice i ON i.invoice_id = p.invoice_id {TEMPLATE_JOIN}
+                          WHERE p.payment_id = CAST(:p AS uuid) AND p.advance_of = p.invoice_id""", p=_as_uuid(payment_id))
+    target = _one(conn, f"""SELECT i.customer_id, i.org_id, i.doc_type, i.status, {CURRENCY} AS currency
+                             FROM invoice i {TEMPLATE_JOIN} WHERE i.invoice_id = :i""", i=invoice_id)
+    if not pay or not target or str(pay['org_id']) != str(org_id) or str(target['org_id']) != str(org_id):
+        raise ProcError('That advance is not available')
+    if target['doc_type'] not in INVOICE_TYPES:
+        raise ProcError('Advances are applied to invoices')
+    if pay['customer_id'] != target['customer_id'] or pay['currency'] != target['currency']:
+        raise ProcError('That advance is from another customer or in another currency')
+    _exec(conn, "UPDATE payment SET invoice_id = :i WHERE payment_id = :p", i=invoice_id, p=pay['payment_id'])
+    _audit(conn, org_id, 'payment', pay['payment_id'], 'UPDATE', 'invoice_id', pay['advance_of'], invoice_id,
+           'Advance applied to an invoice')
+    _settle(conn, invoice_id)
+    return []
+
+
+@proc('sp_unapply_advance')
+def unapply_advance(conn, payment_id, invoice_id, org_id):
+    """Put an applied advance back on its proforma."""
+    pay = _one(conn, """SELECT p.payment_id, p.advance_of FROM payment p JOIN invoice i ON i.invoice_id = p.invoice_id
+                         WHERE p.payment_id = CAST(:p AS uuid) AND p.invoice_id = :i AND i.org_id = :o
+                           AND p.advance_of IS NOT NULL AND p.advance_of <> p.invoice_id""",
+               p=_as_uuid(payment_id), i=invoice_id, o=org_id)
+    if not pay:
+        raise ProcError('That advance is not on this invoice')
+    _exec(conn, "UPDATE payment SET invoice_id = advance_of WHERE payment_id = :p", p=pay['payment_id'])
+    _audit(conn, org_id, 'payment', pay['payment_id'], 'UPDATE', 'invoice_id', invoice_id, pay['advance_of'],
+           'Advance taken off an invoice')
+    _settle(conn, invoice_id)
+    return []
 
 
 @proc('sp_record_payment')
 def record_payment(conn, invoice_id, amount, method, reference, _out=None):
-    row = _one(conn, "SELECT org_id FROM invoice WHERE invoice_id = :i", i=invoice_id)
+    row = _one(conn, "SELECT org_id, doc_type FROM invoice WHERE invoice_id = :i", i=invoice_id)
     if not row:
         raise ProcError('Invoice does not exist')
     if amount is None or float(amount) <= 0:
         raise ProcError('Payment amount must be greater than zero')
     pid = _new_id()
-    _exec(conn, "INSERT INTO payment (payment_id, invoice_id, amount, method, reference_number) VALUES (:p, :i, :a, :m, :r)",
-          p=pid, i=invoice_id, a=amount, m=method, r=reference)
+    advance = row['doc_type'] == 'proforma'              # an advance: it remembers its proforma
+    _exec(conn, """INSERT INTO payment (payment_id, invoice_id, amount, method, reference_number, advance_of)
+                   VALUES (:p, :i, :a, :m, :r, :adv)""",
+          p=pid, i=invoice_id, a=amount, m=method, r=reference, adv=invoice_id if advance else None)
     _audit(conn, row['org_id'], 'payment', pid, 'INSERT', 'amount', None, amount,
-           f"Invoice: {invoice_id} | Method: {method or 'N/A'} | Reference: {reference or 'N/A'}")
+           f"{'Advance on proforma' if advance else 'Invoice'}: {invoice_id} | Method: {method or 'N/A'} | "
+           f"Reference: {reference or 'N/A'}")
     # The stored total is the grand total with GST (kept by the app on every save); a payment
     # doesn't change it. Recomputing it here from template fields alone would drop the tax.
-    paid_up = _one(conn, f"SELECT {PAID} >= i.total_amount AS ok FROM invoice i WHERE i.invoice_id = :i", i=invoice_id)
-    if paid_up and paid_up['ok']:
-        _status_change(conn, invoice_id, 'paid')
+    _settle(conn, invoice_id)
     return [[{'payment_id': pid}]]
 
 

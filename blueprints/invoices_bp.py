@@ -16,6 +16,7 @@ from datetime import date, datetime
 from layout import load_layout, packing_page, pages_for, template_is_export
 import projects
 import activity
+import advances
 import doc_urls
 from invoice_service import get_template_fields, build_sections, invoice_summary, recalculate_invoice, render_invoice_pdf, PdfUnavailable
 
@@ -394,6 +395,11 @@ def view_invoice(invoice_id):
         match = [tid for tid, n in names if word in n and ('export' in n) == export and (target != 'invoice' or 'proforma' not in n)]
         convert_defaults[target] = (match or [invoice_header.get('template_id')])[0]
 
+    doc_type = get_type(invoice_header.get('doc_type'))
+    advances_in = advances.on_proforma(invoice_id) if doc_type.takes_advances else []
+    open_advances = advances.open_for(invoice_header, g.current_org_id) \
+        if doc_type.takes_payments and (invoice_header.get('status') or 'draft') in ('draft', 'pending') else []
+
     _, org_profile = get_org_profile(g.current_org_id)
     pages = pages_for(load_layout(invoice_header.get('template_id'), g.current_org_id), invoice_header.get('doc_type'))
     project = projects.get_project(projects.project_of(invoice_id, g.current_org_id), g.current_org_id)
@@ -416,6 +422,8 @@ def view_invoice(invoice_id):
                            sections_data=sections_data,
                            payments=payments,
                            summary=invoice_summary(invoice_header, sections_data, payments),
+                           advances=advances_in, advance_received=sum(float(a['amount'] or 0) for a in advances_in),
+                           open_advances=open_advances,
                            source=source,
                            templates=templates,
                            current_org_role=get_current_org_role())
@@ -464,6 +472,7 @@ def finalize_invoice(invoice_id):
 
     try:
         db.execute_proc('sp_update_invoice_status', (invoice_id, doc_type.sent_status), fetch=False)
+        db.execute_proc('sp_settle_invoice', (invoice_id,), fetch=False)       # advances may cover it already
     except DatabaseError:
         logger.exception("Failed to finalize %s", invoice_id)
         flash('Error finalizing document', 'error')
@@ -531,11 +540,19 @@ def convert(invoice_id):
         return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
     _into_project(source, new_id, org_id)
+    carried = 0.0
+    if get_type(source.get('doc_type')).takes_advances:
+        try:
+            carried = advances.carry_over(org_id, invoice_id, new_id)
+        except DatabaseError as e:
+            flash(f"The proforma's advance stays on it: {e}", 'error')
     new_header, _ = get_org_invoice(new_id, org_id)
     if new_header:
         activity.document_event('document_converted', new_header, f'made from {source.get("doc_number") or "a draft"}')
-    flash(f'Created {get_type(target).label.lower()} from {source.get("doc_number") or "this document"}. '
-          'Check the details, then finalize it.', 'success')
+    from money import format_money
+    flash(f'Created {get_type(target).label.lower()} from {source.get("doc_number") or "this document"}'
+          + (f', with its advance of {format_money(carried, source.get("currency_code"))}' if carried else '')
+          + '. Check the details, then finalize it.', 'success')
     return redirect(url_for('invoices_bp.edit_invoice', invoice_id=new_id))
 
 
@@ -1061,8 +1078,12 @@ def add_payment(invoice_id):
     if not invoice_header:
         flash('Invoice not found', 'error')
         return redirect(url_for('invoices_bp.list_invoices'))
-    if not get_type(invoice_header.get('doc_type')).takes_payments:
-        flash('Payments are recorded against invoices, not quotes or proformas', 'error')
+    doc_type = get_type(invoice_header.get('doc_type'))
+    if not (doc_type.takes_payments or doc_type.takes_advances):
+        flash('Payments are recorded against invoices, and advances against proformas', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    if doc_type.takes_advances and (invoice_header.get('status') or 'draft') == 'draft':
+        flash('Finalize the proforma before recording an advance on it', 'error')
         return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
     try:
@@ -1091,13 +1112,54 @@ def add_payment(invoice_id):
                 row['payment_id'], invoice_id, payment_date, received,
                 base_currency if received is not None else None), fetch=False)
         from money import format_money
-        activity.record('payment', f"Payment of {format_money(amount_value, invoice_header.get('currency_code'))} on "
-                                   f"{invoice_header.get('doc_number') or 'an invoice'}",
+        activity.record('payment', f"{'Advance' if doc_type.takes_advances else 'Payment'} of "
+                                   f"{format_money(amount_value, invoice_header.get('currency_code'))} on "
+                                   f"{invoice_header.get('doc_number') or 'a ' + doc_type.short.lower()}",
                         project_id=invoice_header.get('project_id'), body=invoice_header.get('customer_name'),
                         link=url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
-        flash('Payment recorded successfully', 'success')
+        flash('Advance recorded' if doc_type.takes_advances else 'Payment recorded successfully', 'success')
     except DatabaseError as e:
         flash(f'Error recording payment: {str(e)}', 'error')
 
     return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+
+@invoices_bp.route('/<invoice_id>/advances', methods=['POST'])
+@require_org
+def apply_advances(invoice_id):
+    """Apply advances received on the customer's proformas to this invoice."""
+    back = redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    if not can_edit_invoice():
+        flash('You need to be a Member or Owner to apply advances.', 'error')
+        return back
+    header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    if not header or not get_type(header.get('doc_type')).takes_payments:
+        flash('Advances are applied to invoices', 'error')
+        return back
+    chosen = request.form.getlist('payment_id')
+    if not chosen:
+        flash('Choose the advance to apply', 'error')
+        return back
+    try:
+        n = advances.apply(g.current_org_id, invoice_id, chosen)
+        flash(f"{n} advance{'s' if n != 1 else ''} applied", 'success')
+    except DatabaseError as e:
+        flash(f'Could not apply the advance: {e}', 'error')
+    return back
+
+
+@invoices_bp.route('/<invoice_id>/advances/<payment_id>/remove', methods=['POST'])
+@require_org
+def remove_advance(invoice_id, payment_id):
+    """Take an applied advance off this invoice; it goes back to its proforma."""
+    back = redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    if not can_edit_invoice():
+        flash('You need to be a Member or Owner to change advances.', 'error')
+        return back
+    try:
+        db.execute_proc('sp_unapply_advance', (payment_id, invoice_id, g.current_org_id), fetch=False)
+        flash('The advance is back on its proforma', 'success')
+    except DatabaseError as e:
+        flash(f'Could not take the advance off: {e}', 'error')
+    return back
 

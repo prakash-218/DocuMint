@@ -165,11 +165,13 @@
             <div class="card-header"><h2 class="card-title">Money</h2></div>
             <div class="card-body">
                 <dl class="kv">
-                    {% for key, label in [('quoted', 'Quoted'), ('invoiced', 'Invoiced'), ('received', 'Received'), ('due', 'Still due')] %}
+                    {% for key, label in [('quoted', 'Quoted'), ('invoiced', 'Invoiced'), ('received', 'Received'), ('due', 'Still due'), ('advances', 'Advances not yet invoiced')] %}
+                    {% if key != 'advances' or money[key] %}
                     <dt>{{ label }}</dt>
                     <dd class="num">
                         {% for cur, amount in money[key].items() %}<div>{{ amount | currency(cur) }}</div>{% else %}<span class="text-tertiary">—</span>{% endfor %}
                     </dd>
+                    {% endif %}
                     {% endfor %}
                 </dl>
                 {% if po %}
