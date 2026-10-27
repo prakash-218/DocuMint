@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{# The usual rates (material per kg, machining, bought-outs with their markup). A costing's cost
+   lines offer them as they're typed, and fill in the make, unit, cost and markup. #}
+
+{% macro num(v) -%}
+    {%- if v is not none and v != '' -%}{{ ('%.4f' | format(v | float)).rstrip('0').rstrip('.') }}{%- endif -%}
+{%- endmacro %}
+
+{% macro rate_row(r) %}
+<tr class="k-rate">
+    <td class="long" data-label="Description"><input type="text" class="form-input" data-k="description" value="{{ r.description or '' }}" maxlength="300" placeholder="MS raw material, fabrication, LM guide…" aria-label="Description"></td>
+    <td class="short" data-label="Make / spec"><input type="text" class="form-input" data-k="make" value="{{ r.make or '' }}" maxlength="120" aria-label="Make or specification"></td>
+    <td class="short" data-label="Unit"><input type="text" class="form-input" data-k="unit" value="{{ r.unit or '' }}" maxlength="20" placeholder="kg" aria-label="Unit"></td>
+    <td class="short num" data-label="Unit cost"><input type="number" step="any" class="form-input" data-k="unit_cost" value="{{ num(r.unit_cost) }}" aria-label="Unit cost"></td>
+    <td class="short num" data-label="Markup %"><input type="number" step="any" class="form-input" data-k="markup" value="{{ num(r.markup) }}" placeholder="0" aria-label="Markup percent"></td>
+    <td class="short" data-label="Notes"><input type="text" class="form-input" data-k="notes" value="{{ r.notes or '' }}" maxlength="300" placeholder="Supplier, date…" aria-label="Notes"></td>
+    <td class="col-x"><button type="button" class="btn btn-ghost btn-xs k-remove-rate" aria-label="Remove rate"><i data-lucide="x"></i></button></td>
+</tr>
+{% endmacro %}
+
+{% block title %}Rates list{% endblock %}
+{% block page_title %}Rates list{% endblock %}
+{% block page_description %}<p class="header-description">Your usual costs, in {{ base_currency }}. A costing's cost lines offer them as you type. <span class="text-tertiary">Only owners and admins see this.</span></p>{% endblock %}
+
+{% block header_actions %}
+{% if back %}
+<a href="{{ url_for('costings_bp.edit', costing_id=back.costing_id) }}" class="btn btn-secondary"><i data-lucide="arrow-left"></i><span class="btn-label">Back to costing v{{ back.version }}</span></a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('costings_bp.rates', back=back.costing_id if back else None) }}" data-rates class="mb-lg">
+    <input type="hidden" name="rates_json" value="">
+    <section class="card items-card">
+        <div class="card-header"><h2 class="card-title">Rates</h2><span class="text-tertiary">{{ rates | length }} saved</span></div>
+        <div class="items-wrap">
+            <table class="items-editor k-rates-table">
+                <thead>
+                    <tr><th class="long">Description</th><th class="c-make">Make / spec</th><th class="c-unit">Unit</th><th class="c-ucost num">Unit cost</th>
+                        <th class="c-markup num">Markup %</th><th class="c-notes">Notes</th><th class="col-x"><span class="sr-only">Actions</span></th></tr>
+                </thead>
+                <tbody data-rows>
+                    {% for r in rates %}{{ rate_row(r) }}{% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <template id="k-rate-template"><table><tbody>{{ rate_row({'description': '', 'make': '', 'unit': '', 'unit_cost': none, 'markup': none, 'notes': ''}) }}</tbody></table></template>
+        <div class="items-foot k-foot">
+            <button type="button" class="btn btn-ghost btn-sm" data-add-rate><i data-lucide="plus"></i>Add rate</button>
+            <button type="submit" class="btn btn-primary"><i data-lucide="save"></i>Save rates</button>
+        </div>
+    </section>
+</form>
+
+{% if suggestions %}
+<section class="card items-card">
+    <div class="card-header"><h2 class="card-title">From your costings</h2><span class="text-tertiary">Cost lines you've used that aren't in the list yet, with the rate they had last. Add the ones you use often, then save.</span></div>
+    <div class="items-wrap">
+        <table class="items-editor k-rates-table k-suggest">
+            <thead>
+                <tr><th class="long">Description</th><th class="c-make">Make / spec</th><th class="c-unit">Unit</th><th class="c-ucost num">Unit cost</th>
+                    <th class="c-markup num">Markup %</th><th class="c-notes k-used">Used</th><th class="col-x"><span class="sr-only">Add</span></th></tr>
+            </thead>
+            <tbody>
+                {% for s in suggestions %}
+                <tr data-suggestion="{{ s | tojson | forceescape }}">
+                    <td class="long" data-label="Description">{{ s.description }}</td>
+                    <td class="short" data-label="Make / spec">{{ s.make }}</td>
+                    <td class="short" data-label="Unit">{{ s.unit }}</td>
+                    <td class="short num" data-label="Unit cost">{{ s.unit_cost | currency(base_currency) }}</td>
+                    <td class="short num" data-label="Markup %">{{ num(s.markup) }}</td>
+                    <td class="short k-used" data-label="Used">{{ s.used }} {{ 'time' if s.used == 1 else 'times' }}</td>
+                    <td class="col-x"><button type="button" class="btn btn-ghost btn-xs" data-take aria-label="Add {{ s.description }} to the rates"><i data-lucide="plus"></i></button></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var form = document.querySelector('[data-rates]');
+    var rows = form.querySelector('[data-rows]');
+    function icons() { if (window.lucide) window.lucide.createIcons(); }
+    function add(r) {
+        var tr = document.getElementById('k-rate-template').content.querySelector('tr').cloneNode(true);
+        Object.keys(r || {}).forEach(function (k) {
+            var el = tr.querySelector('[data-k="' + k + '"]');
+            if (el && r[k] !== null && r[k] !== undefined) el.value = r[k];
+        });
+        rows.appendChild(tr);
+        icons();
+        return tr;
+    }
+    form.querySelector('[data-add-rate]').addEventListener('click', function () { add().querySelector('input').focus(); });
+    rows.addEventListener('click', function (e) {
+        var btn = e.target.closest('.k-remove-rate');
+        if (btn) btn.closest('tr').remove();
+    });
+    document.querySelectorAll('[data-take]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var tr = btn.closest('tr');
+            add(JSON.parse(tr.dataset.suggestion));
+            tr.remove();
+        });
+    });
+    form.addEventListener('submit', function () {
+        var list = Array.prototype.map.call(rows.querySelectorAll('tr.k-rate'), function (tr) {
+            var r = {};
+            tr.querySelectorAll('[data-k]').forEach(function (el) { r[el.dataset.k] = el.value; });
+            return r;
+        });
+        form.querySelector('[name="rates_json"]').value = JSON.stringify(list);
+    });
+    if (!rows.querySelector('tr')) add();
+})();
+</script>
+{% endblock %}

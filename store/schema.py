@@ -258,8 +258,11 @@ payment = Table(
 )
 
 # Working out a quote's prices before making it: internal, owners and admins only.
-# sheet: {"items": [{name, description, qty, unit, cost_each, profit_percent, price_each,
-#                    lines: [{description, make, qty, unit, unit_cost, markup}]}]}
+# sheet: {"items": [{key, name, description, qty, unit, cost_each, profit_percent, price_each,
+#                    lines: [{description, make, qty, unit, unit_cost, markup}]}],
+#         "shared": [{description, qty, unit_cost, markup, kind: amount|percent, percent,
+#                     spread: equal|cost, items: [item keys; none = all]}],
+#         "exchange_rate": rupees per unit of the quote's currency, "cost_currency": "INR"}
 # 'build' adds profit to the costs; 'target' starts from a total and shows the cost budget.
 costing = Table(
     'costing', metadata,
@@ -283,6 +286,23 @@ costing = Table(
     Column('updated_at', TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
     UniqueConstraint('project_id', 'version', name='uq_costing_project_version'),
     CheckConstraint("mode IN ('build', 'target')", name='mode'),
+)
+
+# The business's usual rates (MS at 85/kg, a Hiwin LM guide at 34,000 + 10%), offered as
+# cost lines are typed. One row per description and make.
+cost_rate = Table(
+    'cost_rate', metadata,
+    _id('cost_rate_id'),
+    _ref('org_id', 'organization.org_id', 'CASCADE'),
+    Column('description', String(300), nullable=False),
+    Column('make', String(120), nullable=False, server_default=''),
+    Column('unit', String(20), nullable=False, server_default=''),
+    Column('unit_cost', MONEY),
+    Column('markup', Numeric(7, 3)),
+    Column('notes', String(300), nullable=False, server_default=''),
+    _created(),
+    Column('updated_at', TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    UniqueConstraint('org_id', 'description', 'make', name='uq_cost_rate_org_description_make'),
 )
 
 document_series = Table(

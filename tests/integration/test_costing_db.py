@@ -41,7 +41,7 @@ def test_costing_to_quote(client, gst_org):
     # Live numbers while editing; nothing is saved by a preview
     preview = client.post(f'/costings/{costing_id}/preview', data=_form(SHEET)).get_json()
     assert preview['totals']['cost'] == 191300 and preview['totals']['price'] == 220000    # 1,74,000 + 46,000
-    assert costing.get(costing_id, org_id)['sheet'] == {'items': []}
+    assert costing.get(costing_id, org_id)['sheet']['items'] == []
 
     response = client.post(f'/costings/{costing_id}', data=_form(SHEET, action='save'), follow_redirects=True)
     page = response.get_data(as_text=True)
@@ -127,3 +127,117 @@ def test_numbers_already_typed_in_are_skipped(client, gst_org):
         db.execute_proc('sp_delete_invoice', (quote_id,), fetch=False)
     finally:
         db.execute_proc('sp_delete_invoice', (blocker,), fetch=False)
+
+
+def test_shared_costs_a_dollar_quote_and_copying_items(client, gst_org):
+    """Design spread over the items, costs in rupees quoted in dollars, and items copied into another costing."""
+    import costing
+    import projects
+    from access import get_org_invoice
+    from db import db
+    org_id = gst_org
+    customer = _customer(org_id, 'Hydraulics Inc', '', 'United States')
+    project_id = projects.create_project(org_id, customer, f'Test powerunit {uuid.uuid4().hex[:5]}')
+    costing_id = _new_costing(client, project_id)
+    page = client.get(f'/costings/{costing_id}').get_data(as_text=True)
+    assert 'Shared costs' in page and 'Import from Excel' in page and 'Copy from a costing' in page
+
+    sheet = {'items': [{'key': 'unit1', 'name': 'Powerunit', 'qty': 1, 'cost_each': 600000},
+                       {'key': 'tank1', 'name': 'Tank', 'qty': 2, 'cost_each': 50000}],
+             'shared': [{'description': 'Design', 'unit_cost': 40000, 'spread': 'equal'},
+                        {'description': 'Freight to Chennai port', 'unit_cost': 10000, 'items': ['unit1']}],
+             'exchange_rate': '80'}
+    usd = _form(sheet, currency='USD', round_to='0')
+    preview = client.post(f'/costings/{costing_id}/preview', data=usd).get_json()
+    unit, tank = preview['items']
+    assert (unit['shared_cost'], tank['shared_cost']) == (30000, 20000)        # 20k design each, 10k freight
+    assert unit['cost_total_q'] == 7875 and unit['price'] == 9056.25           # 6,30,000 / 80, + 15%
+    assert preview['totals']['cost_base'] == 750000 and preview['totals']['cost'] == 9375
+
+    # No exchange rate, no dollar quote
+    no_rate = _form({**sheet, 'exchange_rate': ''}, currency='USD', round_to='0')
+    template_id = next(t['template_id'] for t in db.execute_proc('sp_list_templates', (org_id, False)) if t['name'] == 'Quotation')
+    response = client.post(f'/costings/{costing_id}', data={**no_rate, 'action': 'quote', 'template_id': template_id},
+                           follow_redirects=True)
+    assert 'Enter the exchange rate' in response.get_data(as_text=True)
+    assert costing.get(costing_id, org_id)['quote_id'] is None
+
+    response = client.post(f'/costings/{costing_id}', data={**usd, 'action': 'quote', 'template_id': template_id})
+    quote_id = re.search(r'/quotes/([0-9a-f-]{36})', response.headers['Location']).group(1)
+    header, _ = get_org_invoice(quote_id, org_id)
+    assert header['currency_code'] == 'USD' and float(header['total_amount']) == 10781.25   # 9,056.25 + 2 x 862.50
+    saved = costing.get(costing_id, org_id)
+    assert saved['sheet']['exchange_rate'] == 80 and saved['sheet']['cost_currency'] == 'INR'
+    assert float(saved['total_cost']) == 9375                                   # in the quote's currency, like the price
+    db.execute_proc('sp_delete_invoice', (quote_id,), fetch=False)
+
+    # Copy items into a costing for another project: lines and costs come, keys are new, shared costs stay
+    other = projects.create_project(org_id, customer, f'Second unit {uuid.uuid4().hex[:5]}')
+    other_id = _new_costing(client, other)
+    found = client.get('/costings/library?q=Assembly').get_json()
+    assert any(r['costing_id'] == costing_id for r in found)
+    assert not any(r['costing_id'] == costing_id for r in client.get('/costings/library?q=nothing-like-it').get_json())
+    copied = client.get(f'/costings/{costing_id}/items').get_json()
+    assert [it['name'] for it in copied['items']] == ['Powerunit', 'Tank'] and 'key' not in copied['items'][0]
+    assert copied['items'][1]['own_cost_each'] == 50000
+    client.post(f'/costings/{other_id}/delete')
+
+    # Members don't get any of it
+    login(client, MEMBER)
+    for url in ('/costings/library', f'/costings/{costing_id}/items', '/costings/rates'):
+        assert client.get(url).status_code == 403
+    login(client, OWNER)
+
+
+def test_rates_list_and_spreadsheet_import(client, gst_org):
+    import io
+    import openpyxl
+    import costing
+    import projects
+    org_id = gst_org
+    customer = _customer(org_id, 'Acme Tools Ltd', 'Tamil Nadu', 'India')
+    project_id = projects.create_project(org_id, customer, f'Bush press {uuid.uuid4().hex[:5]}')
+    costing_id = _new_costing(client, project_id)
+    client.post(f'/costings/{costing_id}', data=_form(SHEET, action='save'))
+
+    rates = [{'description': 'MS raw material', 'unit': 'kg', 'unit_cost': '90'},
+             {'description': 'LM guide with block', 'make': 'Hiwin', 'unit_cost': '34000', 'markup': '10'},
+             {'description': 'ms raw material', 'unit': 'kg', 'unit_cost': '88'},          # the same rate again: last wins
+             {'description': '  ', 'unit_cost': '5'}]                                    # blank: dropped
+    response = client.post('/costings/rates', data={'rates_json': json.dumps(rates)}, follow_redirects=True)
+    assert 'Rates saved (2)' in response.get_data(as_text=True)
+    saved = costing.rates(org_id)
+    assert [(r['description'], r['unit_cost']) for r in saved] == [('LM guide with block', 34000), ('ms raw material', 88)]
+    page = client.get('/costings/rates').get_data(as_text=True)
+    assert 'Raw material MS' in page                                              # a costing line not in the list yet
+    editor = client.get(f'/costings/{costing_id}').get_data(as_text=True)
+    assert '<datalist id="k-rates">' in editor and 'LM guide with block — Hiwin' in editor
+
+    # A workbook: the heading row and columns are guessed, nothing is stored
+    book = openpyxl.Workbook()
+    ws = book.active
+    ws.title = 'Costing'
+    ws.append(['Breakup'])
+    ws.append([])
+    ws.append(['S.No', 'Description', 'Specifications', 'Price', 'Qty', 'Total in Rs'])
+    ws.append([1, 'Table', 'with reaction', 150000, 1, 150000])
+    ws.append([2, 'Pneumatic cylinder', '80 bore', 25000, 1, 25000])
+    ws.append([None, 'Total', None, None, None, 175000])
+    data = io.BytesIO()
+    book.save(data)
+    data.seek(0)
+    response = client.post(f'/costings/{costing_id}/import', data={'file': (data, 'Costing.xlsx')},
+                           content_type='multipart/form-data')
+    sheet = response.get_json()['sheets'][0]
+    assert sheet['name'] == 'Costing' and sheet['header_row'] == 2
+    assert sheet['columns'] == {'name': 1, 'spec': 2, 'price': 3, 'qty': 4, 'amount': 5}
+    assert sheet['rows'][3] == [1, 'Table', 'with reaction', 150000, 1, 150000]
+    old = client.post(f'/costings/{costing_id}/import', data={'file': (io.BytesIO(b'junk'), 'old.xls')},
+                      content_type='multipart/form-data')
+    assert old.status_code == 400 and '.xlsx' in old.get_json()['error']
+    bad = client.post(f'/costings/{costing_id}/import', data={'file': (io.BytesIO(b'not a zip'), 'bad.xlsx')},
+                      content_type='multipart/form-data')
+    assert bad.status_code == 400 and 'error' in bad.get_json()
+    client.post('/costings/rates', data={'rates_json': '[]'})
+    assert costing.rates(org_id) == []
+    client.post(f'/costings/{costing_id}/delete')

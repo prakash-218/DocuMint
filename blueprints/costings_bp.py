@@ -81,7 +81,8 @@ def edit(costing_id):
     from money import SYMBOLS
     return render_template('costings/editor.html', costing=row, result=K.result_of(row), modes=K.MODES,
                            rounding=K.ROUNDING, currencies=sorted(SYMBOLS), templates=_quote_templates(g.current_org_id, row['currency']),
-                           other_versions=others)
+                           other_versions=others, base_currency=_base_currency(), rates=K.rates(g.current_org_id),
+                           spreads=K.SPREADS, shared_kinds=K.SHARED_KINDS)
 
 
 @costings_bp.route('/<costing_id>/preview', methods=['POST'])
@@ -90,14 +91,20 @@ def preview(costing_id):
     """The worked-out numbers for the sheet being edited (nothing is saved)."""
     _guard()
     _costing_or_404(costing_id)
-    s = K.settings_from(request.form)
-    return jsonify(K.compute(K.clean_sheet(_sheet_from_request()), s['mode'], s['profit_percent'],
-                             s['target_total'], s['round_to']))
+    sheet = K.clean_sheet(_sheet_from_request())
+    sheet['cost_currency'] = _base_currency()
+    return jsonify(K.run(sheet, K.settings_from(request.form)))
+
+
+def _base_currency():
+    from document_service import get_org_profile
+    return get_org_profile(g.current_org_id)[1].get('default_currency') or 'INR'
 
 
 def _save_from_form(row):
     return K.save(g.current_org_id, row['costing_id'], request.form.get('title') or row['title'],
-                  _sheet_from_request(), K.settings_from(request.form), request.form.get('notes') or '')
+                  _sheet_from_request(), K.settings_from(request.form), request.form.get('notes') or '',
+                  cost_currency=_base_currency())
 
 
 @costings_bp.route('/<costing_id>', methods=['POST'])
@@ -137,6 +144,71 @@ def save(costing_id):
         logger.exception('Could not %s for costing %s', action, costing_id)
         flash(f'Costing saved, but the quote was not {"made" if action == "quote" else "updated"}: {e}', 'error')
     return back
+
+
+@costings_bp.route('/library')
+@require_org
+def library():
+    """The org's costings, to pick one to copy items from (JSON for the editor's dialog)."""
+    _guard()
+    from projects import project_label
+    rows = K.library(g.current_org_id, (request.args.get('q') or '')[:100])
+    return jsonify([{'costing_id': r['costing_id'], 'title': r['title'], 'version': r['version'],
+                     'project': project_label(r), 'project_title': r['project_title'], 'customer': r['customer_name'],
+                     'items': r['item_count'], 'total': K.number(r['total_price'], 0), 'currency': r['currency'],
+                     'updated': r['updated_at'].date().isoformat() if r.get('updated_at') else None} for r in rows])
+
+
+@costings_bp.route('/<costing_id>/items')
+@require_org
+def items(costing_id):
+    _guard()
+    row = _costing_or_404(costing_id)
+    return jsonify({'items': K.items_to_copy(row), 'cost_currency': row['sheet'].get('cost_currency') or 'INR'})
+
+
+@costings_bp.route('/<costing_id>/import', methods=['POST'])
+@require_org
+def read_spreadsheet(costing_id):
+    """A spreadsheet's sheets as grids, for the editor to turn into items or cost lines. Nothing is kept."""
+    _guard()
+    _costing_or_404(costing_id)
+    import costing_import
+    upload = request.files.get('file')
+    if not upload or not upload.filename:
+        return jsonify({'error': 'Choose a file'}), 400
+    try:
+        return jsonify(costing_import.read(upload.stream, upload.filename))
+    except costing_import.SheetError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception:
+        logger.exception('Could not read %s for costing %s', upload.filename, costing_id)
+        return jsonify({'error': "That file couldn't be read. Save it again as .xlsx and try once more."}), 400
+
+
+@costings_bp.route('/rates', methods=['GET', 'POST'])
+@require_org
+def rates():
+    """The usual rates, offered as cost lines are typed."""
+    _guard()
+    org_id = g.current_org_id
+    if request.method == 'POST':
+        try:
+            raw = json.loads(request.form.get('rates_json') or '[]')
+        except ValueError:
+            raw = []
+        try:
+            saved = K.save_rates(org_id, raw)
+            flash(f"Rates saved ({len(saved)})", 'success')
+        except DatabaseError as e:
+            logger.exception('Could not save the rates for %s', org_id)
+            flash(f'Could not save the rates: {e}', 'error')
+        return redirect(url_for('costings_bp.rates', back=request.args.get('back') or None))
+    known = K.rates(org_id)
+    back = request.args.get('back') or ''
+    back_row = K.get(back, org_id) if back else None
+    return render_template('costings/rates.html', rates=known, suggestions=K.rate_suggestions(org_id, known),
+                           base_currency=_base_currency(), back=back_row)
 
 
 @costings_bp.route('/<costing_id>/delete', methods=['POST'])

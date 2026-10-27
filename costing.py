@@ -13,16 +13,27 @@ Two ways of working, one sheet:
 Profit is a markup on cost (15% on a cost of 100 is a price of 115); the sheet also
 shows it as a share of the price. A price typed for an item is kept as it is in
 either mode. Internal only: owners and admins see costings, never customers.
+
+Shared costs (design, a reference station, freight, "10% for changes") belong to no
+single item: a fixed amount, or a % of the items' cost, spread over all the items or
+the chosen ones, equally or in proportion to their cost.
+
+Costs are in the business's own currency; a quote in another currency converts them at
+the costing's exchange rate (rupees per dollar), and prices, profit and totals are in
+the quote's currency.
 """
 
 import math
 import re
+import secrets
 from typing import Any, Dict, List, Optional
 
 MODES = {'build': 'Build up from costs', 'target': 'Work back from a total'}
 ROUNDING = (0, 1, 10, 100, 1000)
+SPREADS = {'equal': 'equally', 'cost': 'by cost'}
+SHARED_KINDS = {'amount': 'Amount', 'percent': '% of cost'}
 DEFAULT_PROFIT = 15.0
-MAX_ITEMS, MAX_LINES = 200, 200
+MAX_ITEMS, MAX_LINES, MAX_SHARED = 200, 200, 50
 
 
 def number(value, default=None) -> Optional[float]:
@@ -43,28 +54,54 @@ def _text(value, limit) -> str:
     return str(value or '').strip()[:limit]
 
 
+KEY = re.compile(r'^[a-z0-9]{1,16}$')
+
+
+def new_key() -> str:
+    return 'i' + secrets.token_hex(4)
+
+
+def _line(line: Dict) -> Optional[Dict]:
+    row = {'description': _text(line.get('description'), 300), 'make': _text(line.get('make'), 120),
+           'qty': number(line.get('qty')), 'unit': _text(line.get('unit'), 20),
+           'unit_cost': number(line.get('unit_cost')), 'markup': number(line.get('markup'))}
+    return row if row['description'] or row['unit_cost'] is not None else None
+
+
 def clean_sheet(raw: Any) -> Dict:
-    """The sheet as stored: known keys only, numbers as numbers, blank rows dropped."""
-    items = []
-    for item in (raw or {}).get('items', [])[:MAX_ITEMS] if isinstance(raw, dict) else []:
+    """The sheet as stored: known keys only, numbers as numbers, blank rows dropped. Items keep a
+    key (shared costs name the items they're spread over by it, so dropping a blank row can't shift them)."""
+    raw = raw if isinstance(raw, dict) else {}
+    items, keys = [], set()
+    for item in (raw.get('items') or [])[:MAX_ITEMS]:
         if not isinstance(item, dict):
             continue
-        lines = []
-        for line in (item.get('lines') or [])[:MAX_LINES]:
-            if not isinstance(line, dict):
-                continue
-            row = {'description': _text(line.get('description'), 300), 'make': _text(line.get('make'), 120),
-                   'qty': number(line.get('qty')), 'unit': _text(line.get('unit'), 20),
-                   'unit_cost': number(line.get('unit_cost')), 'markup': number(line.get('markup'))}
-            if row['description'] or row['unit_cost'] is not None:
-                lines.append(row)
-        row = {'name': _text(item.get('name'), 300), 'description': _text(item.get('description'), 2000),
+        lines = [r for r in (_line(l) for l in (item.get('lines') or [])[:MAX_LINES] if isinstance(l, dict)) if r]
+        key = str(item.get('key') or '')
+        if not KEY.match(key) or key in keys:
+            key = new_key()
+        row = {'key': key, 'name': _text(item.get('name'), 300), 'description': _text(item.get('description'), 2000),
                'qty': number(item.get('qty')), 'unit': _text(item.get('unit'), 20),
                'cost_each': number(item.get('cost_each')), 'profit_percent': number(item.get('profit_percent')),
                'price_each': number(item.get('price_each')), 'lines': lines}
         if row['name'] or lines or row['cost_each'] is not None or row['price_each'] is not None:
             items.append(row)
-    return {'items': items}
+            keys.add(key)
+    shared = []
+    for s in (raw.get('shared') or [])[:MAX_SHARED]:
+        if not isinstance(s, dict):
+            continue
+        row = _line(s) or {'description': '', 'make': '', 'qty': None, 'unit': '', 'unit_cost': None, 'markup': None}
+        kind = s.get('kind') if s.get('kind') in SHARED_KINDS else 'amount'
+        row.update({'kind': kind, 'percent': number(s.get('percent')),
+                    # a % of cost is that % on each item's cost, so it always goes by cost
+                    'spread': 'cost' if kind == 'percent' else s.get('spread') if s.get('spread') in SPREADS else 'equal',
+                    'items': [k for k in (s.get('items') or []) if isinstance(k, str) and k in keys]})
+        if row['description'] or row['unit_cost'] is not None or row['percent'] is not None:
+            shared.append(row)
+    rate = number(raw.get('exchange_rate'))
+    return {'items': items, 'shared': shared, 'exchange_rate': rate if rate and rate > 0 else None,
+            'cost_currency': (str(raw.get('cost_currency') or 'INR').upper()[:3])}
 
 
 def _round_to(value: float, step: int) -> float:
@@ -78,25 +115,56 @@ def _qty(value) -> float:
     return 1.0 if q is None else q
 
 
+def _line_cost(line: Dict) -> float:
+    each = (line.get('unit_cost') or 0) * (1 + (line.get('markup') or 0) / 100)
+    return round(_qty(line.get('qty')) * each, 2)
+
+
+def _spread(shared: List[Dict], items: List[Dict]) -> List[Dict]:
+    """Each shared cost's amount, and every item's share of it (added to item['shared_cost'])."""
+    out = []
+    for s in shared:
+        targets = [it for it in items if it['key'] in s['items']] or items
+        own = sum(it['own_cost_total'] for it in targets)
+        amount = round((s.get('percent') or 0) / 100 * own, 2) if s['kind'] == 'percent' else _line_cost(s)
+        weights = [it['own_cost_total'] for it in targets] if s['spread'] == 'cost' and own else [1] * len(targets)
+        total_weight = sum(weights)
+        for it, w in zip(targets, weights):
+            it['shared_cost'] += amount * w / total_weight if total_weight else 0
+        out.append({**s, 'amount': amount, 'spread_over': len(targets), 'all_items': len(targets) == len(items)})
+    return out
+
+
 def compute(sheet: Dict, mode: str = 'build', profit_percent=DEFAULT_PROFIT, target_total=None,
-            round_to: int = 0) -> Dict:
-    """Every number on the sheet: per line, per item and in total."""
+            round_to: int = 0, currency: Optional[str] = None) -> Dict:
+    """Every number on the sheet: per line, per item and in total. Costs (cost_each, cost_total) are
+    in the sheet's cost currency; prices, amounts, profit and the totals in the quote's currency."""
     mode = mode if mode in MODES else 'build'
     default_profit = number(profit_percent, DEFAULT_PROFIT)
     round_to = round_to if round_to in ROUNDING else 0
+    cost_currency = (sheet.get('cost_currency') or 'INR').upper()
+    currency = (currency or cost_currency).upper()
+    rate = sheet.get('exchange_rate') if currency != cost_currency else None
+    fx = (rate or 1) if currency != cost_currency else 1        # rupees per unit of the quote's currency
     items = []
     for item in sheet.get('items', []):
-        lines = []
-        for line in item.get('lines') or []:
-            each = (line.get('unit_cost') or 0) * (1 + (line.get('markup') or 0) / 100)
-            lines.append({**line, 'cost': round(_qty(line.get('qty')) * each, 2)})
-        cost_each = sum(l['cost'] for l in lines) if lines else (item.get('cost_each') or 0)
+        lines = [{**line, 'cost': _line_cost(line)} for line in item.get('lines') or []]
+        own_each = sum(l['cost'] for l in lines) if lines else (item.get('cost_each') or 0)
         qty = _qty(item.get('qty'))
         own_profit = item.get('profit_percent')
-        items.append({**item, 'lines': lines, 'qty_used': qty, 'cost_each': round(cost_each, 2),
-                      'cost_total': round(cost_each * qty, 2), 'built_from_lines': bool(lines),
-                      'profit_used': default_profit if own_profit is None else own_profit,
+        items.append({**item, 'key': item.get('key') or new_key(), 'lines': lines, 'qty_used': qty,
+                      'cost_typed': item.get('cost_each'),
+                      'own_cost_each': round(own_each, 2), 'own_cost_total': round(own_each * qty, 2), 'shared_cost': 0.0,
+                      'built_from_lines': bool(lines), 'profit_used': default_profit if own_profit is None else own_profit,
                       'manual_price': item.get('price_each') is not None})
+    shared = _spread(sheet.get('shared') or [], items)
+    for it in items:
+        it['shared_cost'] = round(it['shared_cost'], 2)
+        it['shared_each'] = round(it['shared_cost'] / it['qty_used'], 2) if it['qty_used'] else 0
+        it['cost_total'] = round(it['own_cost_total'] + it['shared_cost'], 2)
+        it['cost_each'] = round(it['cost_total'] / it['qty_used'], 2) if it['qty_used'] else it['own_cost_each']
+        it['cost_total_q'] = round(it['cost_total'] / fx, 2)          # in the quote's currency
+        it['cost_each_q'] = round(it['cost_each'] / fx, 2)
 
     target = number(target_total)
     budget = None
@@ -108,25 +176,29 @@ def compute(sheet: Dict, mode: str = 'build', profit_percent=DEFAULT_PROFIT, tar
             if it['manual_price']:
                 it['price'] = it['price_each']
             else:
-                it['price'] = _round_to(it['cost_each'] * (1 + it['profit_used'] / 100), round_to)
+                it['price'] = _round_to(it['cost_each_q'] * (1 + it['profit_used'] / 100), round_to)
 
     for it in items:
         it['price'] = round(it['price'], 2)
         it['amount'] = round(it['price'] * it['qty_used'], 2)
-        it['profit'] = round(it['amount'] - it['cost_total'], 2)
-        it['profit_on_cost'] = _percent(it['profit'], it['cost_total'])
+        it['profit'] = round(it['amount'] - it['cost_total_q'], 2)
+        it['profit_on_cost'] = _percent(it['profit'], it['cost_total_q'])
         it['margin_of_price'] = _percent(it['profit'], it['amount'])
 
-    total_cost = round(sum(it['cost_total'] for it in items), 2)
+    cost_base = round(sum(it['cost_total'] for it in items), 2)
+    total_cost = round(sum(it['cost_total_q'] for it in items), 2)
     total_price = round(sum(it['amount'] for it in items), 2)
     profit = round(total_price - total_cost, 2)
-    totals = {'cost': total_cost, 'price': total_price, 'profit': profit,
+    totals = {'cost': total_cost, 'cost_base': cost_base, 'shared': round(sum(s['amount'] for s in shared), 2),
+              'price': total_price, 'profit': profit,
               'profit_on_cost': _percent(profit, total_cost), 'margin_of_price': _percent(profit, total_price)}
     if mode == 'target' and target is not None:
         totals.update({'target': round(target, 2), 'budget': budget,
                        'left': round(budget - total_cost, 2) if budget is not None else None,
                        'off_target': round(total_price - target, 2)})
-    return {'mode': mode, 'profit_percent': default_profit, 'round_to': round_to, 'items': items, 'totals': totals}
+    return {'mode': mode, 'profit_percent': default_profit, 'round_to': round_to, 'items': items, 'shared': shared,
+            'totals': totals, 'currency': currency, 'cost_currency': cost_currency, 'exchange_rate': rate,
+            'needs_rate': currency != cost_currency and not rate}
 
 
 def _share_target(items: List[Dict], target: float, round_to: int):
@@ -135,7 +207,7 @@ def _share_target(items: List[Dict], target: float, round_to: int):
     fixed = sum(it['price_each'] * it['qty_used'] for it in items if it['manual_price'])
     free = [it for it in items if not it['manual_price']]
     rest = target - fixed
-    weights = [it['cost_total'] for it in free]
+    weights = [it['cost_total_q'] for it in free]
     if not any(weights):
         weights = [it['qty_used'] for it in free]
     total_weight = sum(weights)
@@ -194,9 +266,13 @@ def _sheet(value) -> Dict:
     return value or {'items': []}
 
 
+def run(sheet: Dict, settings: Dict) -> Dict:
+    return compute(sheet, settings['mode'], settings['profit_percent'], settings['target_total'], settings['round_to'],
+                   settings['currency'])
+
+
 def result_of(row: Dict) -> Dict:
-    s = settings_from(row)
-    return compute(clean_sheet(_sheet(row.get('sheet'))), s['mode'], s['profit_percent'], s['target_total'], s['round_to'])
+    return run(clean_sheet(_sheet(row.get('sheet'))), settings_from(row))
 
 
 def get(costing_id, org_id) -> Optional[Dict]:
@@ -219,10 +295,13 @@ def list_for(org_id, project_id) -> List[Dict]:
     return rows
 
 
-def save(org_id, costing_id, title, sheet: Dict, settings: Dict, notes='') -> Dict:
+def save(org_id, costing_id, title, sheet: Dict, settings: Dict, notes='', cost_currency: Optional[str] = None) -> Dict:
+    """Store the sheet; total_cost is kept in the quote's currency, so it compares with total_price."""
     from db import db
     sheet = clean_sheet(sheet)
-    result = compute(sheet, settings['mode'], settings['profit_percent'], settings['target_total'], settings['round_to'])
+    if cost_currency:
+        sheet['cost_currency'] = cost_currency
+    result = run(sheet, settings)
     db.execute_proc('sp_update_costing', (
         costing_id, org_id, (title or 'Costing').strip()[:200], settings['mode'], settings['profit_percent'],
         settings['target_total'], settings['round_to'], settings['currency'], sheet,
@@ -233,10 +312,10 @@ def save(org_id, costing_id, title, sheet: Dict, settings: Dict, notes='') -> Di
 def create(org_id, project_id, title, user_id=None, copy_of: Optional[Dict] = None, currency='INR') -> Dict:
     """A new costing for the project: empty, or a copy of another (a new version to rework)."""
     from db import db
-    sheet = copy_of['sheet'] if copy_of else {'items': []}
+    sheet = copy_of['sheet'] if copy_of else {'items': [], 'cost_currency': currency}
     settings = settings_from(copy_of) if copy_of else {'mode': 'build', 'profit_percent': DEFAULT_PROFIT,
                                                        'target_total': None, 'round_to': 0, 'currency': currency}
-    result = compute(sheet, settings['mode'], settings['profit_percent'], settings['target_total'], settings['round_to'])
+    result = run(clean_sheet(sheet), settings)
     return db.execute_proc_single('sp_create_costing', (
         org_id, project_id, (title or 'Costing').strip()[:200], settings['mode'], settings['profit_percent'],
         settings['target_total'], settings['round_to'], settings['currency'], sheet,
@@ -289,6 +368,8 @@ def make_quote(org_id, row: Dict, template_id) -> str:
     result = result_of(row)
     if not result['items']:
         raise CostingError('Add the items to quote first')
+    if result['needs_rate']:
+        raise CostingError(f"Enter the exchange rate to turn the costs into {result['currency']}")
     item_fields = _item_fields(get_template_fields(template_id))
     if not item_fields:
         raise CostingError("That template has no item table for the costing's items")
@@ -335,9 +416,88 @@ def update_quote(org_id, row: Dict) -> str:
     item_fields = _item_fields(get_template_fields(header['template_id'], header.get('template_version')))
     if not item_fields:
         raise CostingError("The quote's template has no item table")
+    result = result_of(row)
+    if result['needs_rate']:
+        raise CostingError(f"Enter the exchange rate to turn the costs into {result['currency']}")
     db.execute_proc('sp_delete_invoice_values_by_fields',
                     (header['invoice_id'], [f['field_id'] for f in item_fields.values()]), fetch=False)
-    _write_items(header['invoice_id'], item_fields, quote_rows(result_of(row)))
+    _write_items(header['invoice_id'], item_fields, quote_rows(result))
     header, values = get_org_invoice(header['invoice_id'], org_id)
     recalculate_invoice(header['invoice_id'], header, values)
     return header['invoice_id']
+
+
+# ---------------------------------------------------------------- Copying from earlier costings
+
+def library(org_id, search='', limit=50) -> List[Dict]:
+    """The org's costings, newest first, for picking one to copy items from."""
+    from db import db
+    return db.execute_proc('sp_list_org_costings', (org_id, search or '', limit)) or []
+
+
+def items_to_copy(row: Dict) -> List[Dict]:
+    """A costing's items (with their cost lines and worked-out cost) to add to another sheet. They get new
+    keys there; shared costs stay behind, since they're spread over that sheet's own items."""
+    result = result_of(row)
+    keep = ('name', 'description', 'qty', 'unit', 'cost_each', 'profit_percent', 'price_each', 'lines')
+    out = []
+    for raw, it in zip(row['sheet']['items'], result['items']):
+        item = {k: raw.get(k) for k in keep}
+        item['cost_each'] = raw.get('cost_each') if not raw.get('lines') else None
+        item['own_cost_each'] = it['own_cost_each']
+        out.append(item)
+    return out
+
+
+# ---------------------------------------------------------------- The rates list
+
+RATE_FIELDS = ('description', 'make', 'unit', 'unit_cost', 'markup', 'notes')
+MAX_RATES = 1000
+
+
+def clean_rates(raw: Any) -> List[Dict]:
+    """Rates as typed on the rates page: blank rows dropped, one per description and make (the last wins)."""
+    rows: Dict[tuple, Dict] = {}
+    for r in (raw if isinstance(raw, list) else [])[:MAX_RATES]:
+        if not isinstance(r, dict):
+            continue
+        row = {'description': _text(r.get('description'), 300), 'make': _text(r.get('make'), 120),
+               'unit': _text(r.get('unit'), 20), 'unit_cost': number(r.get('unit_cost')),
+               'markup': number(r.get('markup')), 'notes': _text(r.get('notes'), 300)}
+        if row['description']:
+            rows[(row['description'].lower(), row['make'].lower())] = row
+    return sorted(rows.values(), key=lambda r: (r['description'].lower(), r['make'].lower()))
+
+
+def rates(org_id) -> List[Dict]:
+    from db import db
+    return [{k: (number(r[k]) if k in ('unit_cost', 'markup') else r[k]) for k in RATE_FIELDS}
+            for r in db.execute_proc('sp_list_cost_rates', (org_id,)) or []]
+
+
+def save_rates(org_id, raw) -> List[Dict]:
+    from db import db
+    rows = clean_rates(raw)
+    db.execute_proc('sp_replace_cost_rates', (org_id, rows), fetch=False)
+    return rows
+
+
+def rate_suggestions(org_id, known: List[Dict], limit=40) -> List[Dict]:
+    """Cost lines from the org's costings that aren't in the rates list yet: the most used first,
+    each with the rate it had most recently."""
+    from db import db
+    have = {(r['description'].lower(), (r.get('make') or '').lower()) for r in known}
+    seen: Dict[tuple, Dict] = {}
+    for row in db.execute_proc('sp_list_costing_sheets', (org_id, 200)) or []:      # newest first
+        sheet = clean_sheet(_sheet(row.get('sheet')))
+        for line in [l for it in sheet['items'] for l in it['lines']] + [s for s in sheet['shared'] if s['kind'] == 'amount']:
+            key = (line['description'].lower(), (line.get('make') or '').lower())
+            if not line['description'] or line.get('unit_cost') is None or key in have:
+                continue
+            if key in seen:
+                seen[key]['used'] += 1
+            else:
+                seen[key] = {'description': line['description'], 'make': line.get('make') or '',
+                             'unit': line.get('unit') or '', 'unit_cost': line['unit_cost'],
+                             'markup': line.get('markup'), 'notes': '', 'used': 1}
+    return sorted(seen.values(), key=lambda r: (-r['used'], r['description'].lower()))[:limit]

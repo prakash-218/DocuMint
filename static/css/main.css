@@ -1276,7 +1276,8 @@ input[type="date"].form-input { padding-right: 8px; }
 .k-items > thead .col-no { width: 40px; }
 .k-items .c-qty { width: 78px; }
 .k-items .c-unit { width: 80px; }
-.k-items .c-cost, .k-items .c-price { width: 120px; }
+.k-items .c-cost { width: 140px; }
+.k-items .c-price { width: 120px; }
 .k-items .c-pct { width: 84px; }
 .k-items .c-amount { width: 128px; }
 .k-items .c-gain { width: 116px; }
@@ -1324,6 +1325,85 @@ input[type="date"].form-input { padding-right: 8px; }
 .k-summary .btn-block { margin-top: var(--spacing-md); }
 .costing-list .pick-sub .k-quote { color: var(--ink-2); }
 
+/* Quoting in another currency: the exchange rate and the costs in rupees show only then */
+.k-form[data-foreign="false"] .k-fx-only { display: none !important; }
+.items-card .card-header .k-rates-link { margin-left: auto; }
+.k-foot-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.k-items .k-shared-sub { margin-top: 2px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Shared costs: an amount (qty x cost + markup) or a % of the items' cost, spread over all or some items */
+.k-shared { table-layout: fixed; min-width: 1020px; }
+.k-shared .long { width: auto; min-width: 0; }
+.k-shared .c-how { width: 124px; }
+.k-shared .c-qty { width: 78px; }
+.k-shared .c-ucost { width: 118px; }
+.k-shared .c-markup { width: 84px; }
+.k-shared .c-spread { width: 116px; }
+.k-shared .c-over { width: 150px; }
+.k-shared .c-lcost { width: 124px; }
+.k-shared > thead .col-x { width: 52px; }
+.k-shared td .form-input, .k-shared td .form-select { min-width: 0 !important; width: 100% !important; }
+.k-shared td.num .form-input { text-align: left; }
+.k-shared output { display: block; padding: 8px 0; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.k-share[data-kind="percent"] .k-amount-only, .k-share[data-kind="amount"] .k-percent-only { display: none !important; }
+.k-share .k-fixed { display: block; padding: 8px 0; color: var(--ink-3); font-size: var(--font-size-sm); }
+.k-over > summary { width: 100%; justify-content: space-between; }
+.k-over-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-over .menu-items { left: 0; right: auto; max-height: 280px; overflow-y: auto; min-width: 240px; }
+.k-over .menu-items:empty::before { content: 'Add items first'; padding: 8px 10px; color: var(--ink-3); font-size: var(--font-size-sm); }
+
+/* Dialogs: copy from a costing, import from Excel */
+.k-dialog [hidden] { display: none !important; }
+.k-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--line-1);
+            border-radius: var(--radius-lg); background: var(--surface-1); color: var(--ink-1); box-shadow: var(--shadow-3); }
+.k-dialog[open] { display: flex; flex-direction: column; }
+.k-dialog::backdrop { background: var(--surface-overlay); }
+.k-dialog-wide { width: min(960px, calc(100vw - 32px)); }
+.k-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg); border-bottom: 1px solid var(--line-1); }
+.k-dialog-head h2 { margin: 0; font-size: var(--font-size-lg); }
+.k-dialog-body { padding: var(--spacing-md) var(--spacing-lg); overflow-y: auto; flex: 1; min-height: 0; }
+.k-dialog-foot { display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-md) var(--spacing-lg); border-top: 1px solid var(--line-1); }
+.k-dialog-sub { margin: 0 0 var(--spacing-sm); font-weight: var(--font-weight-medium); }
+.k-pick { margin: var(--spacing-sm) calc(-1 * var(--spacing-lg)) 0; }
+.k-pick-row { display: flex; width: 100%; padding: 12px var(--spacing-lg); border: 0; background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.k-pick-row:hover, .k-pick-row:focus-visible { background: var(--surface-2); }
+.k-checklist { list-style: none; margin: 0 0 var(--spacing-sm); padding: 0; }
+.k-checklist li + li { border-top: 1px solid var(--line-1); }
+.k-check { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 0; cursor: pointer; font-size: var(--font-size-sm); }
+.k-check input[type="checkbox"], .k-check input[type="radio"] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.k-check-sub { width: 100%; padding-left: 26px; color: var(--ink-3); font-size: var(--font-size-xs); }
+.k-check-all { border-bottom: 1px solid var(--line-1); font-weight: var(--font-weight-medium); }
+.k-check .form-input, .k-check .form-select { width: auto; flex: 1; min-width: 180px; max-width: 320px; height: 32px; padding: 4px 8px; }
+.k-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--spacing-xl) var(--spacing-lg); border: 1.5px dashed var(--line-2);
+          border-radius: var(--radius); text-align: center; cursor: pointer; }
+.k-drop:hover, .k-drop:focus-within { border-color: var(--accent); background: var(--accent-soft); }
+.k-drop.busy { opacity: .6; pointer-events: none; }
+.k-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.k-drop [data-lucide] { width: 28px; height: 28px; color: var(--ink-3); }
+.k-error { color: var(--critical-ink); }
+.k-import-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 var(--spacing-md); }
+.k-import-as { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 0 var(--spacing-md); }
+.k-import-as .k-check { padding: 4px 0; }
+.k-import-preview { max-height: 260px; overflow: auto; border: 1px solid var(--line-1); border-radius: var(--radius-sm); }
+.k-import-preview .items-editor th:first-child, .k-import-preview .items-editor td:first-child { padding-left: var(--spacing-sm); }
+.k-import-preview .items-editor td { padding: 6px; }
+.k-import-preview .items-editor .long { min-width: 200px; }
+
+/* The rates list */
+.k-rates-table { table-layout: fixed; min-width: 860px; }
+.k-rates-table .long { width: auto; min-width: 0; }
+.k-rates-table .c-make { width: 180px; }
+.k-rates-table .c-unit { width: 90px; }
+.k-rates-table .c-ucost { width: 130px; }
+.k-rates-table .c-markup { width: 96px; }
+.k-rates-table .c-notes { width: 220px; }
+.k-rates-table > thead .col-x { width: 52px; }
+.k-rates-table td .form-input { min-width: 0 !important; width: 100% !important; }
+.k-rates-table td.num .form-input, .k-rates-table th.num { text-align: left; }
+.items-editor.k-suggest td { color: var(--ink-2); vertical-align: middle; }
+.k-suggest th.num { text-align: right; }
+.k-suggest .k-used { padding-left: var(--spacing-lg); color: var(--ink-3); font-size: var(--font-size-xs); }
+
 @media (max-width: 1100px) {
     .k-top, .k-bottom { grid-template-columns: minmax(0, 1fr); }
 }
@@ -1345,4 +1425,9 @@ input[type="date"].form-input { padding-right: 8px; }
     .k-lines tr { border-top: 1px solid var(--line-1); }
     .k-lines tbody tr:first-child { border-top: 0; }
     .k-foot { flex-direction: column; align-items: flex-start; }
+    .k-shared, .k-rates-table { min-width: 0; table-layout: auto; }
+    .k-over .menu-items { position: static; box-shadow: none; }
+    .k-import-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .k-import-as { grid-template-columns: minmax(0, 1fr); }
+    .items-card .card-header { flex-wrap: wrap; }
 }

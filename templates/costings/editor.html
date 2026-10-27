@@ -1,29 +1,30 @@
 {% extends "base.html" %}
 
 {# A costing: the quote's items, each with a typed cost or cost lines, and a profit; or a known
-   total worked back. Numbers are worked out on the server (costing.py); costing.js sends the
-   sheet as it's edited and fills in what comes back. Laid out full width: it's a spreadsheet. #}
+   total worked back. Shared costs are spread over the items. Numbers are worked out on the
+   server (costing.py); costing.js sends the sheet as it's edited and fills in what comes back.
+   Costs are in the business's currency (base); prices in the quote's (cur). Full width: it's a spreadsheet. #}
 
 {% macro num(v) -%}
     {%- if v is not none and v != '' -%}{{ ('%.4f' | format(v | float)).rstrip('0').rstrip('.') }}{%- endif -%}
 {%- endmacro %}
 
-{% macro line_row(l, cur) %}
+{% macro line_row(l, base) %}
 <tr class="k-line">
-    <td class="long" data-label="Cost line"><input type="text" class="form-input" data-k="description" value="{{ l.description or '' }}" placeholder="Material, machining, bought-out…" aria-label="Cost line"></td>
+    <td class="long" data-label="Cost line"><input type="text" class="form-input" data-k="description" value="{{ l.description or '' }}" placeholder="Material, machining, bought-out…" aria-label="Cost line" list="k-rates" autocomplete="off"></td>
     <td class="short" data-label="Make / spec"><input type="text" class="form-input" data-k="make" value="{{ l.make or '' }}" aria-label="Make or specification"></td>
     <td class="short num" data-label="Qty"><input type="number" step="any" class="form-input" data-k="qty" value="{{ num(l.qty) }}" placeholder="1" aria-label="Quantity"></td>
     <td class="short" data-label="Unit"><input type="text" class="form-input" data-k="unit" value="{{ l.unit or '' }}" aria-label="Unit"></td>
     <td class="short num" data-label="Unit cost"><input type="number" step="any" class="form-input" data-k="unit_cost" value="{{ num(l.unit_cost) }}" aria-label="Unit cost"></td>
     <td class="short num" data-label="Markup %"><input type="number" step="any" class="form-input" data-k="markup" value="{{ num(l.markup) }}" placeholder="0" aria-label="Markup percent"></td>
-    <td class="calc num" data-label="Cost"><output data-out="line_cost">{{ l.cost | currency(cur) if l.cost is defined else '—' }}</output></td>
+    <td class="calc num" data-label="Cost"><output data-out="line_cost">{{ l.cost | currency(base) if l.cost is defined else '—' }}</output></td>
     <td class="col-x"><button type="button" class="btn btn-ghost btn-xs k-remove-line" aria-label="Remove cost line"><i data-lucide="x"></i></button></td>
 </tr>
 {% endmacro %}
 
-{% macro item_body(it, cur) %}
+{% macro item_body(it, cur, base) %}
 {% set has_lines = it.lines | length > 0 %}
-<tbody class="k-item{% if it.manual_price %} manual{% endif %}">
+<tbody class="k-item{% if it.manual_price %} manual{% endif %}" data-key="{{ it.key or '' }}">
     <tr class="k-item-row">
         <td class="col-no" data-label="#"><span class="row-no"></span></td>
         <td class="long" data-label="Item">
@@ -33,8 +34,9 @@
         <td class="short num" data-label="Qty"><input type="number" step="any" class="form-input" data-k="qty" value="{{ num(it.qty) }}" placeholder="1" aria-label="Quantity"></td>
         <td class="short" data-label="Unit"><input type="text" class="form-input" data-k="unit" value="{{ it.unit or '' }}" aria-label="Unit"></td>
         <td class="short num" data-label="Cost / unit">
-            <input type="number" step="any" class="form-input k-cost-input" data-k="cost_each" value="{{ num(it.cost_each) if not has_lines else '' }}" aria-label="Cost per unit" {% if has_lines %}hidden{% endif %}>
-            <output class="k-cost-out" data-out="cost_each" title="The total of the cost lines" {% if not has_lines %}hidden{% endif %}>{{ it.cost_each | currency(cur) if it.cost_each is defined else '—' }}</output>
+            <input type="number" step="any" class="form-input k-cost-input" data-k="cost_each" value="{{ num(it.cost_typed if it.cost_typed is defined else it.cost_each) if not has_lines }}" aria-label="Cost per unit" {% if has_lines %}hidden{% endif %}>
+            <output class="k-cost-out" data-out="own_cost_each" title="The total of the cost lines" {% if not has_lines %}hidden{% endif %}>{{ it.own_cost_each | currency(base) if it.own_cost_each is defined else '—' }}</output>
+            <span class="k-sub k-shared-sub" data-out="shared_each" {% if not it.shared_each %}hidden{% endif %}>{% if it.shared_each %}+ {{ it.shared_each | currency(base) }} shared{% endif %}</span>
         </td>
         <td class="short num col-profit-in" data-label="Profit %"><input type="number" step="any" class="form-input" data-k="profit_percent" value="{{ num(it.profit_percent) }}" placeholder="{{ num(result.profit_percent) }}" aria-label="Profit percent for this item"></td>
         <td class="short num" data-label="Price / unit"><input type="number" step="any" class="form-input k-price" data-k="price_each" value="{{ num(it.price_each) if it.manual_price else '' }}" placeholder="{{ num(it.price) if it.price is defined else '' }}" aria-label="Price per unit (leave empty to work it out)" title="Type a price to set it; clear it to work it out again"></td>
@@ -50,7 +52,7 @@
         <td colspan="9" class="k-lines-cell">
             <table class="items-editor k-lines">
                 <thead><tr><th class="long">Cost line</th><th class="c-make">Make / spec</th><th class="c-qty num">Qty</th><th class="c-unit">Unit</th><th class="c-ucost num">Unit cost</th><th class="c-markup num">Markup %</th><th class="c-lcost num">Cost</th><th class="col-x"></th></tr></thead>
-                <tbody>{% for l in it.lines %}{{ line_row(l, cur) }}{% endfor %}</tbody>
+                <tbody>{% for l in it.lines %}{{ line_row(l, base) }}{% endfor %}</tbody>
             </table>
             <button type="button" class="btn btn-ghost btn-sm k-add-line"><i data-lucide="plus"></i>Add cost line</button>
         </td>
@@ -58,7 +60,39 @@
 </tbody>
 {% endmacro %}
 
+{% macro shared_row(s, base) %}
+<tr class="k-share" data-kind="{{ s.kind or 'amount' }}" data-items="{{ (s['items'] or []) | tojson | forceescape }}">
+    <td class="long" data-label="Shared cost"><input type="text" class="form-input" data-k="description" value="{{ s.description or '' }}" placeholder="Design, freight, reference station…" aria-label="Shared cost" list="k-rates" autocomplete="off"></td>
+    <td class="short" data-label="How">
+        <select class="form-select" data-k="kind" aria-label="An amount, or a % of the items' cost">
+            {% for k, label in shared_kinds.items() %}<option value="{{ k }}" {% if (s.kind or 'amount') == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </td>
+    <td class="short num" data-label="Qty"><input type="number" step="any" class="form-input k-amount-only" data-k="qty" value="{{ num(s.qty) }}" placeholder="1" aria-label="Quantity"></td>
+    <td class="short num" data-label="Cost">
+        <input type="number" step="any" class="form-input k-amount-only" data-k="unit_cost" value="{{ num(s.unit_cost) }}" aria-label="Cost">
+        <input type="number" step="any" class="form-input k-percent-only" data-k="percent" value="{{ num(s.percent) }}" placeholder="%" aria-label="Percent of the items' cost">
+    </td>
+    <td class="short num" data-label="Markup %"><input type="number" step="any" class="form-input k-amount-only" data-k="markup" value="{{ num(s.markup) }}" placeholder="0" aria-label="Markup percent"></td>
+    <td class="short" data-label="Spread">
+        <select class="form-select k-amount-only" data-k="spread" aria-label="How it's spread over the items">
+            {% for k, label in spreads.items() %}<option value="{{ k }}" {% if (s.spread or 'equal') == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <span class="k-percent-only k-fixed">by cost</span>
+    </td>
+    <td class="short" data-label="Over">
+        <details class="menu k-over">
+            <summary class="btn btn-secondary btn-sm"><span class="k-over-label">All items</span><i data-lucide="chevron-down"></i></summary>
+            <div class="menu-items k-over-items"></div>
+        </details>
+    </td>
+    <td class="calc num" data-label="Amount"><output data-out="shared_amount">{{ s.amount | currency(base) if s.amount is defined else '—' }}</output></td>
+    <td class="col-x"><button type="button" class="btn btn-ghost btn-xs k-remove-shared" aria-label="Remove shared cost"><i data-lucide="x"></i></button></td>
+</tr>
+{% endmacro %}
+
 {% set cur = costing.currency %}
+{% set base = base_currency %}
 {% set t = result.totals %}
 {% block title %}Costing v{{ costing.version }} · {{ costing.title }}{% endblock %}
 {% block page_title %}Costing v{{ costing.version }}{% endblock %}
@@ -66,7 +100,8 @@
 
 {% block content %}
 <form method="POST" action="{{ url_for('costings_bp.save', costing_id=costing.costing_id) }}" class="k-form" data-costing
-      data-preview="{{ url_for('costings_bp.preview', costing_id=costing.costing_id) }}" data-mode="{{ result.mode }}">
+      data-preview="{{ url_for('costings_bp.preview', costing_id=costing.costing_id) }}" data-mode="{{ result.mode }}"
+      data-base="{{ base }}" data-foreign="{{ 'true' if cur != base else 'false' }}">
     <input type="hidden" name="sheet_json" value="">
 
     <div class="k-top">
@@ -101,12 +136,17 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="currency" class="form-label">Currency</label>
+                        <label for="currency" class="form-label">Quote in</label>
                         <select id="currency" name="currency" class="form-select">
                             {% for c in currencies %}<option value="{{ c }}" {% if c == cur %}selected{% endif %}>{{ c }}</option>{% endfor %}
                         </select>
                     </div>
+                    <div class="form-group k-fx-only">
+                        <label for="exchange_rate" class="form-label">{{ base }} per <span data-cur-label>{{ cur }}</span></label>
+                        <input type="number" step="any" min="0" id="exchange_rate" name="exchange_rate" class="form-input" value="{{ num(costing.sheet.exchange_rate) }}" placeholder="e.g. 84">
+                    </div>
                 </div>
+                <p class="form-text k-fx-only">Costs stay in {{ base }}; prices, profit and the quote are in <span data-cur-label>{{ cur }}</span> at this rate.</p>
                 <p class="form-text k-build-only" style="margin-bottom: 0;">Each item's price is its cost plus the profit (an item can have its own %). Type a price to set one yourself.</p>
                 <p class="form-text k-target-only" style="margin-bottom: 0;">The known total is shared over the items by their cost; the cost budget is what's left after your profit. Type a price to fix one item's share.</p>
             </div>
@@ -119,11 +159,14 @@
                     <dt class="k-target-only">Known total</dt><dd class="k-target-only" data-total="target">{{ t.target | currency(cur) if t.target is defined else '—' }}</dd>
                     <dt class="k-target-only">Cost budget at <span data-total="profit_percent">{{ num(result.profit_percent) }}</span>%</dt><dd class="k-target-only" data-total="budget">{{ t.budget | currency(cur) if t.budget is defined and t.budget is not none else '—' }}</dd>
                     <dt>Costs</dt><dd data-total="cost">{{ t.cost | currency(cur) }}</dd>
+                    <dt class="k-fx-only">Costs in {{ base }}</dt><dd class="k-fx-only" data-total="cost_base" data-in="base">{{ t.cost_base | currency(base) }}</dd>
+                    <dt class="k-shared-only" {% if not t.shared %}hidden{% endif %}>of which shared</dt><dd class="k-shared-only text-tertiary" data-total="shared" data-in="base" {% if not t.shared %}hidden{% endif %}>{{ t.shared | currency(base) }}</dd>
                     <dt class="k-target-only">Left in the budget</dt><dd class="k-target-only k-left{% if t.left is defined and t.left is not none and t.left < 0 %} k-over{% endif %}" data-total="left">{{ t.left | currency(cur) if t.left is defined and t.left is not none else '—' }}</dd>
                     <dt>Profit</dt><dd data-total="profit">{{ t.profit | currency(cur) }}</dd>
                     <dt></dt><dd class="text-tertiary k-pcts"><span data-total="profit_on_cost">{{ t.profit_on_cost if t.profit_on_cost is not none else '—' }}</span>% on cost · <span data-total="margin_of_price">{{ t.margin_of_price if t.margin_of_price is not none else '—' }}</span>% of price</dd>
                     <dt class="grand">Quote total</dt><dd class="grand" data-total="price">{{ t.price | currency(cur) }}</dd>
                 </dl>
+                <p class="form-text k-needs-rate" {% if not result.needs_rate %}hidden{% endif %}>Enter the exchange rate: until then the costs count as if they were in <span data-cur-label>{{ cur }}</span>.</p>
                 <p class="form-text k-off" {% if not t.off_target %}hidden{% endif %}>Rounding leaves the total <span data-total="off_target">{{ t.off_target | currency(cur) if t.off_target else '' }}</span> off the known total.</p>
                 <p class="form-text k-status" aria-live="polite"></p>
                 <button type="submit" name="action" value="save" class="btn btn-primary btn-block"><i data-lucide="save"></i>Save costing</button>
@@ -132,7 +175,11 @@
     </div>
 
     <section class="card items-card">
-        <div class="card-header"><h2 class="card-title">Items</h2><span class="text-tertiary">Cost lines stay here; the quote gets the items and prices.</span></div>
+        <div class="card-header">
+            <h2 class="card-title">Items</h2>
+            <span class="text-tertiary">Cost lines stay here; the quote gets the items and prices. Costs in {{ base }}.</span>
+            <a href="{{ url_for('costings_bp.rates', back=costing.costing_id) }}" class="btn btn-ghost btn-sm k-rates-link"><i data-lucide="book-open"></i>Rates list</a>
+        </div>
         <div class="items-wrap">
             <table class="items-editor k-items">
                 <thead>
@@ -142,18 +189,45 @@
                         <th class="c-amount num">Amount</th><th class="c-gain num">Profit</th><th class="col-x"><span class="sr-only">Actions</span></th>
                     </tr>
                 </thead>
-                {% for it in result['items'] %}{{ item_body(it, cur) }}{% endfor %}
+                {% for it in result['items'] %}{{ item_body(it, cur, base) }}{% endfor %}
             </table>
         </div>
-        {% set blank_item = {'name': '', 'description': '', 'qty': none, 'unit': '', 'cost_each': none, 'profit_percent': none,
+        {% set blank_item = {'key': '', 'name': '', 'description': '', 'qty': none, 'unit': '', 'cost_each': none, 'profit_percent': none,
                              'price_each': none, 'lines': [], 'manual_price': False} %}
-        <template id="k-item-template">{{ item_body(blank_item, cur) }}</template>
-        <template id="k-line-template"><table><tbody>{{ line_row({'description': '', 'make': '', 'qty': none, 'unit': '', 'unit_cost': none, 'markup': none}, cur) }}</tbody></table></template>
+        <template id="k-item-template">{{ item_body(blank_item, cur, base) }}</template>
+        <template id="k-line-template"><table><tbody>{{ line_row({'description': '', 'make': '', 'qty': none, 'unit': '', 'unit_cost': none, 'markup': none}, base) }}</tbody></table></template>
         <div class="items-foot k-foot">
-            <button type="button" class="btn btn-ghost btn-sm k-add-item"><i data-lucide="plus"></i>Add item</button>
+            <div class="k-foot-actions">
+                <button type="button" class="btn btn-ghost btn-sm k-add-item"><i data-lucide="plus"></i>Add item</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-open="k-copy"><i data-lucide="copy"></i>Copy from a costing</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-open="k-import"><i data-lucide="sheet"></i>Import from Excel</button>
+            </div>
             <span class="k-foot-totals">Costs <strong data-total="cost">{{ t.cost | currency(cur) }}</strong>
                 · Profit <strong data-total="profit">{{ t.profit | currency(cur) }}</strong>
                 · Quote total <strong data-total="price">{{ t.price | currency(cur) }}</strong></span>
+        </div>
+    </section>
+
+    <section class="card items-card k-shared-card">
+        <div class="card-header">
+            <h2 class="card-title">Shared costs</h2>
+            <span class="text-tertiary">Design, freight, a reference station, an allowance for changes: spread over the items, so their prices carry them.</span>
+        </div>
+        <div class="items-wrap">
+            <table class="items-editor k-shared" {% if not result.shared %}hidden{% endif %}>
+                <thead>
+                    <tr>
+                        <th class="long">Shared cost</th><th class="c-how">How</th><th class="c-qty">Qty</th><th class="c-ucost">Cost</th><th class="c-markup">Markup %</th>
+                        <th class="c-spread">Spread</th><th class="c-over">Over</th><th class="c-lcost num">Amount</th><th class="col-x"><span class="sr-only">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>{% for s in result.shared %}{{ shared_row(s, base) }}{% endfor %}</tbody>
+            </table>
+        </div>
+        <template id="k-shared-template"><table><tbody>{{ shared_row({'description': '', 'kind': 'amount', 'qty': none, 'unit_cost': none, 'markup': none, 'percent': none, 'spread': 'equal', 'items': []}, base) }}</tbody></table></template>
+        <div class="items-foot k-foot">
+            <button type="button" class="btn btn-ghost btn-sm k-add-shared"><i data-lucide="plus"></i>Add shared cost</button>
+            <span class="k-foot-totals k-shared-only" {% if not t.shared %}hidden{% endif %}>Shared <strong data-total="shared" data-in="base">{{ t.shared | currency(base) }}</strong></span>
         </div>
     </section>
 
@@ -214,6 +288,97 @@
     <input type="hidden" name="project_id" value="{{ costing.project_id }}"><input type="hidden" name="copy_of" value="{{ costing.costing_id }}">
 </form>
 <form id="k-delete" method="POST" action="{{ url_for('costings_bp.delete', costing_id=costing.costing_id) }}" data-confirm="Delete costing version {{ costing.version }}? This can't be undone."></form>
+
+<datalist id="k-rates">
+    {% for r in rates %}<option value="{{ r.description }}{% if r.make %} — {{ r.make }}{% endif %}">{% if r.unit_cost is not none %}{{ r.unit_cost | currency(base) }}{% if r.unit %} / {{ r.unit }}{% endif %}{% if r.markup %} + {{ num(r.markup) }}%{% endif %}{% endif %}</option>{% endfor %}
+</datalist>
+<script type="application/json" id="k-rates-data">{{ rates | tojson }}</script>
+
+<dialog class="k-dialog" id="k-copy" aria-labelledby="k-copy-title"
+        data-library="{{ url_for('costings_bp.library') }}" data-items="{{ url_for('costings_bp.items', costing_id='COSTING') }}" data-self="{{ costing.costing_id }}">
+    <div class="k-dialog-head">
+        <h2 id="k-copy-title">Copy items from a costing</h2>
+        <button type="button" class="btn btn-ghost btn-xs" data-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="k-dialog-body">
+        <div data-step="pick">
+            <label for="k-copy-search" class="sr-only">Search costings</label>
+            <input type="search" id="k-copy-search" class="form-input" placeholder="Search by title, customer or project number" data-search autocomplete="off">
+            <ul class="pick-list k-pick" data-list></ul>
+            <p class="form-text" data-empty hidden>No costings found.</p>
+        </div>
+        <div data-step="items" hidden>
+            <p class="k-dialog-sub" data-source></p>
+            <label class="k-check k-check-all"><input type="checkbox" data-all checked><span>All items</span></label>
+            <ul class="k-checklist" data-items-list></ul>
+            <p class="form-text">Each item comes with its cost lines. Shared costs stay behind.</p>
+        </div>
+    </div>
+    <div class="k-dialog-foot">
+        <button type="button" class="btn btn-ghost" data-back hidden><i data-lucide="arrow-left"></i>Other costings</button>
+        <span class="flex-grow"></span>
+        <button type="button" class="btn btn-secondary" data-close>Cancel</button>
+        <button type="button" class="btn btn-primary" data-add disabled>Add items</button>
+    </div>
+</dialog>
+
+<dialog class="k-dialog k-dialog-wide" id="k-import" aria-labelledby="k-import-title" data-url="{{ url_for('costings_bp.read_spreadsheet', costing_id=costing.costing_id) }}">
+    <div class="k-dialog-head">
+        <h2 id="k-import-title">Import from Excel</h2>
+        <button type="button" class="btn btn-ghost btn-xs" data-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="k-dialog-body">
+        <div data-step="file">
+            <label class="k-drop">
+                <input type="file" accept=".xlsx,.xlsm,.csv" data-file>
+                <i data-lucide="sheet"></i>
+                <span><strong>Choose a workbook</strong> (.xlsx or .csv)</span>
+                <span class="text-tertiary">It's read to pick the rows from; the file isn't kept.</span>
+            </label>
+            <p class="form-text k-error" data-error hidden></p>
+        </div>
+        <div data-step="map" hidden>
+            <p class="k-dialog-sub" data-file-name></p>
+            <div class="k-import-grid">
+                <div class="form-group"><label for="k-im-sheet" class="form-label">Sheet</label><select id="k-im-sheet" class="form-select" data-sheet></select></div>
+                <div class="form-group"><label for="k-im-head" class="form-label">Headings in row</label><input type="number" min="1" id="k-im-head" class="form-input" data-header></div>
+                {% for key, label in [('name', 'Item / description'), ('spec', 'Spec / make'), ('qty', 'Qty'), ('unit', 'Unit'), ('price', 'Unit cost or price'), ('amount', 'Amount')] %}
+                <div class="form-group"><label for="k-im-{{ key }}" class="form-label">{{ label }}</label><select id="k-im-{{ key }}" class="form-select" data-col="{{ key }}"></select></div>
+                {% endfor %}
+            </div>
+            <div class="k-import-as">
+                <div class="form-group">
+                    <span class="form-label">Bring the rows in as</span>
+                    <label class="k-check"><input type="radio" name="k-im-as" value="items" checked><span>Items, one per row</span></label>
+                    <label class="k-check"><input type="radio" name="k-im-as" value="lines"><span>Cost lines of a new item</span>
+                        <input type="text" class="form-input k-im-item-name" data-new-item placeholder="Item name" aria-label="Name of the new item"></label>
+                    <label class="k-check"><input type="radio" name="k-im-as" value="into"><span>Cost lines of</span>
+                        <select class="form-select" data-into aria-label="The item to add the cost lines to"></select></label>
+                </div>
+                <div class="form-group k-im-items-only">
+                    <label for="k-im-prices" class="form-label">The amounts in the price column are</label>
+                    <select id="k-im-prices" class="form-select" data-prices>
+                        <option value="cost">our costs</option>
+                        <option value="price">prices to the customer</option>
+                    </select>
+                </div>
+            </div>
+            <div class="k-import-preview items-wrap">
+                <table class="items-editor"><thead data-preview-head></thead><tbody data-preview-body></tbody></table>
+            </div>
+            <p class="form-text" data-summary></p>
+        </div>
+    </div>
+    <div class="k-dialog-foot">
+        <button type="button" class="btn btn-ghost" data-restart hidden><i data-lucide="arrow-left"></i>Another file</button>
+        <span class="flex-grow"></span>
+        <button type="button" class="btn btn-secondary" data-close>Cancel</button>
+        <button type="button" class="btn btn-primary" data-add disabled>Add rows</button>
+    </div>
+</dialog>
 {% endblock %}
 
-{% block extra_js %}<script src="{{ url_for('static', filename='js/costing.js') }}" defer></script>{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/costing.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/costing-import.js') }}" defer></script>
+{% endblock %}

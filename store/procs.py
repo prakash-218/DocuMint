@@ -1426,3 +1426,41 @@ def set_costing_quote(conn, costing_id, org_id, quote_id):
 def delete_costing(conn, costing_id, org_id):
     _exec(conn, "DELETE FROM costing WHERE costing_id = :k AND org_id = :o", k=costing_id, o=org_id)
     return []
+
+
+@proc('sp_list_org_costings')
+def list_org_costings(conn, org_id, search, limit):
+    """Every project's costings, newest first: to copy items from. search matches the title, project or customer."""
+    search = (search or '').strip()
+    return [_rows(conn, f"""SELECT {COSTING_COLUMNS}, jsonb_array_length(COALESCE(k.sheet -> 'items', '[]'::jsonb)) AS item_count
+                            FROM {COSTING_FROM}
+                            WHERE k.org_id = :o AND (:every OR k.title ILIKE :s OR p.title ILIKE :s
+                                                     OR CAST(p.project_no AS text) = :exact OR c.name ILIKE :s)
+                            ORDER BY k.updated_at DESC LIMIT :n""",
+                  o=org_id, every=not search, s=f'%{search}%', exact=search.lstrip('PRJprj-# 0') or search, n=int(limit or 50))]
+
+
+@proc('sp_list_costing_sheets')
+def list_costing_sheets(conn, org_id, limit):
+    return [_rows(conn, """SELECT costing_id, sheet, currency, updated_at FROM costing WHERE org_id = :o
+                           ORDER BY updated_at DESC LIMIT :n""", o=org_id, n=int(limit or 200))]
+
+
+# ================================================================ Cost rates
+
+@proc('sp_list_cost_rates')
+def list_cost_rates(conn, org_id):
+    return [_rows(conn, """SELECT cost_rate_id, description, make, unit, unit_cost, markup, notes, updated_at
+                           FROM cost_rate WHERE org_id = :o ORDER BY lower(description), lower(make)""", o=org_id)]
+
+
+@proc('sp_replace_cost_rates')
+def replace_cost_rates(conn, org_id, rates):
+    """The whole list as edited on the rates page (rows already cleaned; one per description and make)."""
+    _exec(conn, "DELETE FROM cost_rate WHERE org_id = :o", o=org_id)
+    for r in rates:
+        _exec(conn, """INSERT INTO cost_rate (org_id, description, make, unit, unit_cost, markup, notes)
+                       VALUES (:o, :d, :m, :u, :c, :k, :n)""",
+              o=org_id, d=r['description'], m=r.get('make') or '', u=r.get('unit') or '', c=r.get('unit_cost'),
+              k=r.get('markup'), n=r.get('notes') or '')
+    return []

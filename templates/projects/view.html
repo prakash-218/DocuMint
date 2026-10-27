@@ -120,6 +120,9 @@
                 {% endfor %}
             </ul>
             {% endif %}
+            <div class="card-body" style="padding-top: var(--spacing-sm); padding-bottom: var(--spacing-sm);">
+                <a href="{{ url_for('costings_bp.rates') }}" class="text-small">Rates list</a>
+            </div>
         </section>
         {% endif %}
 
