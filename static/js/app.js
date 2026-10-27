@@ -87,3 +87,23 @@ document.addEventListener('click', function (e) {
     var file = box.querySelector('input[type=file]');
     if (file) file.focus();
 });
+
+// PDF menu: "Print with seal" adds seal=0 to its links when unticked; the choice is remembered on this browser
+(function () {
+    var KEY = 'documint.pdfSeal';
+    document.querySelectorAll('[data-pdf-menu]').forEach(function (menu) {
+        var box = menu.querySelector('[data-seal]');
+        if (!box) return;
+        try { if (window.localStorage.getItem(KEY) === 'off') box.checked = false; } catch (e) { /* storage blocked: default on */ }
+        function apply() {
+            menu.querySelectorAll('a[data-pdf]').forEach(function (a) {
+                var url = new URL(a.getAttribute('href'), window.location.href);
+                if (box.checked) url.searchParams.delete('seal'); else url.searchParams.set('seal', '0');
+                a.setAttribute('href', url.pathname + url.search);
+            });
+            try { window.localStorage.setItem(KEY, box.checked ? 'on' : 'off'); } catch (e) { /* not remembered */ }
+        }
+        box.addEventListener('change', apply);
+        apply();
+    });
+})();

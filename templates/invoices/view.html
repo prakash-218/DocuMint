@@ -9,13 +9,17 @@
 {% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
 <details class="menu">
     <summary class="btn btn-secondary"><i data-lucide="download"></i><span class="btn-label">PDF</span><i data-lucide="chevron-down" class="hide-mobile"></i></summary>
-    <div class="menu-items">
-        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id) }}" target="_blank" rel="noopener"><i data-lucide="file-down"></i>{{ 'All copies' if t.takes_payments else 'Download PDF' }}</a>
+    <div class="menu-items" data-pdf-menu>
+        {% if has_seal %}
+        <label class="menu-check"><input type="checkbox" data-seal checked><span>Print with seal</span></label>
+        <hr>
+        {% endif %}
+        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id) }}" target="_blank" rel="noopener" data-pdf><i data-lucide="file-down"></i>{{ 'All copies' if t.takes_payments else 'Download PDF' }}</a>
         {% if t.takes_payments %}
-        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id, copies=1) }}" target="_blank" rel="noopener"><i data-lucide="file"></i>Original only</a>
+        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id, copies=1) }}" target="_blank" rel="noopener" data-pdf><i data-lucide="file"></i>Original only</a>
         {% endif %}
         {% for pg in extra_pages %}
-        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id, page=pg.key) }}" target="_blank" rel="noopener"><i data-lucide="{{ 'package' if pg.kind == 'packing' else 'file-plus' }}"></i>{{ pg.title or 'Extra page' }}</a>
+        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id, page=pg.key) }}" target="_blank" rel="noopener" data-pdf><i data-lucide="{{ 'package' if pg.kind == 'packing' else 'file-plus' }}"></i>{{ pg.title or 'Extra page' }}</a>
         {% endfor %}
         {% if has_packing and can_edit %}
         <hr><a href="{{ url_for('invoices_bp.packing', invoice_id=invoice.invoice_id) }}"><i data-lucide="package-open"></i>Edit packing</a>

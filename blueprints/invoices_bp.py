@@ -409,6 +409,7 @@ def view_invoice(invoice_id):
                            extra_pages=[p for p in pages if not p['with_document']],
                            has_packing=any(p['kind'] == 'packing' for p in pages),
                            base_currency=org_profile.get('default_currency') or 'INR',
+                           has_seal=bool(org_profile.get('stamp')),
                            today=date.today().isoformat(),
                            revisions=_quote_revisions(invoice_header, g.current_org_id),
                            invoice=invoice_header,
@@ -431,7 +432,8 @@ def export_pdf(invoice_id):
 
     try:
         return render_invoice_pdf(invoice_header, invoice_values, request.args.get('copies', type=int),
-                                  packing=request.args.get('packing') == '1', page_key=request.args.get('page'))
+                                  packing=request.args.get('packing') == '1', page_key=request.args.get('page'),
+                                  seal=request.args.get('seal') != '0')
     except LookupError:
         flash('That page isn\'t part of this document\'s template', 'error')
     except PdfUnavailable:

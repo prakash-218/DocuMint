@@ -524,3 +524,31 @@ def test_export_quotation(client, gst_org):
     assert details['terms_of_delivery'] == 'FOB Chennai' and details['destination'] == 'United States'
     assert projects.project_of(export_id, org_id) == project_id
     client.post('/settings/profile', data=PROFILE)
+
+
+def test_pdf_with_or_without_seal(client, gst_org, monkeypatch):
+    """The company stamp prints by default; seal=0 leaves it off (the signature and the rest stay)."""
+    import base64
+    import invoice_service
+    from document_service import get_org_profile, save_org_profile
+    org_id = gst_org
+    _, profile = get_org_profile(org_id)
+    stamp = 'data:image/png;base64,' + base64.b64encode(b'\x89PNG\r\n\x1a\n' + b'0' * 64).decode()
+    save_org_profile(org_id, {**profile, 'stamp': stamp})
+    customer = _customer(org_id, 'Tractors and Farm Equipment Limited, Gears Division', 'Tamil Nadu', 'India')
+    quote_id, _ = _create(client, org_id, 'quote', 'Quotation', customer, [{'description': 'Seal check', 'price': 100, 'qty': 1}])
+    rendered = []
+    real = invoice_service.render_template
+    monkeypatch.setattr(invoice_service, 'render_template', lambda *a, **k: rendered.append(real(*a, **k)) or rendered[-1])
+    monkeypatch.setattr(invoice_service, '_pdf_bytes', lambda html: b'%PDF-1.4')
+    monkeypatch.setattr(invoice_service, '_merge', lambda parts: parts[0])
+    try:
+        assert client.get(f'/quotes/{quote_id}/pdf').status_code == 200
+        assert stamp in rendered[-1]
+        assert client.get(f'/quotes/{quote_id}/pdf?seal=0').status_code == 200
+        assert stamp not in rendered[-1] and 'Seal check' in rendered[-1]
+        page = client.get(f'/invoices/{quote_id}', follow_redirects=True).get_data(as_text=True)
+        assert 'Print with seal' in page and 'data-pdf' in page
+    finally:
+        save_org_profile(org_id, profile)
+    assert 'Print with seal' not in client.get(f'/invoices/{quote_id}', follow_redirects=True).get_data(as_text=True)

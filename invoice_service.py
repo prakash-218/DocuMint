@@ -381,14 +381,15 @@ def _merge(parts: List[bytes]) -> bytes:
 
 
 def render_invoice_pdf(header: Dict, values: List[Dict], copies: Optional[int] = None,
-                       packing: bool = False, page_key: Optional[str] = None):
+                       packing: bool = False, page_key: Optional[str] = None, seal: bool = True):
     """Render a document to a PDF response (shared by staff and customer portal).
 
     Prints the pages the template's layout defines for this document type: the
     main document plus every page marked "print with document", or just page_key.
     Quotations use the letter layout; other types the boxed grid. Tax and export
     invoices print Original/Duplicate/Transporter copies unless the page (or
-    copies=1) says otherwise.
+    copies=1) says otherwise. seal=False leaves the company stamp off (to stamp
+    the printout by hand, or send an unsealed copy); the signature stays.
     """
     try:
         import xhtml2pdf  # noqa: F401
@@ -412,6 +413,8 @@ def render_invoice_pdf(header: Dict, values: List[Dict], copies: Optional[int] =
     payments = db.execute_proc('sp_get_invoice_payments', (header['invoice_id'],)) or []
     summary = invoice_summary(header, sections, payments)
     profile = load_json(header.get('organization_profile'))
+    if not seal:
+        profile = {k: v for k, v in profile.items() if k != 'stamp'}
     pack_page = packing_page(layout, doc_type.key)
     common = dict(invoice=header, sections_data=sections, payments=payments, summary=summary, profile=profile,
                   fonts=pdf_fonts(), current_date=datetime.now().strftime('%Y-%m-%d %H:%M'),

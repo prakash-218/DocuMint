@@ -1134,6 +1134,9 @@ input[type="date"].form-input { padding-right: 8px; }
 .menu-items [data-lucide] { width: 16px; height: 16px; color: var(--ink-3); }
 .menu-items hr { margin: 4px 0; border: 0; border-top: 1px solid var(--line-1); }
 .menu-items .danger { color: var(--critical-ink); }
+.menu-items .menu-check { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: var(--font-size-sm); color: var(--ink-1); cursor: pointer; border-radius: var(--radius-sm); }
+.menu-items .menu-check:hover { background: var(--surface-2); }
+.menu-items .menu-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 
 @media (max-width: 768px) {
     .table th, .table td { padding: 10px 8px; }
