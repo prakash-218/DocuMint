@@ -84,3 +84,37 @@
 </nav>
 {% endif %}
 {% endmacro %}
+
+{# A searchable list of projects to pick one from (static/js/project-picker.js; include that script on the page).
+   source: the JSON list (projects_bp.picker_options). Picking submits the surrounding form with project_id,
+   or, given href (with __ID__ for the project), goes there. current: the project it's in now. #}
+{% macro project_picker(id, source, current=None, href=None, prefer=None, placeholder='Search projects by name, number or customer') %}
+<div class="project-picker" data-project-picker data-source="{{ source }}"{% if current %} data-current="{{ current }}"{% endif %}{% if href %} data-href="{{ href }}"{% endif %}{% if prefer %} data-prefer="{{ prefer }}"{% endif %}>
+    <div class="pp-bar">
+        <div class="search-input pp-search">
+            <i data-lucide="search"></i>
+            <input type="search" class="form-input pp-query" id="{{ id }}" placeholder="{{ placeholder }}" autocomplete="off"
+                   role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="{{ id }}-list" aria-label="Search projects">
+        </div>
+        <select class="form-select pp-fy" aria-label="Financial year" hidden><option value="">All years</option></select>
+    </div>
+    <ul class="pp-list" id="{{ id }}-list" role="listbox" aria-label="Projects"><li class="pp-empty">Loading projects…</li></ul>
+    <p class="pp-more" hidden></p>
+</div>
+{% endmacro %}
+
+{# Under a quotation in a list: the versions its latest revision replaced (revisions.collapse), folded away #}
+{% macro earlier_versions(d) %}
+{% if d.versions %}
+<details class="versions">
+    <summary>{{ d.versions | length }} earlier version{{ 's' if d.versions | length > 1 }}</summary>
+    <ul>
+        {% for v in d.versions %}
+        <li><a href="{{ url_for('invoices_bp.view_invoice', invoice_id=v.invoice_id) }}">{{ v | doc_number }}</a>
+            <span>{{ v.issue_date | date or 'no date' }}</span>
+            <span class="num">{{ v.total_amount | currency(v.currency_code) }}</span></li>
+        {% endfor %}
+    </ul>
+</details>
+{% endif %}
+{% endmacro %}

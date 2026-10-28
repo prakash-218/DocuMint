@@ -39,7 +39,7 @@
         document.querySelectorAll('tr[data-href]').forEach(function (row) {
             row.classList.add('row-link');
             row.addEventListener('click', function (e) {
-                if (e.target.closest('a, button, input, select, form, label')) return;
+                if (e.target.closest('a, button, input, select, form, label, details')) return;
                 window.location = row.getAttribute('data-href');
             });
         });
@@ -107,3 +107,15 @@ document.addEventListener('click', function (e) {
         apply();
     });
 })();
+
+// <button data-open-dialog="id"> opens that <dialog>; [data-close] inside a dialog, or a click on its backdrop, closes it
+document.addEventListener('click', function (e) {
+    var opener = e.target.closest('[data-open-dialog]');
+    if (opener) {
+        var d = document.getElementById(opener.getAttribute('data-open-dialog'));
+        if (d && d.showModal && !d.open) d.showModal();
+        return;
+    }
+    var dialog = e.target.closest('dialog[open]');
+    if (dialog && (e.target === dialog || e.target.closest('[data-close]'))) dialog.close();
+});

@@ -78,16 +78,46 @@ def test_pdf_templates_render(app, fake_db, doc_type):
         html = render_template('pdf/quote.html' if doc_type == 'quote' else 'pdf/grid.html',
                                invoice=header, sections_data=sections, payments=[], fonts=pdf_fonts(),
                                profile={'gstin': '33ABCDE1234F1Z5', 'pan': 'ABCDE1234F', 'bank_name': 'HDFC'},
-                               copies=['Original Copy', 'Duplicate Copy'] if doc_type == 'invoice' else [''],
+                               copy='Original Copy' if doc_type == 'invoice' else '', header_height=150,
                                summary=invoice_summary(header, sections, []))
     assert 'X/001' in html
     assert '₹' in html
+    assert '-pdf-frame-content: ' + ('letterhead' if doc_type == 'quote' else 'dochead') in html
     if doc_type != 'quote':
         assert 'PO-77' in html and '33ABCDE1234F1Z5' in html and 'CGST' in html
     if doc_type == 'proforma':
         assert 'Against Proforma invoice' in html
     if doc_type == 'invoice':
-        assert html.count('Authorised Signatory') == 2     # one per copy
+        assert html.count('Authorised Signatory') == 1 and 'Original Copy' in html     # one copy per render
+
+
+def test_long_quote_repeats_letterhead_and_keeps_sign_off_together(app, fake_db):
+    """A quote that runs past a page: the letterhead tops every page, the pages are numbered, and the
+    seal / signature never go over without the closing ("Thanks & regards")."""
+    import io
+    from flask import render_template
+    from pypdf import PdfReader
+    import invoice_service
+    from invoice_service import build_sections, invoice_summary, pdf_fonts
+
+    header = {**fake_db.invoices['INV-A'], 'doc_type': 'quote', 'doc_number': 'KKR/Q/016/26-27', 'currency_code': 'INR',
+              'organization_name': 'Letterhead Works', 'details': '{"subject": "Fixtures", "closing": "We hope you will find our offer suitable."}'}
+    stamp = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+    with app.test_request_context():
+        sections = build_sections(header, fake_db._values_for('INV-A'))
+        items = next(s for s in sections.values() if s['type'] == 'line_item')
+        items['line_item_rows'] = items['line_item_rows'] * 45
+        common = dict(invoice=header, sections_data=sections, payments=[], fonts=pdf_fonts(), page={},
+                      profile={'stamp': stamp, 'signature': stamp, 'signatory_name': 'Signatory Name'},
+                      summary=invoice_summary(header, sections, []))
+        height = invoice_service._flow_height(render_template('pdf/quote.html', measure_header=True, **common))
+        pdf = invoice_service._document_pdf('pdf/quote.html', number_if_long=True, **common)
+    pages = [p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages]
+    assert 40 < height < 120 and len(pages) > 1
+    for n, text in enumerate(pages, 1):
+        assert 'LETTERHEAD WORKS' in text and f'Page {n} of {len(pages)}' in text
+    signed = [t for t in pages if 'Signatory Name' in t]
+    assert len(signed) == 1 and 'Thanks & regards' in signed[0] and 'We hope you will find' in signed[0]
 
 
 def test_dashboard_numbers(client, login_as, fake_db):

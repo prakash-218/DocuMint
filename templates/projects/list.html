@@ -24,13 +24,23 @@
 <div class="list-header">
     <nav class="segmented" aria-label="Filter by status">
         {% for key, label in [('open', 'Open'), ('completed', 'Completed'), ('cancelled', 'Cancelled'), ('all', 'All')] %}
-        <a href="{{ url_for('projects_bp.list_projects', status=key, customer_id=customer_id) }}" class="{{ 'active' if status == key }}" {% if status == key %}aria-current="page"{% endif %}>
+        <a href="{{ url_for('projects_bp.list_projects', status=key, customer_id=customer_id, fy=fy or None, q=query or None) }}" class="{{ 'active' if status == key }}" {% if status == key %}aria-current="page"{% endif %}>
             {{ label }} <span class="count">{{ counts.values() | sum if key == 'all' else counts.get(key, 0) }}</span>
         </a>
         {% endfor %}
     </nav>
-    <form method="GET">
+    <form method="GET" class="list-filters" role="search">
         <input type="hidden" name="status" value="{{ status }}">
+        <div class="search-input">
+            <i data-lucide="search"></i>
+            <label for="q" class="sr-only">Search projects</label>
+            <input type="search" id="q" name="q" value="{{ query }}" class="form-input" placeholder="Search name, number or customer">
+        </div>
+        <label for="fy_filter" class="sr-only">Financial year</label>
+        <select id="fy_filter" name="fy" class="form-select" onchange="this.form.submit()">
+            <option value="">All years</option>
+            {% for y in years %}<option value="{{ y }}" {% if y == fy %}selected{% endif %}>FY {{ y }}</option>{% endfor %}
+        </select>
         <label for="customer_filter" class="sr-only">Customer</label>
         <select id="customer_filter" name="customer_id" class="form-select" onchange="this.form.submit()">
             <option value="">All customers</option>
@@ -58,7 +68,7 @@
                 <tr data-href="{{ url_for('projects_bp.view_project', project_id=j.project_id) }}">
                     <td>
                         <a href="{{ url_for('projects_bp.view_project', project_id=j.project_id) }}" class="cell-primary" style="color: inherit;">{{ j.title }}</a>
-                        <span class="cell-secondary">{{ j | project_label }}{% if j.reference %} · {{ j.reference }}{% endif %}<span class="show-mobile"> · {{ j | customer_label }}</span></span>
+                        <span class="cell-secondary">{{ j | project_label }} · FY {{ j.fiscal_year }}{% if j.reference %} · {{ j.reference }}{% endif %}<span class="show-mobile"> · {{ j | customer_label }}</span></span>
                     </td>
                     <td class="hide-mobile">{{ j | customer_label }}</td>
                     <td class="num">{{ j.document_count }}</td>
@@ -71,8 +81,8 @@
         </table>
     </div>
     {{ pager(page, 'projects') }}
-{% elif status != 'all' or customer_id %}
-    {{ empty_state('search-x', 'No projects here', 'Try another status or customer.') }}
+{% elif status != 'all' or customer_id or fy or query %}
+    {{ empty_state('search-x', 'No projects here', 'Try another search, year, status or customer.') }}
 {% else %}
     {{ empty_state('briefcase', 'No projects yet', 'Start one for a new enquiry, or convert a quotation: the proforma and invoice made from it are grouped into a project automatically.',
                    url_for('projects_bp.create_project') if current_org_role in ('owner', 'admin', 'member') else None, 'New project') }}

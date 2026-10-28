@@ -155,8 +155,9 @@ def view_customer(customer_id):
                 if d.get('customer_id') in family]
         unpaid = [d for d in docs if d.get('doc_type') in ('invoice', 'export_invoice') and d.get('status') == 'pending']
         family_projects = projects.list_projects(g.current_org_id, customer_id)
+        import revisions
         return render_template('customers/view.html',
-                             docs=docs,
+                             docs=revisions.collapse(docs),
                              outstanding=sum_by_currency(unpaid, balance_of),
                              projects=family_projects,
                              own_projects=[j for j in family_projects if j['customer_id'] == customer_id],

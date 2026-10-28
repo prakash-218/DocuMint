@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge %}
+{% from "_macros.html" import status_badge, earlier_versions %}
 {% from "projects/_files.html" import files_card %}
 
 {% block title %}{{ project.title }} · {{ project | project_label }}{% endblock %}
 {% block page_title %}{{ project.title }}{% endblock %}
-{% block page_description %}<p class="header-description">{{ project | project_label }} · <a href="{{ url_for('customers_bp.view_customer', customer_id=project.customer_id) }}">{{ project | customer_label }}</a>{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</p>{% endblock %}
+{% block page_description %}<p class="header-description">{{ project | project_label }} · FY {{ project.fiscal_year }} · <a href="{{ url_for('customers_bp.view_customer', customer_id=project.customer_id) }}">{{ project | customer_label }}</a>{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</p>{% endblock %}
 
 {% block header_actions %}
 {% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
@@ -37,6 +37,7 @@
                             <div>
                                 <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}" class="cell-primary">{{ d | doc_number }}</a>
                                 <span class="cell-secondary">{{ d.doc_type | doc_label }} · {{ d.issue_date | date or 'no date' }}</span>
+                                {{ earlier_versions(d) }}
                             </div>
                             <div class="project-doc-right">
                                 <span class="num">{{ d.total_amount | currency(d.currency_code) }}</span>
@@ -215,11 +216,19 @@
                         <label for="project_ref" class="form-label">Customer reference</label>
                         <input type="text" id="project_ref" name="reference" class="form-input" value="{{ project.reference or '' }}" maxlength="100">
                     </div>
-                    <div class="form-group">
-                        <label for="project_status" class="form-label">Status</label>
-                        <select id="project_status" name="status" class="form-select">
-                            {% for k, label in statuses.items() %}<option value="{{ k }}" {% if k == project.status %}selected{% endif %}>{{ label }}</option>{% endfor %}
-                        </select>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="project_status" class="form-label">Status</label>
+                            <select id="project_status" name="status" class="form-select">
+                                {% for k, label in statuses.items() %}<option value="{{ k }}" {% if k == project.status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="project_fy" class="form-label">Financial year</label>
+                            <select id="project_fy" name="fiscal_year" class="form-select">
+                                {% for y in (years + [project.fiscal_year]) | unique | sort(reverse=true) %}<option value="{{ y }}" {% if y == project.fiscal_year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+                            </select>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="project_notes" class="form-label">Notes</label>

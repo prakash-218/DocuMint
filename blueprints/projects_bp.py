@@ -5,8 +5,9 @@ their documents (PO, drawings...) with them.
 
 import io
 import logging
+import re
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from access import get_org_customer, get_org_invoice, safe_referrer
 from auth import can_delete_invoice, can_edit_invoice, get_current_org_role, require_org
@@ -14,6 +15,7 @@ from db import DatabaseError, db
 import projects as J
 import activity
 import costing
+import revisions
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,12 @@ def _project_or_404(project_id):
     return project
 
 
+def _fiscal_year(value):
+    """A financial year typed or picked in a form ('26-27', or '2026' for calendar years), else None."""
+    value = (value or '').strip()
+    return value if re.fullmatch(r'\d{2}-\d{2}|\d{4}', value) else None
+
+
 def _need_editor(back):
     if can_edit_invoice():
         return None
@@ -45,23 +53,44 @@ def list_projects():
     status = request.args.get('status', 'open')
     status = status if status in J.PROJECT_STATUSES or status == 'all' else 'open'
     customer_id = request.args.get('customer_id') or None
+    fy = _fiscal_year(request.args.get('fy')) or ''
+    query = (request.args.get('q') or '').strip()
     try:
-        rows = J.list_projects(org_id, customer_id, None if status == 'all' else status)
+        found = J.list_projects(org_id, customer_id, None)
+        years = sorted({r['fiscal_year'] for r in found if r.get('fiscal_year')}, reverse=True)
+        if fy:
+            found = [r for r in found if r.get('fiscal_year') == fy]
+        if query:
+            found = J.search_projects(found, query)
         counts = {}
-        for r in J.list_projects(org_id, customer_id, None):
+        for r in found:
             counts[r['status']] = counts.get(r['status'], 0) + 1
+        rows = [r for r in found if status == 'all' or r['status'] == status]
         ungrouped = J.ungrouped_families(org_id)
         customers = db.execute_proc('sp_list_customers', (org_id, False)) or []
     except DatabaseError:
         logger.exception("Failed to list projects")
         flash('Could not load projects', 'error')
-        rows, counts, ungrouped, customers = [], {}, 0, []
+        rows, counts, ungrouped, customers, years = [], {}, 0, [], []
     from pagination import paginate
     page = paginate(rows)
     return render_template('projects/list.html', projects=page.items, page=page, status=status, counts=counts,
-                           customers=customers,
+                           customers=customers, years=years, fy=fy, query=query,
                            customer_id=customer_id, ungrouped=ungrouped, statuses=J.PROJECT_STATUSES,
                            current_org_role=get_current_org_role())
+
+
+@projects_bp.route('/options')
+@require_org
+def picker_options():
+    """Projects to pick from, for the project picker (JSON): a customer's (with exact=1, not its sites'),
+    or every customer's; status=open for open ones only."""
+    customer_id = request.args.get('customer_id') or None
+    status = request.args.get('status') if request.args.get('status') in J.PROJECT_STATUSES else None
+    rows = J.list_projects(g.current_org_id, customer_id, status)
+    if customer_id and request.args.get('exact'):
+        rows = [r for r in rows if str(r['customer_id']) == customer_id]
+    return jsonify(projects=J.picker_rows(rows), this_year=J.current_fiscal_year(g.current_org_id))
 
 
 @projects_bp.route('/group-linked', methods=['POST'])
@@ -110,7 +139,7 @@ def create_project():
                     flash('Give the project a name, e.g. "Welding fixture for Line 3"', 'error')
                     return redirect(url_for('projects_bp.create_project', customer_id=customer_id))
                 project_id = J.create_project(org_id, customer_id, title, request.form.get('reference'),
-                                      request.form.get('notes'), _user_id())
+                                              request.form.get('notes'), _user_id(), _fiscal_year(request.form.get('fiscal_year')))
         except DatabaseError:
             logger.exception("Failed to create project")
             flash('Could not create the project', 'error')
@@ -125,7 +154,8 @@ def create_project():
         return redirect(url_for('projects_bp.view_project', project_id=project_id))
 
     customers = db.execute_proc('sp_list_customers', (org_id, False)) or []
-    return render_template('projects/create.html', customers=customers, customer_id=request.args.get('customer_id'))
+    return render_template('projects/create.html', customers=customers, customer_id=request.args.get('customer_id'),
+                           years=J.recent_fiscal_years(org_id))
 
 
 @projects_bp.route('/<project_id>')
@@ -137,10 +167,12 @@ def view_project(project_id):
     all_files = J.list_attachments(org_id, project_id=project_id)
     files = [f for f in all_files if f.get('kind') not in J.EARLIER_KINDS]       # earlier documents show in the stages
     other_files = [f for f in J.list_attachments(org_id, customer_id=project['customer_id']) if not f.get('project_id')]
-    return render_template('projects/view.html', project=project, docs=docs, stages=J.project_stages(docs, all_files), money=J.project_money(docs, all_files),
+    return render_template('projects/view.html', project=project, docs=docs, money=J.project_money(docs, all_files),
+                           stages=J.project_stages(revisions.collapse(docs), all_files),
                            files=files, other_files=other_files,
                            addable=J.unassigned_documents(org_id, project['customer_id']),
                            statuses=J.PROJECT_STATUSES, kinds=J.DOCUMENT_KINDS, po=J.latest_purchase_order(org_id, project_id),
+                           years=J.recent_fiscal_years(org_id),
                            events=db.execute_proc('sp_list_project_events', (project_id, org_id, 30)) or [],
                            threads=db.execute_proc('sp_list_email_threads', (org_id, project_id, None, False, 50)) or []
                            if get_current_org_role() in ('owner', 'admin', 'member') else [],
@@ -163,7 +195,8 @@ def edit_project(project_id):
             (request.form.get('title', project['title']) or project['title']).strip()[:200],
             (request.form.get('reference', project.get('reference') or '') or '').strip()[:100],
             status if status in J.PROJECT_STATUSES else project['status'],
-            (request.form.get('notes', project.get('notes') or '') or '').strip()), fetch=False)
+            (request.form.get('notes', project.get('notes') or '') or '').strip(),
+            _fiscal_year(request.form.get('fiscal_year')) or project['fiscal_year']), fetch=False)
     except DatabaseError:
         logger.exception("Failed to update project %s", project_id)
         flash('Could not save the project', 'error')

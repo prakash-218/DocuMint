@@ -5,6 +5,7 @@ per-document settings and converting one document into another.
 
 import json
 import logging
+import re
 from datetime import date
 from typing import Dict, List, Optional, Tuple
 
@@ -321,33 +322,58 @@ def convert_document(source: Dict, source_values: List[Dict], target_type: str, 
     return new_id
 
 
-REVISABLE = ('sent', 'accepted', 'declined')
+# What can be revised, from which statuses: a quotation the customer has seen, a proforma not yet invoiced
+REVISABLE = {'quote': ('sent', 'accepted', 'declined'), 'proforma': ('sent',)}
+
+# 'KKR/Q/029/26-27', 'KKR/Q/029R1/26-27', 'KKR/Q/023AR1/26-27', 'PI 007(26-27)': the serial (with an
+# optional letter), an optional R-number revision, then the financial year
+_REVISION = re.compile(r'^(?P<head>.*?\d+[A-Z]?)(?:R(?P<rev>\d+))?(?P<tail>\W*\d{2}-\d{2}\W*)$')
 
 
 def revision_info(doc: Dict) -> Tuple[str, int]:
-    """(base number, revision) of a quote: ('KKR/Q/027/26-27', 2) for '... Rev.2'."""
+    """(base number, revision) of a document revised the ' Rev.N' way: ('KKR/Q/027/26-27', 2) for '... Rev.2'."""
     details = load_json(doc.get('details'))
     base = details.get('base_number') or doc.get('doc_number') or ''
     return base, int(details.get('revision') or 0)
 
 
-def revise_document(source: Dict, source_values: List[Dict], org_id) -> str:
-    """
-    New revision of a sent quote: same number with " Rev.N", everything copied,
-    as a draft to edit and send again. The previous version is marked 'revised'.
-    """
-    if source.get('doc_type') != 'quote':
-        raise DocumentError('Only quotations can be revised')
-    if source.get('status') not in REVISABLE:
-        raise DocumentError('Send the quotation before revising it; a draft can simply be edited')
+def next_revision_number(doc: Dict) -> Tuple[str, Dict]:
+    """The next revision's number, and what to keep in its details to number the one after.
 
-    base, revision = revision_info(source)
-    revision += 1
-    details = dict(load_json(source.get('details')), base_number=base, revision=revision)
-    new_id = _copy_document(source, source_values, 'quote', org_id, source['template_id'],
-                            f'{base} Rev.{revision}', source.get('fiscal_year'), details,
-                            source.get('tax_mode') or 'none', source.get('tax_rate'), None, source.get('advance_basis'))
+    'KKR/Q/029/26-27' -> 'KKR/Q/029R1/26-27' -> 'KKR/Q/029R2/26-27', the way revisions were numbered before
+    DocuMint; a number with no financial year at its end gets ' Rev.1', ' Rev.2' (as do the ones that
+    already have them)."""
+    match = _REVISION.match(doc.get('doc_number') or '')
+    if match:
+        return f"{match['head']}R{int(match['rev'] or 0) + 1}{match['tail']}", {}
+    base, revision = revision_info(doc)
+    return f'{base} Rev.{revision + 1}', {'base_number': base, 'revision': revision + 1}
+
+
+def revise_document(source: Dict, source_values: List[Dict], org_id, template_id: Optional[str] = None) -> str:
+    """
+    New revision of a sent quotation or proforma: the next revision number, everything copied (into
+    another template if one is given), as a draft to change and send again. The previous version is
+    marked 'revised'; a proforma's advances not yet applied to an invoice move to the revision.
+    """
+    doc_type = source.get('doc_type')
+    label = get_type(doc_type).label.lower()
+    if doc_type not in REVISABLE:
+        raise DocumentError('Only quotations and proforma invoices can be revised; correct an invoice instead')
+    if source.get('status') not in REVISABLE[doc_type]:
+        if (source.get('status') or 'draft') == 'draft':
+            raise DocumentError(f'Send the {label} before revising it; a draft can simply be edited')
+        raise DocumentError(f"A {source.get('status')} {label} can't be revised")
+
+    number, numbering = next_revision_number(source)
+    details = {k: v for k, v in load_json(source.get('details')).items() if k not in ('base_number', 'revision')}
+    new_id = _copy_document(source, source_values, doc_type, org_id, template_id or source['template_id'],
+                            number, source.get('fiscal_year'), {**details, **numbering},
+                            source.get('tax_mode') or 'none', source.get('tax_rate'),
+                            source.get('advance_percent') if doc_type == 'proforma' else None, source.get('advance_basis'))
     db.execute_proc('sp_update_invoice_status', (source['invoice_id'], 'revised'), fetch=False)
+    if doc_type == 'proforma':
+        db.execute_proc('sp_move_open_advances', (source['invoice_id'], new_id), fetch=False)
     return new_id
 
 
@@ -467,5 +493,7 @@ def create_starter_templates(org_id) -> List[str]:
                     total_field_id = field['field_id']
         if total_field_id:
             db.execute_proc('sp_set_template_total_field', (template_id, version, total_field_id), fetch=False)
+        from layout import load_layout, save_layout, template_types
+        save_layout(template_id, org_id, {**load_layout(template_id, org_id), 'used_for': template_types(name, {})})
         created.append(name)
     return created

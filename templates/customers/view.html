@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge %}
+{% from "_macros.html" import status_badge, earlier_versions %}
 {% from "projects/_files.html" import files_card %}
 {% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
 
@@ -31,6 +31,7 @@
                             <td>
                                 <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}" class="cell-primary" style="color: inherit;">{{ d | doc_number }}</a>
                                 <span class="cell-secondary">{{ d.doc_type | doc_label }}{% if d.customer_id != customer.customer_id %} · {{ d.customer_site or d.customer_name }}{% endif %}</span>
+                                {{ earlier_versions(d) }}
                             </td>
                             <td class="num hide-mobile">{{ d.issue_date | date or '—' }}</td>
                             <td>{{ status_badge(d) }}</td>
@@ -67,7 +68,8 @@
         </section>
 
         <div id="files">
-        {{ files_card(files, {'customer_id': customer.customer_id}, file_kinds, can_edit, projects=own_projects, show_where=True) }}
+        {{ files_card(files, {'customer_id': customer.customer_id}, file_kinds, can_edit, show_where=True,
+                      move_source=url_for('projects_bp.picker_options', customer_id=customer.customer_id, exact=1) if own_projects else None) }}
         </div>
     </div>
 

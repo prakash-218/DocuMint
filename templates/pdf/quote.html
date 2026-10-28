@@ -1,7 +1,13 @@
 {#
   Letter-style quotation: letterhead, addressee, subject, priced items, terms
   and a signed sign-off. Expects: invoice, sections_data, summary, profile, fonts
+  The letterhead prints at the top of every page, in a frame header_height (pt) tall;
+  measure_header=true renders just the letterhead, to measure it. numbered=true adds
+  page numbers (for a quote that runs past a page).
 #}
+{% set measure_header = measure_header | default(false) %}
+{% set header_height = header_height | default(100) %}
+{% set numbered = numbered | default(false) %}
 {% set cur = invoice.currency_code %}
 {% set d = invoice.details | fromjson %}
 {% macro cell(value) -%}
@@ -9,7 +15,7 @@
     {%- elif value.data_type == 'number' -%}
         {%- if value.val_number is none -%}{%- elif value.is_currency -%}{{ value.val_number | currency(cur) }}{%- else -%}{{ value.val_number | number }}{%- endif -%}
     {%- elif value.data_type == 'date' -%}{{ value.val_date | date }}
-    {%- else -%}{{ value.val_string | multiline }}{%- endif -%}
+    {%- else -%}{{ value.val_string | multiline(blocks=true) }}{%- endif -%}
 {%- endmacro %}
 <!DOCTYPE html>
 <html>
@@ -17,7 +23,13 @@
 <meta charset="UTF-8">
 <title>Quotation {{ invoice | doc_number }}</title>
 <style>
+    {% if measure_header %}
     @page { size: a4 portrait; margin: 1.0cm 1.8cm 1.3cm 1.8cm; }
+    {% else %}
+    @page { size: a4 portrait; margin: {{ 28.35 + header_height }}pt 1.8cm 1.3cm 1.8cm;
+            @frame letterhead { -pdf-frame-content: letterhead; top: 1.0cm; margin-left: 1.8cm; margin-right: 1.8cm; height: {{ header_height + 2 }}pt; }
+            {% if numbered %}@frame pagefoot { -pdf-frame-content: pagefoot; bottom: 0.5cm; margin-left: 1.8cm; margin-right: 1.8cm; height: 0.6cm; }{% endif %} }
+    {% endif %}
     body { font-family: {{ fonts.regular or 'Helvetica' }}; font-size: 9.5pt; color: #111; line-height: 1.25; }
     p { margin: 0 0 5pt 0; }
     .head { text-align: center; color: #1f2fd1; font-family: {{ fonts.mono or 'Courier' }}; font-weight: bold; }
@@ -31,9 +43,11 @@
     .center { text-align: center; }
     .left { text-align: left; }
     .terms li { margin-bottom: 2pt; }
+    .ln { line-height: 1.1; margin: 0; }
 </style>
 </head>
 <body>
+    <div id="letterhead">
     <div class="head">
         {% if profile.logo %}<img src="{{ profile.logo }}" style="height: 34pt;"><br>{% endif %}
         <div class="name">{{ invoice.organization_name | upper }}</div>
@@ -45,6 +59,9 @@
         {% for f in org_fields | default([]) %}<div class="line">{{ f.label | upper }}: {{ f.value }}</div>{% endfor %}
     </div>
     <table style="margin: 4pt 0 12pt;"><tr><td style="background-color: #1f2fd1; font-size: 3pt; line-height: 3pt;">&nbsp;</td></tr></table>
+    </div>
+    {% if not measure_header %}
+    {% if numbered %}<div id="pagefoot" style="font-size: 7.5pt; color: #888; text-align: center;">{{ invoice | doc_number }} · Page <pdf:pagenumber> of <pdf:pagecount></div>{% endif %}
 
     <table>
         <tr>
@@ -87,7 +104,7 @@
     {% endfor %}
     {% set total_weight = ns_w.weights | sum or 1 %}
     {% macro w(n) %}{{ (ns_w.weights[n - 1] * 92 / total_weight) | round(1) }}%{% endmacro %}
-    <table class="items" style="margin: 6pt 0 4pt;">
+    <table class="items" style="margin: 6pt 0 4pt;" repeat="1">
         <tr>
             <td width="8%" class="center"><b>Sl.no</b></td>
             {% for i in shown %}<td width="{{ w(loop.index) }}" class="{{ ns_w.aligns[loop.index0] }}"><b>{{ section.line_item_headers[i] }}</b></td>{% endfor %}
@@ -111,12 +128,12 @@
     {% endfor %}
 
     {% if summary.breakups %}
-    <p style="margin: 10pt 0 3pt;"><b><u>Cost break-up:</u></b></p>
+    <p style="margin: 10pt 0 3pt; -pdf-keep-with-next: true;"><b><u>Cost break-up:</u></b></p>
     {% for group in summary.breakups %}
     <table class="items" style="margin: 0 0 6pt; width: 75%;">
         <tr><td colspan="2" style="background-color: #f2f2f2;"><b>Item {{ group.item_no }}{% if group.item %}: {{ (group.item.description or '').splitlines()[0] }}{% endif %}</b></td></tr>
         {% for part in group.parts %}
-        <tr><td width="70%" class="left">{{ part.description | multiline }}</td><td width="30%" class="num">{{ part.amount | currency(cur) }}</td></tr>
+        <tr><td width="70%" class="left">{{ part.description | multiline(blocks=true) }}</td><td width="30%" class="num">{{ part.amount | currency(cur) }}</td></tr>
         {% endfor %}
         <tr><td class="num"><b>Total</b></td><td class="num"><b>{{ group.total | currency(cur) }}</b></td></tr>
     </table>
@@ -135,7 +152,7 @@
     {% endif %}
 
     {% if d.terms %}
-    <p style="margin: 14pt 0 2pt;"><b><u>Terms &amp; Conditions:</u></b></p>
+    <p style="margin: 14pt 0 2pt; -pdf-keep-with-next: true;"><b><u>Terms &amp; Conditions:</u></b></p>
     <ul class="terms" style="margin-top: 0;">
         {% for line in d.terms.splitlines() if line.strip() %}<li>{{ line }}</li>{% endfor %}
         {% if invoice.due_date %}<li>Quote valid until {{ invoice.due_date | date }}</li>{% endif %}
@@ -143,7 +160,7 @@
     {% endif %}
 
     {% if export and (profile.bank_account or profile.bank_swift) %}
-    <p style="margin: 10pt 0 2pt;"><b><u>Bank details for wire transfer:</u></b></p>
+    <p style="margin: 10pt 0 2pt; -pdf-keep-with-next: true;"><b><u>Bank details for wire transfer:</u></b></p>
     <p style="margin: 0;">
         {% for label, key in [('Beneficiary', None), ('Bank', 'bank_name'), ('Account no.', 'bank_account'), ('SWIFT', 'bank_swift'), ('IFSC', 'bank_ifsc'), ('Branch', 'bank_branch')] %}
         {% if key is none %}{{ label }}: {{ invoice.organization_name or '' }}<br>{% elif profile.get(key) %}{{ label }}: {{ profile.get(key) }}<br>{% endif %}
@@ -151,18 +168,23 @@
     </p>
     {% endif %}
 
-    {% if d.closing %}
-    {% for para in d.closing.split('\n\n') %}<p>{{ para }}</p>{% endfor %}
-    {% endif %}
-
-    {# One table so the sign-off never splits across pages #}
-    <table style="width: 45%; margin-top: 6pt;">
-        <tr><td style="padding: 0;">Thanks &amp; regards,</td></tr>
-        <tr><td style="padding: 2pt 0 0;">
-            {% if profile.stamp %}<img src="{{ profile.stamp }}" style="height: 50pt;">{% endif %}
-            {% if profile.signature %}<img src="{{ profile.signature }}" style="height: 40pt;">{% endif %}
+    {# The closing and the sign-off are one table row, which never splits: when the seal and
+       signature don't fit on the page, the closing goes over with them #}
+    <table style="margin-top: 6pt;">
+        <tr><td style="padding: 0;">
+            {% if d.closing %}
+            {% for para in d.closing.split('\n\n') %}<p>{{ para }}</p>{% endfor %}
+            {% endif %}
+            <p style="margin: 6pt 0 2pt;">Thanks &amp; regards,</p>
+            {% if profile.stamp or profile.signature %}
+            <div>
+                {% if profile.stamp %}<img src="{{ profile.stamp }}" style="height: 50pt;">{% endif %}
+                {% if profile.signature %}<img src="{{ profile.signature }}" style="height: 40pt;">{% endif %}
+            </div>
+            {% endif %}
+            <p style="margin: 0;">{{ profile.signatory_name or '' }}<br>{{ invoice.organization_name }}</p>
         </td></tr>
-        <tr><td style="padding: 0;">{{ profile.signatory_name or '' }}<br>{{ invoice.organization_name }}</td></tr>
     </table>
+    {% endif %}{# not measure_header #}
 </body>
 </html>

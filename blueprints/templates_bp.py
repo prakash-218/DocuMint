@@ -68,6 +68,7 @@ def create_template():
             logger.exception("Template create failed")
             flash('Could not create the template', 'error')
             return _builder(None, None, TB.STARTER)
+        _save_used_for(template_id, org_id, request.form.getlist('used_for'))
         flash('Template created', 'success')
         _warn_invalid_formulas(template_id)
         return redirect(url_for('templates_bp.view_template', template_id=template_id))
@@ -83,7 +84,9 @@ def _builder(template_id, info, sections, in_use=0):
         for j, f in enumerate(sec['fields'], start=1):
             if f.get('total'):
                 total_key = f'{i}:{j}'
+    from documents import CHOOSABLE, DOC_TYPES
     return render_template('templates/builder.html', template_id=template_id, info=info, sections=sections,
+                           choosable=CHOOSABLE, doc_types=DOC_TYPES,
                            total_key=total_key, in_use=in_use, field_types=TB.FIELD_TYPES,
                            section_types=TB.SECTION_TYPES, currencies=list(SYMBOLS),
                            default_currency=get_org_profile(g.current_org_id)[1].get('default_currency') or 'INR')
@@ -112,7 +115,7 @@ def view_template(template_id):
 @require_org
 def edit_layout(template_id):
     """Pages & printing: which pages the template prints, their columns, copies and box fields."""
-    from documents import DOC_TYPES
+    from documents import CHOOSABLE, DOC_TYPES
     from layout import PAGE_KINDS, layout_from_form, load_layout, new_page, save_layout, template_is_export
 
     org_id = g.current_org_id
@@ -152,8 +155,29 @@ def edit_layout(template_id):
             section_choices.append(sec)
     return render_template('templates/layout.html', template_id=template_id, info=info, layout=layout,
                            item_fields=item_fields, section_choices=section_choices,
-                           doc_types=DOC_TYPES, page_kinds=PAGE_KINDS,
+                           doc_types=DOC_TYPES, page_kinds=PAGE_KINDS, choosable=CHOOSABLE, used_for=_ticked_types(info, layout),
                            auto_export=template_is_export(template_id, org_id, {**layout, 'export': None}))
+
+
+def _save_used_for(template_id, org_id, used_for):
+    """A new template's "Used for" (none ticked: guessed from its name until it's set)."""
+    from layout import load_layout, save_layout
+    if not used_for:
+        return
+    try:
+        save_layout(template_id, org_id, {**load_layout(template_id, org_id), 'used_for': used_for})
+    except DatabaseError:
+        logger.exception("Could not save what template %s is used for", template_id)
+
+
+def _ticked_types(info, layout):
+    """The "Used for" boxes to tick: the template's setting, or the types its name suggests (none when it says nothing)."""
+    from documents import CHOOSABLE
+    from layout import template_types
+    if layout.get('used_for') is not None:
+        return layout['used_for']
+    guess = template_types(info.get('name') or info.get('template_name'), layout)
+    return [] if guess == list(CHOOSABLE) else guess
 
 
 @templates_bp.route('/<template_id>/create-version', methods=['POST'])

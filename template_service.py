@@ -155,6 +155,8 @@ def template_cards(org_id, include_archived: bool) -> List[Dict]:
     usage: Dict[str, int] = {}
     for d in db.execute_proc('sp_list_invoices', (org_id, None, 1000, 0)) or []:
         usage[d.get('template_id')] = usage.get(d.get('template_id'), 0) + 1
+    from layout import types_by_template
+    types = types_by_template(org_id, list(latest.values()))
     cards = []
     for t in latest.values():
         fields = get_template_fields(t['template_id'], t['version'])
@@ -164,5 +166,5 @@ def template_cards(org_id, include_archived: bool) -> List[Dict]:
             if not sections or sections[-1]['title'] != title:
                 sections.append({'title': title, 'type': f.get('section_type'), 'columns': []})
             sections[-1]['columns'].append(f.get('field_display_name') or f.get('field_name'))
-        cards.append({**t, 'sections': sections, 'used': usage.get(t['template_id'], 0)})
+        cards.append({**t, 'sections': sections, 'used': usage.get(t['template_id'], 0), 'used_for': types[t['template_id']]})
     return sorted(cards, key=lambda c: (bool(c.get('is_archived')), -c['used'], c.get('name') or ''))
