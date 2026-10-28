@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge, earlier_versions %}
-{% from "projects/_files.html" import files_card %}
-{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
+{% from "projects/_files.html" import files_card with context %}
+{% set can_edit = current_org_role in editor_roles %}
 
 {% block title %}{{ customer.name }}{% endblock %}
 {% block page_title %}{{ customer.name }}{% endblock %}
@@ -11,7 +11,7 @@
 {% if can_edit and not customer.is_archived %}
 <a href="{{ url_for('projects_bp.create_project', customer_id=customer.customer_id) }}" class="btn btn-secondary"><i data-lucide="briefcase"></i><span class="btn-label">New project</span></a>
 {% endif %}
-{% if current_org_role in ('owner', 'admin') %}
+{% if current_org_role in customer_editor_roles %}
 <a href="{{ url_for('customers_bp.edit_customer', customer_id=customer.customer_id) }}" class="btn btn-secondary"><i data-lucide="pencil"></i><span class="btn-label">Edit</span></a>
 {% endif %}
 {% endblock %}
@@ -74,6 +74,7 @@
     </div>
 
     <aside>
+        {% if not quotations_only %}
         <div class="card">
             <div class="card-body">
                 <dl class="kv">
@@ -85,6 +86,7 @@
                 </dl>
             </div>
         </div>
+        {% endif %}
 
         <div class="card">
             <div class="card-header"><h2 class="card-title">Details</h2></div>

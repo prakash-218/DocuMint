@@ -7,6 +7,7 @@ import re
 from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, jsonify
 from db import db, DatabaseError
 from auth import require_auth, require_org
+from store.schema import ROLES
 from access import safe_referrer
 
 logger = logging.getLogger(__name__)
@@ -404,7 +405,7 @@ def approve_member():
         flash('Invalid request', 'error')
         return redirect(safe_referrer('settings_bp.index'))
 
-    if role and role not in ('owner', 'admin', 'member', 'viewer'):
+    if role and role not in ROLES:
         flash('Invalid role', 'error')
         return redirect(safe_referrer('settings_bp.index'))
 

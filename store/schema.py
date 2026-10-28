@@ -61,7 +61,7 @@ users = Table(
     _created(),
 )
 
-ROLES = ('owner', 'admin', 'member', 'viewer')
+ROLES = ('owner', 'admin', 'member', 'viewer', 'sales')
 MEMBER_STATUSES = ('active', 'pending', 'rejected', 'deactivated')
 
 user_organization = Table(

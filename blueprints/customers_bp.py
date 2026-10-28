@@ -4,7 +4,7 @@ Customers blueprint - CRUD operations for customers
 
 from flask import Blueprint, request, render_template, redirect, url_for, flash, g
 from db import db, DatabaseError
-from auth import require_org, get_current_org_role
+from auth import CUSTOMER_EDITORS, require_org, get_current_org_role, quotations_only
 from access import get_org_customer
 from documents import load_json
 import customers as C
@@ -75,8 +75,8 @@ def list_customers():
 def create_customer():
     """Create a new customer"""
     current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to create customers.', 'error')
+    if current_role not in CUSTOMER_EDITORS:
+        flash(f'Your role is {current_role or "unknown"}. You need to be an owner, admin or sales to create customers.', 'error')
         return redirect(url_for('customers_bp.list_customers'))
     
     org_id = g.current_org_id
@@ -153,6 +153,10 @@ def view_customer(customer_id):
         family = {customer_id} | {s['customer_id'] for s in sites}
         docs = [d for d in db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
                 if d.get('customer_id') in family]
+        files = projects.list_attachments(g.current_org_id, customer_id=customer_id)
+        if quotations_only():       # Sales: their quotations only, and nothing they owe
+            docs = [d for d in docs if d.get('doc_type') == 'quote']
+            files = [f for f in files if f.get('kind') not in projects.NOT_QUOTATIONS]
         unpaid = [d for d in docs if d.get('doc_type') in ('invoice', 'export_invoice') and d.get('status') == 'pending']
         family_projects = projects.list_projects(g.current_org_id, customer_id)
         import revisions
@@ -162,7 +166,7 @@ def view_customer(customer_id):
                              projects=family_projects,
                              own_projects=[j for j in family_projects if j['customer_id'] == customer_id],
                              sites=sites,
-                             files=projects.list_attachments(g.current_org_id, customer_id=customer_id),
+                             files=files,
                              file_kinds=projects.DOCUMENT_KINDS,
                              custom_defs=_custom_defs(g.current_org_id),
                              custom_values=load_json(customer.get('custom')),
@@ -243,8 +247,8 @@ def create_portal_account(customer_id):
 def edit_customer(customer_id):
     """Edit customer details"""
     current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to edit customers.', 'error')
+    if current_role not in CUSTOMER_EDITORS:
+        flash(f'Your role is {current_role or "unknown"}. You need to be an owner, admin or sales to edit customers.', 'error')
         return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
     
     org_id = g.current_org_id

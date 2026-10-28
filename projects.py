@@ -40,6 +40,7 @@ DOCUMENT_KINDS = {
 
 # Our own documents from before DocuMint, uploaded as files: which project stage they belong to
 EARLIER_KINDS = {'our_quote': 'quote', 'our_proforma': 'proforma', 'our_invoice': 'invoice'}
+NOT_QUOTATIONS = {k for k, t in EARLIER_KINDS.items() if t != 'quote'}     # files Sales don't see
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 

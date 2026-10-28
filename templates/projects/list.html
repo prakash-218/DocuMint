@@ -6,13 +6,13 @@
 
 
 {% block header_actions %}
-{% if current_org_role in ('owner', 'admin', 'member') %}
+{% if current_org_role in editor_roles %}
 <a href="{{ url_for('projects_bp.create_project', customer_id=customer_id) }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New project</span></a>
 {% endif %}
 {% endblock %}
 
 {% block content %}
-{% if ungrouped and current_org_role in ('owner', 'admin', 'member') %}
+{% if ungrouped and current_org_role in editor_roles and not quotations_only %}
 <div class="alert alert-info flex-between">
     <span>{{ ungrouped }} set{{ '' if ungrouped == 1 else 's' }} of linked documents not in a project yet.</span>
     <form method="POST" action="{{ url_for('projects_bp.group_linked') }}">
@@ -85,7 +85,7 @@
     {{ empty_state('search-x', 'No projects here', 'Try another search, year, status or customer.') }}
 {% else %}
     {{ empty_state('briefcase', 'No projects yet', 'Start one for a new enquiry, or convert a quotation: the proforma and invoice made from it are grouped into a project automatically.',
-                   url_for('projects_bp.create_project') if current_org_role in ('owner', 'admin', 'member') else None, 'New project') }}
+                   url_for('projects_bp.create_project') if current_org_role in editor_roles else None, 'New project') }}
 {% endif %}
 </div>
 {% endblock %}

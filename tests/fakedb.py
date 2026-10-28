@@ -98,6 +98,9 @@ class FakeDB:
             return [{'template_name': 'Standard Invoice', 'total_amount': 38.5, 'paid_amount': 10,
                      'doc_type': 'invoice', **inv}
                     for inv in self.invoices.values() if inv[owner] == args[0]]
+        if proc == 'sp_get_document_type':
+            inv = self.invoices.get(args[0])
+            return [{'invoice_id': args[0], 'doc_type': inv.get('doc_type', 'invoice')}] if inv else None
         if proc == 'sp_list_search_documents':
             return [{'doc_type': 'invoice', 'total_amount': 38.5, 'currency_code': 'USD', **inv}
                     for inv in self.invoices.values() if inv['org_id'] == args[0]]

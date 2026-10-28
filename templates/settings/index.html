@@ -49,6 +49,7 @@
                         <label class="sr-only" for="role-{{ req.user_id }}">Role</label>
                         <select id="role-{{ req.user_id }}" name="role" class="form-select form-select-sm">
                             <option value="viewer">Viewer</option>
+                            <option value="sales">Sales (projects and quotations)</option>
                             <option value="member" selected>Member</option>
                             <option value="admin">Admin</option>
                             {% if current_org_role == 'owner' %}<option value="owner">Owner</option>{% endif %}
@@ -83,7 +84,7 @@
                         <input type="hidden" name="action" value="change_role">
                         <label class="sr-only" for="mrole-{{ member.user_id }}">Role</label>
                         <select id="mrole-{{ member.user_id }}" name="role" class="form-select form-select-sm" onchange="this.form.submit()">
-                            {% for r in (('viewer', 'member', 'admin', 'owner') if current_org_role == 'owner' else ('viewer', 'member', 'admin')) %}<option value="{{ r }}" {% if member.role == r %}selected{% endif %}>{{ r | title }}</option>{% endfor %}
+                            {% for r in (('viewer', 'sales', 'member', 'admin', 'owner') if current_org_role == 'owner' else ('viewer', 'sales', 'member', 'admin')) %}<option value="{{ r }}" {% if member.role == r %}selected{% endif %}>{{ r | title }}</option>{% endfor %}
                         </select>
                     </form>
                     <form action="{{ url_for('settings_bp.approve_member') }}" method="POST" {% if member.status == 'active' %}data-confirm="Deactivate {{ member.email }}?"{% endif %}>

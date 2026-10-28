@@ -6,7 +6,7 @@
 {% block page_title %}{{ group_info.title }}{% endblock %}
 
 {% block header_actions %}
-{% if current_org_role in ('owner', 'admin', 'member') %}
+{% if current_org_role in editor_roles %}
 <a href="{{ url_for('invoices_bp.create_invoice', doc_type=group_info.new_type) }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New {{ new_type.short | lower }}</span></a>
 {% endif %}
 {% endblock %}
@@ -79,7 +79,7 @@
 {% else %}
     {{ empty_state(new_type.icon, 'No ' ~ group_info.title | lower ~ ' yet',
                    'Create one from any of your templates.',
-                   url_for('invoices_bp.create_invoice', doc_type=group_info.new_type) if current_org_role in ('owner', 'admin', 'member') else None,
+                   url_for('invoices_bp.create_invoice', doc_type=group_info.new_type) if current_org_role in editor_roles else None,
                    'New ' ~ new_type.short | lower) }}
 {% endif %}
 </div>

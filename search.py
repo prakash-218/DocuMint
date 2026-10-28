@@ -12,7 +12,7 @@ from typing import Dict, List
 
 from flask import current_app, url_for
 
-from auth import EDITORS, MANAGERS
+from auth import CUSTOMER_EDITORS, EDITORS, MANAGERS, SALES, sales_may
 from customers import label as customer_label
 from db import DatabaseError, db
 from documents import display_number, get_type
@@ -23,7 +23,8 @@ import projects
 
 logger = logging.getLogger(__name__)
 
-# (title, endpoint, url arguments, icon, who sees it (None: everyone), other words people may type)
+# (title, endpoint, url arguments, icon, who sees it (None: everyone), other words people may type).
+# Sales see only what auth.SALES_PAGES lets them open.
 PAGES = [
     ('Dashboard', 'dashboard_bp.index', {}, 'layout-dashboard', None, 'home overview revenue'),
     ('Notifications', 'notifications_bp.index', {}, 'bell', MANAGERS, 'activity alerts'),
@@ -42,7 +43,7 @@ ACTIONS = [
     ('New proforma invoice', 'invoices_bp.create_invoice', {'doc_type': 'proforma'}, 'plus', EDITORS, 'create pi'),
     ('New invoice', 'invoices_bp.create_invoice', {'doc_type': 'invoice'}, 'plus', EDITORS, 'create tax'),
     ('New project', 'projects_bp.create_project', {}, 'plus', EDITORS, 'create job'),
-    ('New customer', 'customers_bp.create_customer', {}, 'plus', MANAGERS, 'create client'),
+    ('New customer', 'customers_bp.create_customer', {}, 'plus', CUSTOMER_EDITORS, 'create client'),
     ('New template', 'templates_bp.create_template', {}, 'plus', MANAGERS, 'create format'),
 ]
 
@@ -117,15 +118,25 @@ def _templates(org_id) -> List[Dict]:
             for t in rows]
 
 
+def _opens(row, role) -> bool:
+    title, endpoint, args, icon, roles, also = row
+    if roles is not None and role not in roles:
+        return False
+    doc_type = args.get('doc_type') or args.get('type') or ('invoice' if endpoint.startswith('invoices_bp.') else None)
+    return role != SALES or sales_may(endpoint, doc_type)
+
+
 def palette_items(org_id, role) -> List[Dict]:
     """Everything the Ctrl+K search can find for someone with this role."""
-    allowed = [r for r in PAGES + ACTIONS if r[4] is None or role in r[4]]
+    allowed = [r for r in PAGES + ACTIONS if _opens(r, role)]
     items = _links([r for r in allowed if r in PAGES], 'page') + _links([r for r in allowed if r in ACTIONS], 'action')
+    sales = role == SALES
     try:
         items += [_project(p) for p in projects.list_projects(org_id)]
         items += [_customer(c) for c in db.execute_proc('sp_list_customers', (org_id, False)) or []]
-        items += [_document(d) for d in db.execute_proc('sp_list_search_documents', (org_id,)) or []]
-        items += _templates(org_id)
+        items += [_document(d) for d in db.execute_proc('sp_list_search_documents', (org_id,)) or []
+                  if not sales or d.get('doc_type') == 'quote']
+        items += [] if sales else _templates(org_id)
     except DatabaseError:
         logger.exception('Could not list everything for the search')
     return items
