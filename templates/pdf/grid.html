@@ -70,7 +70,9 @@
 <table class="box">
     <tr>
         <td rowspan="{{ 6 if packing else 5 }}" style="width: 50%;">
-            {% if profile.logo %}<img src="{{ profile.logo }}" style="height: 28pt;"><br>{% endif %}
+            {# The small logo; else the logo, unless it already says the name printed just below #}
+            {% set box_logo = profile.logo_small or (profile.logo if not profile.logo_has_name else none) %}
+            {% if box_logo %}<img src="{{ box_logo }}" style="height: 28pt; width: {{ box_logo | image_width(28) }}pt;"><br>{% endif %}
             <span class="lbl">Consignor's Name &amp; Address</span><br>
             <span class="val">{{ invoice.organization_name }}</span><br>
             {% if invoice.organization_street_address %}{{ invoice.organization_street_address }}<br>{% endif %}

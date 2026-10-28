@@ -1,6 +1,7 @@
 """Small helpers shared by routes and templates."""
 
 from datetime import date, datetime
+from functools import lru_cache
 
 
 def to_date(value):
@@ -15,6 +16,19 @@ def to_date(value):
         return datetime.strptime(str(value)[:10], '%Y-%m-%d').date()
     except ValueError:
         return None
+
+
+@lru_cache(maxsize=32)
+def image_ratio(data_uri) -> float:
+    """Width / height of an image stored as a data: URI (a profile logo); 1 when it can't be read."""
+    import base64
+    import io
+    from PIL import Image
+    try:
+        width, height = Image.open(io.BytesIO(base64.b64decode(str(data_uri).split(',', 1)[1]))).size
+        return width / height if height else 1.0
+    except Exception:           # not an image we can read: print it square rather than fail the PDF
+        return 1.0
 
 
 def invoice_is_overdue(invoice) -> bool:

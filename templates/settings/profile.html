@@ -12,6 +12,18 @@
 </div>
 {% endmacro %}
 
+{% macro image_field(name, label, help='') %}
+<div class="form-group">
+    <label for="{{ name }}" class="form-label">{{ label }}</label>
+    {% if profile.get(name) %}
+    <img src="{{ profile.get(name) }}" alt="{{ label }}" style="max-height: 72px; max-width: 100%; display: block; margin-bottom: var(--spacing-sm); background: #fff; border-radius: var(--radius-sm); padding: 4px;">
+    <label style="font-size: var(--font-size-xs);"><input type="checkbox" name="remove_{{ name }}" class="form-checkbox"> Remove</label>
+    {% endif %}
+    <input type="file" id="{{ name }}" name="{{ name }}" accept="image/png,image/jpeg" class="form-input" style="padding-top: 6px;">
+    {% if help %}<p class="form-text">{{ help }}</p>{% endif %}
+</div>
+{% endmacro %}
+
 {% block content %}
 <form method="POST" enctype="multipart/form-data" class="panel-medium" style="max-width: 880px;">
     <section class="card">
@@ -184,19 +196,40 @@
     </section>
 
     <section class="card">
-        <div class="card-header"><h2 class="card-title">Logo, stamp &amp; signature</h2></div>
+        <div class="card-header"><h2 class="card-title">Letterhead</h2></div>
+        <div class="card-body">
+            <fieldset class="letterhead-style">
+                <legend class="form-label">Quotation letterhead</legend>
+                <label class="form-check"><input type="radio" name="letterhead_style" value="centred" {% if profile.letterhead_style != 'left' %}checked{% endif %}> Centred: logo, name and address in the middle</label>
+                <label class="form-check"><input type="radio" name="letterhead_style" value="left" {% if profile.letterhead_style == 'left' %}checked{% endif %}> Logo on the left, address opposite</label>
+            </fieldset>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="letterhead_color" class="form-label">Colour</label>
+                    <input type="color" id="letterhead_color" name="letterhead_color" value="{{ profile.letterhead_color or '#1f2fd1' }}" class="form-input color-input">
+                    <p class="form-text">The name, the address and the line under them.</p>
+                </div>
+                <div class="form-group">
+                    <label for="letterhead_accent" class="form-label">Accent</label>
+                    <input type="color" id="letterhead_accent" name="letterhead_accent" value="{{ profile.letterhead_accent or profile.letterhead_color or '#1f2fd1' }}" class="form-input color-input">
+                    <p class="form-text">The bar under a centred letterhead, or where the line starts under the logo.</p>
+                </div>
+            </div>
+            <div class="form-row">
+                {{ image_field('logo', 'Logo', 'Printed at the top of quotations, invoices and proformas.') }}
+                {{ image_field('logo_small', 'Logo for invoices (optional)', 'A smaller version for invoices and proformas, which print the name as text beside it.') }}
+            </div>
+            <label class="form-check"><input type="checkbox" name="logo_has_name" class="form-checkbox" {% if profile.logo_has_name %}checked{% endif %}> The logo already says the company's name, so quotations print it in place of the typed name</label>
+            <p class="form-text">PNG or JPEG, up to 300 KB, with a transparent background.</p>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header"><h2 class="card-title">Stamp &amp; signature</h2></div>
         <div class="card-body">
             <div class="form-row">
-                {% for name, label in [('logo', 'Logo'), ('stamp', 'Company stamp'), ('signature', 'Signature')] %}
-                <div class="form-group">
-                    <span class="form-label">{{ label }}</span>
-                    {% if profile.get(name) %}
-                    <img src="{{ profile.get(name) }}" alt="{{ label }}" style="max-height: 72px; max-width: 100%; display: block; margin-bottom: var(--spacing-sm); background: #fff; border-radius: var(--radius-sm); padding: 4px;">
-                    <label style="font-size: var(--font-size-xs);"><input type="checkbox" name="remove_{{ name }}" class="form-checkbox"> Remove</label>
-                    {% endif %}
-                    <input type="file" name="{{ name }}" accept="image/png,image/jpeg" class="form-input" style="padding-top: 6px;">
-                </div>
-                {% endfor %}
+                {{ image_field('stamp', 'Company stamp') }}
+                {{ image_field('signature', 'Signature') }}
             </div>
             <div class="form-row">
                 {{ text('signatory_name', 'Signed by', 'Ramesh', 'Name printed under the signature on quotations') }}

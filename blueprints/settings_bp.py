@@ -3,6 +3,7 @@ Settings blueprint - Organization settings and preferences
 """
 
 import logging
+import re
 from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, jsonify
 from db import db, DatabaseError
 from auth import require_auth, require_org
@@ -507,7 +508,7 @@ PROFILE_TEXT_FIELDS = (
     'bank_name', 'bank_account', 'bank_ifsc', 'bank_branch', 'bank_swift', 'signatory_name',
     'quote_intro', 'quote_terms', 'quote_closing', 'footer_note',
 )
-PROFILE_IMAGES = ('logo', 'stamp', 'signature')
+PROFILE_IMAGES = ('logo', 'logo_small', 'stamp', 'signature')
 MAX_IMAGE_BYTES = 300 * 1024
 CURRENCIES = ('INR', 'USD', 'EUR', 'GBP', 'AUD', 'CAD', 'SGD', 'AED')
 
@@ -570,6 +571,15 @@ def business_profile():
             return redirect(url_for('settings_bp.business_profile'))
         profile['advance_basis'] = 'total' if request.form.get('advance_basis') == 'total' else 'pre_tax'
         profile['separate_export_series'] = bool(request.form.get('separate_export_series'))
+        # The quotation letterhead (templates/pdf/quote.html)
+        profile['letterhead_style'] = 'left' if request.form.get('letterhead_style') == 'left' else 'centred'
+        for key in ('letterhead_color', 'letterhead_accent'):
+            colour = (request.form.get(key) or '').strip().lower()
+            if re.fullmatch(r'#[0-9a-f]{6}', colour):
+                profile[key] = colour
+            else:
+                profile.pop(key, None)
+        profile['logo_has_name'] = bool(request.form.get('logo_has_name'))
         from layout import defs_from_form
         profile['custom_fields'] = defs_from_form(request.form, 'orgcf', with_value=True)
         profile['customer_fields'] = defs_from_form(request.form, 'custcf', with_value=False)

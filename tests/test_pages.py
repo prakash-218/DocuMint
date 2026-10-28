@@ -46,6 +46,16 @@ def test_draft_invoice_edit_page_renders(client, login_as, fake_db):
     assert client.get('/templates/T-A/edit').status_code == 200
 
 
+def test_logo_and_tab_icons(client, login_as):
+    login_as('U-A', ORG_A, 'alice@a.com')
+    html = client.get('/dashboard/').get_data(as_text=True)
+    assert 'img/documint-icon.svg' in html and 'img/favicon.svg' in html and 'img/apple-touch-icon.png' in html
+    assert '>DM</span>' not in html
+    for name in ('documint-icon.svg', 'documint-mark.svg', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'):
+        assert client.get(f'/static/img/{name}').status_code == 200, name
+    assert 'img/documint-icon.svg' in client.get('/auth/login').get_data(as_text=True)
+
+
 @pytest.mark.parametrize('path', PUBLIC_PAGES)
 def test_public_pages_render(client, path):
     response = client.get(path)
