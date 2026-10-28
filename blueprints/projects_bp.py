@@ -10,7 +10,7 @@ import re
 from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from access import get_org_customer, get_org_invoice, safe_referrer
-from auth import can_delete_invoice, can_edit_invoice, get_current_org_role, require_org
+from auth import can_delete_project, can_edit_invoice, get_current_org_role, quotations_only, require_org
 from db import DatabaseError, db
 import projects as J
 import activity
@@ -165,15 +165,22 @@ def view_project(project_id):
     project = _project_or_404(project_id)
     docs = J.project_documents(project_id, org_id)
     all_files = J.list_attachments(org_id, project_id=project_id)
-    files = [f for f in all_files if f.get('kind') not in J.EARLIER_KINDS]       # earlier documents show in the stages
     other_files = [f for f in J.list_attachments(org_id, customer_id=project['customer_id']) if not f.get('project_id')]
+    addable = J.unassigned_documents(org_id, project['customer_id'])
+    events = db.execute_proc('sp_list_project_events', (project_id, org_id, 30)) or []
+    sales = quotations_only()
+    if sales:                       # Sales: the quotations, and nothing about proformas, invoices or payments
+        docs, addable = [d for d in docs if d.get('doc_type') == 'quote'], [d for d in addable if d.get('doc_type') == 'quote']
+        all_files, other_files = [[f for f in fs if f.get('kind') not in J.NOT_QUOTATIONS] for fs in (all_files, other_files)]
+        events = [e for e in events if e.get('kind') in ('project_created', 'project_status', 'file_uploaded')
+                  or '/quotes/' in (e.get('link') or '')]
+    stages = [s for s in J.project_stages(revisions.collapse(docs), all_files) if not sales or s['key'] == 'quote']
+    files = [f for f in all_files if f.get('kind') not in J.EARLIER_KINDS]       # earlier documents show in the stages
     return render_template('projects/view.html', project=project, docs=docs, money=J.project_money(docs, all_files),
-                           stages=J.project_stages(revisions.collapse(docs), all_files),
-                           files=files, other_files=other_files,
-                           addable=J.unassigned_documents(org_id, project['customer_id']),
+                           stages=stages, files=files, other_files=other_files, addable=addable,
                            statuses=J.PROJECT_STATUSES, kinds=J.DOCUMENT_KINDS, po=J.latest_purchase_order(org_id, project_id),
                            years=J.recent_fiscal_years(org_id),
-                           events=db.execute_proc('sp_list_project_events', (project_id, org_id, 30)) or [],
+                           events=events,
                            threads=db.execute_proc('sp_list_email_threads', (org_id, project_id, None, False, 50)) or []
                            if get_current_org_role() in ('owner', 'admin', 'member') else [],
                            costings=costing.list_for(org_id, project_id) if get_current_org_role() in ('owner', 'admin') else [],
@@ -212,7 +219,7 @@ def edit_project(project_id):
 @require_org
 def delete_project(project_id):
     _project_or_404(project_id)
-    if not can_delete_invoice():
+    if not can_delete_project():
         flash('Only owners can delete projects', 'error')
         return redirect(url_for('projects_bp.view_project', project_id=project_id))
     try:
@@ -331,7 +338,7 @@ def upload_file():
 @require_org
 def download_file(attachment_id):
     doc = J.get_attachment(attachment_id, g.current_org_id)
-    if not doc:
+    if not doc or quotations_only() and doc.get('kind') in J.NOT_QUOTATIONS:
         abort(404)
     inline = doc['content_type'] in J.INLINE_TYPES and request.args.get('download') != '1'
     response = send_file(io.BytesIO(doc['data']), mimetype=doc['content_type'], as_attachment=not inline,

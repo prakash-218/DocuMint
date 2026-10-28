@@ -18,7 +18,7 @@ load_dotenv(dotenv_path=env_path)
 
 from config import config, DEFAULT_SECRET_KEY
 from db import db
-from auth import get_current_user
+from auth import CUSTOMER_EDITORS, EDITORS, MANAGERS, SALES, can_delete_invoice, get_current_user
 
 
 from blueprints.auth_bp import auth_bp
@@ -78,12 +78,15 @@ def create_app(config_name=None):
         org_id = session.get('org_id')
         membership = next((o for o in session.get('user_organizations') or []
                            if str(o.get('org_id')) == str(org_id)), None)
+        role = membership.get('role') if membership else None
         return {
             'doc_nav_group': _doc_nav_group(),
             'current_user': user,
             'current_customer': customer,
             'current_org_id': org_id,
-            'nav_role': membership.get('role') if membership else None,
+            'nav_role': role,
+            'quotations_only': role == SALES,              # Sales: projects, quotations and customers only
+            'editor_roles': EDITORS, 'customer_editor_roles': CUSTOMER_EDITORS, 'manager_roles': MANAGERS,
             'unread_notifications': _unread(user, org_id, membership),
         }
 
@@ -268,6 +271,7 @@ def create_app(config_name=None):
     app.add_template_global(invoice_is_overdue, 'is_overdue')
     app.add_template_global(DOC_TYPES, 'DOC_TYPES')
     app.add_template_global(get_type, 'doc_type_info')
+    app.add_template_global(can_delete_invoice, 'can_delete_invoice')
     from layout import printed_customer_fields, printed_org_fields
     app.add_template_global(printed_org_fields, 'printed_org_fields')
     app.add_template_global(printed_customer_fields, 'printed_customer_fields')

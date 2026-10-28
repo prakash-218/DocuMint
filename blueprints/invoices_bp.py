@@ -1127,11 +1127,8 @@ def reopen(invoice_id):
 def delete_invoice(invoice_id):
     """Delete an invoice"""
     current_role = get_current_org_role()
-    if not can_delete_invoice():
-        flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to delete invoices.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
-    
     org_id = g.current_org_id
+    invoice_header = None
 
     try:
         invoice_header, _ = get_org_invoice(invoice_id, org_id)
@@ -1139,6 +1136,9 @@ def delete_invoice(invoice_id):
         if not invoice_header:
             flash('Invoice not found', 'error')
             return redirect(url_for('invoices_bp.list_invoices'))
+        if not can_delete_invoice(invoice_header):
+            flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to delete invoices.', 'error')
+            return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
 
         db.execute_proc('sp_delete_invoice', (invoice_id,), fetch=False)
@@ -1146,7 +1146,7 @@ def delete_invoice(invoice_id):
     except DatabaseError as e:
         flash(f'Error deleting invoice: {str(e)}', 'error')
 
-    return redirect(url_for('invoices_bp.list_invoices'))
+    return redirect(url_for('invoices_bp.list_invoices', type=(invoice_header or {}).get('doc_type')))
 
 
 @invoices_bp.route('/<invoice_id>/payment', methods=['POST'])

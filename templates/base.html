@@ -26,7 +26,7 @@
     <div class="app-container">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <a href="{{ url_for('dashboard_bp.index') }}" class="sidebar-logo">
+                <a href="{{ url_for('projects_bp.list_projects') if quotations_only else url_for('dashboard_bp.index') }}" class="sidebar-logo">
                     <span class="logo-icon"><img src="{{ url_for('static', filename='img/documint-icon.svg') }}" alt=""></span>
                     <span class="logo-text">DocuMint</span>
                 </a>
@@ -35,11 +35,13 @@
                 {% set ep = request.endpoint or '' %}
                 <div class="nav-section">
                     <ul class="sidebar-nav">
+                        {% if not quotations_only %}
                         <li class="sidebar-nav-item">
                             <a href="{{ url_for('dashboard_bp.index') }}" class="sidebar-nav-link {% if ep.startswith('dashboard_bp') %}active{% endif %}">
                                 <i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span>
                             </a>
                         </li>
+                        {% endif %}
                         {% if nav_role in ('owner', 'admin') %}
                         <li class="sidebar-nav-item">
                             <a href="{{ url_for('notifications_bp.index') }}" class="sidebar-nav-link {% if ep.startswith('notifications_bp') %}active{% endif %}">
@@ -61,7 +63,7 @@
                         </li>
                         {% endif %}
                         {% set doc_group = doc_nav_group if doc_nav_group is defined else 'invoices' %}
-                        {% for key, label, icon in [('quote', 'Quotations', 'file-pen-line'), ('proforma', 'Proforma invoices', 'file-clock'), ('invoices', 'Invoices', 'file-text')] %}
+                        {% for key, label, icon in [('quote', 'Quotations', 'file-pen-line'), ('proforma', 'Proforma invoices', 'file-clock'), ('invoices', 'Invoices', 'file-text')] if key == 'quote' or not quotations_only %}
                         <li class="sidebar-nav-item">
                             <a href="{{ url_for('invoices_bp.list_invoices', type=None if key == 'invoices' else key) }}"
                                class="sidebar-nav-link {% if ep.startswith('invoices_bp') and doc_group == key %}active{% endif %}">
@@ -74,11 +76,13 @@
                                 <i data-lucide="users" class="nav-icon"></i><span>Customers</span>
                             </a>
                         </li>
+                        {% if not quotations_only %}
                         <li class="sidebar-nav-item">
                             <a href="{{ url_for('templates_bp.list_templates') }}" class="sidebar-nav-link {% if ep.startswith('templates_bp') %}active{% endif %}">
                                 <i data-lucide="layout-template" class="nav-icon"></i><span>Templates</span>
                             </a>
                         </li>
+                        {% endif %}
                     </ul>
                 </div>
                 <div class="nav-section">

@@ -23,10 +23,10 @@
                     {% if f.reference_no %}<span>No. {{ f.reference_no }}</span>{% endif %}
                     {% if f.doc_date %}<span>{{ f.doc_date | date }}</span>{% endif %}
                     {% if f.amount %}<span>{{ f.amount | currency(f.currency) }}</span>{% endif %}
-                    {% if f.email_thread_id %}<a href="{{ url_for('emails_bp.thread', thread_id=f.email_thread_id) }}"><i data-lucide="mail"></i>From email</a>{% endif %}
+                    {% if f.email_thread_id and not quotations_only %}<a href="{{ url_for('emails_bp.thread', thread_id=f.email_thread_id) }}"><i data-lucide="mail"></i>From email</a>{% endif %}
                     {% if show_where %}
                         {% if f.project_id %}<a href="{{ url_for('projects_bp.view_project', project_id=f.project_id) }}">{{ f | project_label }}</a>{% endif %}
-                        {% if f.invoice_id %}<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=f.invoice_id) }}">{{ f.doc_number or 'document' }}</a>{% endif %}
+                        {% if f.invoice_id and (f.doc_type == 'quote' or not quotations_only) %}<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=f.invoice_id) }}">{{ f.doc_number or 'document' }}</a>{% endif %}
                     {% endif %}
                 </div>
                 <div class="file-meta text-tertiary">{{ f.file_name }} · {{ f.file_size | filesize }}{% if f.notes %} · {{ f.notes }}{% endif %}</div>

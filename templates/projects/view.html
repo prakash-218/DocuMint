@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge, earlier_versions %}
-{% from "projects/_files.html" import files_card %}
+{% from "projects/_files.html" import files_card with context %}
 
 {% block title %}{{ project.title }} · {{ project | project_label }}{% endblock %}
 {% block page_title %}{{ project.title }}{% endblock %}
 {% block page_description %}<p class="header-description">{{ project | project_label }} · FY {{ project.fiscal_year }} · <a href="{{ url_for('customers_bp.view_customer', customer_id=project.customer_id) }}">{{ project | customer_label }}</a>{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</p>{% endblock %}
 
 {% block header_actions %}
-{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
+{% set can_edit = current_org_role in editor_roles %}
 <span class="badge badge-{{ {'open': 'info', 'completed': 'success', 'cancelled': 'secondary'}[project.status] }}" style="align-self: center;">{{ statuses[project.status] }}</span>
 {% if can_edit and project.status == 'open' %}
 <a href="{{ url_for('invoices_bp.create_invoice', doc_type='quote', project_id=project.project_id) }}" class="btn btn-secondary"><i data-lucide="file-pen-line"></i><span class="btn-label">New quotation</span></a>
-<a href="{{ url_for('invoices_bp.create_invoice', doc_type='invoice', project_id=project.project_id) }}" class="btn btn-secondary"><i data-lucide="plus"></i><span class="btn-label">New invoice</span></a>
+{% if not quotations_only %}<a href="{{ url_for('invoices_bp.create_invoice', doc_type='invoice', project_id=project.project_id) }}" class="btn btn-secondary"><i data-lucide="plus"></i><span class="btn-label">New invoice</span></a>{% endif %}
 {% endif %}
 {% endblock %}
 
 {% block content %}
-{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
+{% set can_edit = current_org_role in editor_roles %}
 <div class="invoice-layout">
     <div class="stack">
         <div class="card">
@@ -127,6 +127,7 @@
         </section>
         {% endif %}
 
+        {% if current_org_role in ('owner', 'admin', 'member') %}{# who can read mail (emails_bp.READERS) #}
         <section class="card">
             <div class="card-header">
                 <h2 class="card-title">Emails</h2>
@@ -150,6 +151,7 @@
             <div class="card-body"><p class="text-tertiary" style="margin: 0;">No emails yet. Put <strong>{{ project | project_label }}</strong> in a subject line and the thread lands here.</p></div>
             {% endif %}
         </section>
+        {% endif %}
 
         {{ files_card(files, {'project_id': project.project_id}, kinds, can_edit, po_hint=True) }}
 
@@ -166,7 +168,7 @@
             <div class="card-header"><h2 class="card-title">Money</h2></div>
             <div class="card-body">
                 <dl class="kv">
-                    {% for key, label in [('quoted', 'Quoted'), ('invoiced', 'Invoiced'), ('received', 'Received'), ('due', 'Still due'), ('advances', 'Advances not yet invoiced')] %}
+                    {% for key, label in [('quoted', 'Quoted'), ('invoiced', 'Invoiced'), ('received', 'Received'), ('due', 'Still due'), ('advances', 'Advances not yet invoiced')] if key == 'quoted' or not quotations_only %}
                     {% if key != 'advances' or money[key] %}
                     <dt>{{ label }}</dt>
                     <dd class="num">
@@ -236,7 +238,7 @@
                     </div>
                     <button type="submit" class="btn btn-secondary btn-block">Save</button>
                 </form>
-                {% if current_org_role in ('owner', 'admin') %}
+                {% if current_org_role in manager_roles or quotations_only %}
                 <form method="POST" action="{{ url_for('projects_bp.delete_project', project_id=project.project_id) }}" style="margin-top: var(--spacing-md);"
                       data-confirm="Delete this project? Its documents and files are kept; they just won't be grouped any more.">
                     <button type="submit" class="btn btn-ghost btn-block"><i data-lucide="trash-2"></i>Delete project</button>

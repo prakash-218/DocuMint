@@ -5,7 +5,7 @@
 {% block page_title %}Customers{% endblock %}
 
 {% block header_actions %}
-{% if current_org_role in ('owner', 'admin') %}
+{% if current_org_role in customer_editor_roles %}
 <a href="{{ url_for('customers_bp.create_customer') }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New customer</span></a>
 {% endif %}
 {% endblock %}
@@ -57,7 +57,7 @@
 {% elif query %}
     {{ empty_state('search-x', 'No customers match', 'Try another name or city.') }}
 {% else %}
-    {{ empty_state('users', 'No customers yet', '', url_for('customers_bp.create_customer') if current_org_role in ('owner', 'admin') else None, 'New customer') }}
+    {{ empty_state('users', 'No customers yet', '', url_for('customers_bp.create_customer') if current_org_role in customer_editor_roles else None, 'New customer') }}
 {% endif %}
 </div>
 {% endblock %}

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "projects/_files.html" import files_card %}
+{% from "projects/_files.html" import files_card with context %}
 
 {% block title %}{{ invoice | doc_number }}{% endblock %}
 {% block page_title %}{{ invoice | doc_number }}{% endblock %}
 {% block page_description %}<p class="header-description">{{ doc_type_info(invoice.doc_type).label }} · {{ invoice.customer_name }}</p>{% endblock %}
 
 {% block header_actions %}
-{% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
+{% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in editor_roles %}
 <details class="menu">
     <summary class="btn btn-secondary"><i data-lucide="download"></i><span class="btn-label">PDF</span><i data-lucide="chevron-down" class="hide-mobile"></i></summary>
     <div class="menu-items" data-pdf-menu>
@@ -24,7 +24,7 @@
         {% if has_packing and can_edit %}
         <hr><a href="{{ url_for('invoices_bp.packing', invoice_id=invoice.invoice_id) }}"><i data-lucide="package-open"></i>Edit packing</a>
         {% endif %}
-        {% if current_org_role in ('owner', 'admin') and status == 'draft' %}
+        {% if status == 'draft' and can_delete_invoice(invoice) %}
         <hr>
         <form method="POST" action="{{ url_for('invoices_bp.delete_invoice', invoice_id=invoice.invoice_id) }}" data-confirm="Delete this draft? This can't be undone.">
             <button type="submit" class="danger"><i data-lucide="trash-2"></i>Delete draft</button>
@@ -47,7 +47,7 @@
 {% endblock %}
 
 {% block content %}
-{% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
+{% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in editor_roles %}
 {% if status == 'revised' and not versions %}
 <div class="alert alert-warning">This version was revised. The newest revision is the one to send or convert.</div>
 {% endif %}
@@ -82,7 +82,7 @@
         </div>
         {% endif %}
 
-        {% if can_edit and t.converts_to and status not in ('draft', 'declined', 'revised') %}
+        {% if can_edit and t.converts_to and status not in ('draft', 'declined', 'revised') and not quotations_only %}
         <div class="card">
             <div class="card-header"><h2 class="card-title">Next step</h2></div>
             <div class="card-body">
