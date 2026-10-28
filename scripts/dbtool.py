@@ -25,8 +25,8 @@ from db import database_url  # noqa: E402
 from store import schema  # noqa: E402
 
 FIXTURE = ROOT / 'tests' / 'fixtures' / 'demo.json'
-LOAD_ORDER = ['organization', 'users', 'user_organization', 'customer', 'person', 'customer_contact_assignment',
-              'customer_user', 'template', 'section', 'field', 'invoice', 'invoice_value', 'payment']
+LOAD_ORDER = ['organization', 'users', 'user_organization', 'customer', 'contact', 'customer_user',
+              'template', 'section', 'field', 'invoice', 'invoice_value', 'payment']
 
 
 def migrate(url=None):

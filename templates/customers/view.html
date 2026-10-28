@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge, earlier_versions %}
 {% from "projects/_files.html" import files_card with context %}
+{% from "customers/_contacts.html" import contacts_card %}
 {% set can_edit = current_org_role in editor_roles %}
 
 {% block title %}{{ customer.name }}{% endblock %}
@@ -88,6 +89,8 @@
         </div>
         {% endif %}
 
+        {{ contacts_card(customer, contacts, usually, can_edit) }}
+
         <div class="card">
             <div class="card-header"><h2 class="card-title">Details</h2></div>
             <div class="card-body">
@@ -102,9 +105,6 @@
                     </dd>
                     {% for f in custom_defs if custom_values.get(f.key) %}
                     <dt>{{ f.label }}</dt><dd>{{ custom_values.get(f.key) }}</dd>
-                    {% endfor %}
-                    {% for contact in contacts %}
-                    <dt>{{ contact.role or 'Contact' }}</dt><dd>{{ contact.full_name or '' }}<br>{{ contact.email }}</dd>
                     {% endfor %}
                 </dl>
             </div>

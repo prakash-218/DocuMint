@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge, earlier_versions %}
 {% from "projects/_files.html" import files_card with context %}
+{% from "customers/_contacts.html" import people_card %}
 
 {% block title %}{{ project.title }} · {{ project | project_label }}{% endblock %}
 {% block page_title %}{{ project.title }}{% endblock %}
@@ -127,7 +128,7 @@
         </section>
         {% endif %}
 
-        {% if current_org_role in ('owner', 'admin', 'member') %}{# who can read mail (emails_bp.READERS) #}
+        {% if current_org_role in mail_reader_roles %}
         <section class="card">
             <div class="card-header">
                 <h2 class="card-title">Emails</h2>
@@ -183,6 +184,8 @@
                 {% endif %}
             </div>
         </div>
+
+        {{ people_card(project, people, found, contact_gets, usually, can_edit) }}
 
         <div class="card">
             <div class="card-header"><h2 class="card-title">Activity</h2></div>

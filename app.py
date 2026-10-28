@@ -18,7 +18,7 @@ load_dotenv(dotenv_path=env_path)
 
 from config import config, DEFAULT_SECRET_KEY
 from db import db
-from auth import CUSTOMER_EDITORS, EDITORS, MANAGERS, SALES, can_delete_invoice, get_current_user
+from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, MANAGERS, SALES, can_delete_invoice, get_current_user
 
 
 from blueprints.auth_bp import auth_bp
@@ -87,6 +87,7 @@ def create_app(config_name=None):
             'nav_role': role,
             'quotations_only': role == SALES,              # Sales: projects, quotations and customers only
             'editor_roles': EDITORS, 'customer_editor_roles': CUSTOMER_EDITORS, 'manager_roles': MANAGERS,
+            'mail_reader_roles': MAIL_READERS,
             'unread_notifications': _unread(user, org_id, membership),
         }
 

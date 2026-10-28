@@ -250,9 +250,8 @@ def get_customer_details(conn, customer_id):
                                       parent.email_domains AS parent_email_domains
                                FROM customer c LEFT JOIN customer parent ON parent.customer_id = c.parent_id
                                WHERE c.customer_id = :c""", c=customer_id)
-    contacts = _rows(conn, """SELECT p.person_id, p.email, p.full_name, cca.role
-                              FROM customer_contact_assignment cca JOIN person p ON cca.person_id = p.person_id
-                              WHERE cca.customer_id = :c""", c=customer_id)
+    contacts = _rows(conn, f"SELECT {CONTACT_COLUMNS} FROM contact ct WHERE ct.customer_id = :c ORDER BY lower(ct.name)",
+                     c=customer_id)
     return [customer, contacts]
 
 
@@ -1032,7 +1031,8 @@ def update_project(conn, project_id, org_id, title, reference, status, notes, fi
 
 @proc('sp_get_project')
 def get_project(conn, project_id, org_id):
-    return [_rows(conn, f"""SELECT p.*, c.name AS customer_name, {CUSTOMER_SITE} AS customer_site
+    return [_rows(conn, f"""SELECT p.*, c.name AS customer_name, {CUSTOMER_SITE} AS customer_site,
+                                   c.parent_id AS customer_parent_id
                             FROM project p JOIN customer c ON c.customer_id = p.customer_id
                            WHERE p.project_id = CAST(:p AS uuid) AND p.org_id = :o""", p=_as_uuid(project_id), o=org_id)]
 
@@ -1236,6 +1236,100 @@ def list_project_events(conn, project_id, org_id, limit):
                            FROM event e LEFT JOIN users u ON u.user_id = e.actor_user_id
                            WHERE e.project_id = :p AND e.org_id = :o ORDER BY e.created_at DESC LIMIT :l""",
                   p=project_id, o=org_id, l=limit or 50)]
+
+
+# ================================================================ Contacts
+
+CONTACT_COLUMNS = "ct.contact_id, ct.customer_id, ct.name, ct.email, ct.phone, ct.role, ct.gets, ct.created_at"
+# The contacts a project can use: its customer's, and those of the customer's parent when it's a site
+PROJECT_CONTACTS = """FROM project p
+                      JOIN customer pcu ON pcu.customer_id = p.customer_id
+                      JOIN contact ct ON ct.org_id = p.org_id AND ct.customer_id IN (pcu.customer_id, pcu.parent_id)"""
+
+
+@proc('sp_list_contacts')
+def list_contacts(conn, org_id, customer_ids):
+    """Contacts of these customers (usually a customer and its parent), by name."""
+    return [_rows(conn, f"""SELECT {CONTACT_COLUMNS}, c.name AS customer_name, {CUSTOMER_SITE} AS site
+                            FROM contact ct JOIN customer c ON c.customer_id = ct.customer_id
+                            WHERE ct.org_id = :o AND ct.customer_id = ANY(CAST(:c AS uuid[]))
+                            ORDER BY lower(ct.name), ct.created_at""", o=org_id, c=[str(i) for i in customer_ids])]
+
+
+@proc('sp_save_contact')
+def save_contact(conn, org_id, contact_id, customer_id, name, email, phone, role, gets):
+    """Add a contact (no contact_id) or change one. Emails are kept lower case; one contact per email per customer."""
+    _require(conn, "SELECT 1 FROM customer WHERE customer_id = :c AND org_id = :o", 'Customer not found',
+             c=customer_id, o=org_id)
+    values = dict(n=name, e=(email or '').strip().lower() or None, ph=phone or None, r=role or None, g=gets)
+    if contact_id:
+        if not _exec(conn, """UPDATE contact SET name = :n, email = :e, phone = :ph, role = :r, gets = :g
+                              WHERE contact_id = :id AND org_id = :o AND customer_id = :c""",
+                     id=contact_id, o=org_id, c=customer_id, **values):
+            raise ProcError('Contact not found')
+        return [[{'contact_id': contact_id}]]
+    return [[_one(conn, """INSERT INTO contact (org_id, customer_id, name, email, phone, role, gets)
+                           VALUES (:o, :c, :n, :e, :ph, :r, :g) RETURNING contact_id""",
+                  o=org_id, c=customer_id, **values)]]
+
+
+@proc('sp_delete_contact')
+def delete_contact(conn, org_id, customer_id, contact_id):
+    if not _exec(conn, "DELETE FROM contact WHERE contact_id = :id AND org_id = :o AND customer_id = :c",
+                 id=contact_id, o=org_id, c=customer_id):
+        raise ProcError('Contact not found')
+    return []
+
+
+@proc('sp_list_project_contacts')
+def list_project_contacts(conn, project_id, org_id):
+    """The contacts a project can use, with what each gets on it (their usual unless changed on the project)."""
+    return [_rows(conn, f"""SELECT {CONTACT_COLUMNS}, COALESCE(pc.gets, ct.gets) AS project_gets,
+                                   c.name AS customer_name, {CUSTOMER_SITE} AS site
+                            {PROJECT_CONTACTS}
+                            JOIN customer c ON c.customer_id = ct.customer_id
+                            LEFT JOIN project_contact pc ON pc.project_id = p.project_id AND pc.contact_id = ct.contact_id
+                            WHERE p.project_id = :p AND p.org_id = :o
+                            ORDER BY CASE COALESCE(pc.gets, ct.gets) WHEN 'all' THEN 0 WHEN 'billing' THEN 1 ELSE 2 END,
+                                     lower(ct.name)""", p=project_id, o=org_id)]
+
+
+@proc('sp_set_project_contact')
+def set_project_contact(conn, project_id, org_id, contact_id, gets):
+    _require(conn, f"SELECT 1 {PROJECT_CONTACTS} WHERE p.project_id = :p AND p.org_id = :o AND ct.contact_id = :ct",
+             'Contact not found', p=project_id, o=org_id, ct=contact_id)
+    _exec(conn, """INSERT INTO project_contact (project_id, contact_id, gets) VALUES (:p, :ct, :g)
+                   ON CONFLICT (project_id, contact_id) DO UPDATE SET gets = EXCLUDED.gets""",
+          p=project_id, ct=contact_id, g=gets)
+    return []
+
+
+@proc('sp_list_project_email_people')
+def list_project_email_people(conn, project_id, org_id, limit=200):
+    """Who wrote, and who was written to, in the project's emails (newest first), with the start of each
+    message to find phone numbers in."""
+    return [_rows(conn, """SELECT m.from_address, m.from_name, m.to_addresses, m.cc_addresses, m.sent_at, m.direction,
+                                  left(m.body_text, 8000) AS body_text
+                           FROM email_message m JOIN email_thread t ON t.thread_id = m.thread_id
+                           WHERE t.project_id = :p AND t.org_id = :o
+                           ORDER BY m.sent_at DESC NULLS LAST LIMIT :l""", p=project_id, o=org_id, l=limit)]
+
+
+@proc('sp_ignore_contact_suggestion')
+def ignore_contact_suggestion(conn, org_id, customer_id, value):
+    _require(conn, "SELECT 1 FROM customer WHERE customer_id = :c AND org_id = :o", 'Customer not found',
+             c=customer_id, o=org_id)
+    _exec(conn, "INSERT INTO contact_ignored (customer_id, value) VALUES (:c, :v) ON CONFLICT DO NOTHING",
+          c=customer_id, v=value[:320])
+    return []
+
+
+@proc('sp_list_ignored_contacts')
+def list_ignored_contacts(conn, org_id, customer_ids):
+    return [_rows(conn, """SELECT ci.customer_id, ci.value FROM contact_ignored ci
+                           JOIN customer c ON c.customer_id = ci.customer_id
+                           WHERE c.org_id = :o AND ci.customer_id = ANY(CAST(:c AS uuid[]))""",
+                  o=org_id, c=[str(i) for i in customer_ids])]
 
 
 # ================================================================ Email
@@ -1465,8 +1559,8 @@ def match_customers_by_email(conn, org_id, addresses):
                                      WHERE trim(d.x) <> '' AND trim(leading '@' from trim(d.x)) = ANY(:d))
                              OR EXISTS (SELECT 1 FROM customer_user cu WHERE cu.customer_id = c.customer_id
                                         AND lower(cu.email) = ANY(:a))
-                             OR EXISTS (SELECT 1 FROM customer_contact_assignment cca JOIN person p USING (person_id)
-                                        WHERE cca.customer_id = c.customer_id AND lower(p.email) = ANY(:a)))""",
+                             OR EXISTS (SELECT 1 FROM contact ct
+                                        WHERE ct.customer_id = c.customer_id AND ct.email = ANY(:a)))""",
                   o=org_id, d=domains, a=addresses)]
 
 

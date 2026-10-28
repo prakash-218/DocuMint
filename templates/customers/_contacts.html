@@ -1,0 +1,176 @@
+{# Contacts: the customer page's list, and who gets what on a project (with the people found in its emails) #}
+
+{% macro contact_fields(id, c, usually) %}
+<div class="form-row">
+    <div class="form-group">
+        <label for="{{ id }}_name" class="form-label">Name</label>
+        <input type="text" id="{{ id }}_name" name="name" class="form-input" value="{{ c.name or '' }}" maxlength="150">
+    </div>
+    <div class="form-group">
+        <label for="{{ id }}_role" class="form-label">Role <span class="text-tertiary">(optional)</span></label>
+        <input type="text" id="{{ id }}_role" name="role" class="form-input" value="{{ c.role or '' }}" maxlength="100" placeholder="Purchase, Accounts, Plant head">
+    </div>
+</div>
+<div class="form-row">
+    <div class="form-group">
+        <label for="{{ id }}_email" class="form-label">Email</label>
+        <input type="email" id="{{ id }}_email" name="email" class="form-input" value="{{ c.email or '' }}" maxlength="320">
+    </div>
+    <div class="form-group">
+        <label for="{{ id }}_phone" class="form-label">Phone <span class="text-tertiary">(optional)</span></label>
+        <input type="tel" id="{{ id }}_phone" name="phone" class="form-input" value="{{ c.phone or '' }}" maxlength="40">
+    </div>
+</div>
+<div class="form-group">
+    <label for="{{ id }}_gets" class="form-label">Usually gets</label>
+    <select id="{{ id }}_gets" name="gets" class="form-select">
+        {% for k, label in usually.items() %}<option value="{{ k }}" {% if k == (c.gets or 'all') %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <span class="form-text">What they get on a new project. Each project can change it.</span>
+</div>
+{% endmacro %}
+
+{% macro contact_line(c) %}
+<span class="contact-avatar" aria-hidden="true">{{ c.initials }}</span>
+<div class="contact-name">{{ c.name }}{% if c.role %} <span class="text-tertiary">· {{ c.role }}</span>{% endif %}</div>
+<div class="contact-sub">
+    {%- if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}
+    {%- if c.email and c.phone %} · {% endif %}
+    {%- if c.phone %}<a href="tel:{{ c.phone | replace(' ', '') }}">{{ c.phone }}</a>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro ignore_button(project, value, what) %}
+<form method="POST" action="{{ url_for('customers_bp.ignore_contact', customer_id=project.customer_id) }}" class="found-ignore">
+    <input type="hidden" name="project_id" value="{{ project.project_id }}">
+    <input type="hidden" name="value" value="{{ value }}">
+    <button type="submit" class="btn btn-ghost btn-xs" title="Ignore: don't suggest {{ what }} again" aria-label="Ignore {{ what }}"><i data-lucide="x"></i></button>
+</form>
+{% endmacro %}
+
+{# The customer page: everyone at the customer (and, for a site, at its parent company) #}
+{% macro contacts_card(customer, contacts, usually, can_edit) %}
+<div class="card" id="contacts">
+    <div class="card-header"><h2 class="card-title">Contacts</h2>{% if contacts %}<span class="text-tertiary">{{ contacts | length }}</span>{% endif %}</div>
+    {% if contacts %}
+    <ul class="contact-list">
+        {% for c in contacts %}
+        <li>
+            {{ contact_line(c) }}
+            <div class="contact-sub">{% if c.customer_id != customer.customer_id %}At {{ c.customer_name }} · {% endif %}Usually gets: {{ usually[c.gets] | lower }}</div>
+            {% if can_edit %}
+            <details class="fold contact-edit">
+                <summary>Edit</summary>
+                <form method="POST" action="{{ url_for('customers_bp.save_contact', customer_id=c.customer_id, contact_id=c.contact_id) }}">
+                    {{ contact_fields('contact' ~ loop.index, c, usually) }}
+                    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </form>
+                <form method="POST" action="{{ url_for('customers_bp.delete_contact', customer_id=c.customer_id, contact_id=c.contact_id) }}"
+                      data-confirm="Remove {{ c.name }} from the contacts? Their past emails stay.">
+                    <button type="submit" class="link-button">Remove {{ c.name }}</button>
+                </form>
+            </details>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="card-body"><p class="text-tertiary" style="margin: 0;">No contacts yet. Add the people documents go to: purchase, accounts, the plant.</p></div>
+    {% endif %}
+    {% if can_edit and not customer.is_archived %}
+    <div class="card-body contact-add">
+        <details class="fold">
+            <summary>Add a contact</summary>
+            <form method="POST" action="{{ url_for('customers_bp.save_contact', customer_id=customer.customer_id) }}">
+                {{ contact_fields('new_contact', {}, usually) }}
+                <button type="submit" class="btn btn-secondary btn-block">Add contact</button>
+            </form>
+        </details>
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# The project page: what each contact gets here, and who in the project's emails could be one #}
+{% macro people_card(project, people, found, contact_gets, usually, can_edit) %}
+<div class="card" id="people">
+    <div class="card-header"><h2 class="card-title">People</h2></div>
+    {% if people %}
+    <ul class="contact-list">
+        {% for c in people %}
+        <li{% if c.project_gets == 'none' %} class="is-off"{% endif %}>
+            {{ contact_line(c) }}
+            {% if can_edit %}
+            <form method="POST" action="{{ url_for('projects_bp.set_person', project_id=project.project_id) }}" class="contact-gets">
+                <input type="hidden" name="contact_id" value="{{ c.contact_id }}">
+                <select name="gets" class="form-select" data-autosubmit aria-label="What {{ c.name }} gets on this project">
+                    {% for k, label in contact_gets.items() %}<option value="{{ k }}" {% if k == c.project_gets %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <noscript><button type="submit" class="btn btn-ghost btn-xs">Save</button></noscript>
+            </form>
+            {% else %}
+            <div class="contact-sub">{{ contact_gets[c.project_gets] }}</div>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="card-body"><p class="text-tertiary" style="margin: 0;">No contacts at {{ project.customer_name }} yet.</p></div>
+    {% endif %}
+
+    {% if found.people or found.phones %}
+    <div class="card-body found-box">
+        <h3 class="found-title"><i data-lucide="sparkles"></i>Found in this project's emails</h3>
+        <ul class="contact-list">
+            {% for p in found.phones %}
+            {% set c = people | selectattr('contact_id', 'equalto', p.contact_id) | first %}
+            <li>
+                <div class="contact-name">Phone for {{ p.name }}</div>
+                <div class="contact-sub">{{ p.phone }} · in their email signature{% if p.replaces %}, saved as {{ p.replaces }}{% endif %}</div>
+                {% if can_edit and c %}
+                {{ ignore_button(project, p.value, 'this number') }}
+                <form method="POST" action="{{ url_for('customers_bp.save_contact', customer_id=c.customer_id, contact_id=c.contact_id) }}" class="found-actions">
+                    <input type="hidden" name="project_id" value="{{ project.project_id }}">
+                    {% for k in ('name', 'email', 'role', 'gets') %}<input type="hidden" name="{{ k }}" value="{{ c[k] or '' }}">{% endfor %}
+                    <input type="hidden" name="phone" value="{{ p.phone }}">
+                    <button type="submit" class="btn btn-secondary btn-xs">Save to {{ c.name }}</button>
+                </form>
+                {% endif %}
+            </li>
+            {% endfor %}
+            {% for p in found.people %}
+            <li>
+                <div class="contact-name">{{ p.name }}</div>
+                <div class="contact-sub">{{ p.email }}{% if p.phone %} · {{ p.phone }}{% endif %}</div>
+                <div class="contact-sub">{{ p.seen }}</div>
+                {% if can_edit %}
+                {{ ignore_button(project, p.email, p.name) }}
+                <details class="fold">
+                    <summary>Add to {{ project.customer_site or project.customer_name }}</summary>
+                    <form method="POST" action="{{ url_for('customers_bp.save_contact', customer_id=project.customer_id) }}">
+                        <input type="hidden" name="project_id" value="{{ project.project_id }}">
+                        {{ contact_fields('found' ~ loop.index, p, usually) }}
+                        <button type="submit" class="btn btn-secondary btn-sm">Add contact</button>
+                    </form>
+                </details>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if can_edit %}
+    <div class="card-body contact-add">
+        <details class="fold">
+            <summary>Add a contact</summary>
+            <form method="POST" action="{{ url_for('customers_bp.save_contact', customer_id=project.customer_id) }}">
+                <input type="hidden" name="project_id" value="{{ project.project_id }}">
+                {{ contact_fields('new_person', {}, usually) }}
+                <button type="submit" class="btn btn-secondary btn-block">Add contact</button>
+            </form>
+        </details>
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}

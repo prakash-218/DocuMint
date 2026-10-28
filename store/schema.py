@@ -99,20 +99,31 @@ customer = Table(
     _created(),
 )
 
-person = Table(
-    'person', metadata,
-    _id('person_id'),
-    Column('email', String(255), nullable=False, unique=True),
-    Column('full_name', String(100)),
+CONTACT_GETS = ('all', 'billing', 'none')     # every document / proformas and invoices / nothing unless chosen
+
+# People at a customer (or at one of its sites) that documents and emails go to
+contact = Table(
+    'contact', metadata,
+    _id('contact_id'),
+    _ref('org_id', 'organization.org_id', 'CASCADE'),
+    _ref('customer_id', 'customer.customer_id', 'CASCADE'),
+    Column('name', String(150), nullable=False),
+    Column('email', String(320)),                       # stored lower case
+    Column('phone', String(40)),
+    Column('role', String(100)),                        # "Purchase", "Accounts", "Plant head"
+    Column('gets', String(10), nullable=False, server_default='all'),   # on a new project, until changed there
     _created(),
+    UniqueConstraint('customer_id', 'email', name='uq_contact_customer_email'),
+    CheckConstraint(f"gets IN {CONTACT_GETS}", name='gets'),
 )
 
-customer_contact_assignment = Table(
-    'customer_contact_assignment', metadata,
+# Something found in a customer's emails (an address, a phone number) that someone chose not to keep
+contact_ignored = Table(
+    'contact_ignored', metadata,
     _ref('customer_id', 'customer.customer_id', 'CASCADE'),
-    _ref('person_id', 'person.person_id', 'RESTRICT'),
-    Column('role', String(50)),
-    PrimaryKeyConstraint('customer_id', 'person_id'),
+    Column('value', String(320), nullable=False),
+    _created(),
+    PrimaryKeyConstraint('customer_id', 'value'),
 )
 
 customer_user = Table(
@@ -196,6 +207,16 @@ project = Table(
     Column('updated_at', TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
     UniqueConstraint('org_id', 'project_no', name='uq_project_org_no'),
     CheckConstraint(f"status IN {PROJECT_STATUSES}", name='status'),
+)
+
+# What a contact gets on one project, when it differs from what they usually get (contact.gets)
+project_contact = Table(
+    'project_contact', metadata,
+    _ref('project_id', 'project.project_id', 'CASCADE'),
+    _ref('contact_id', 'contact.contact_id', 'CASCADE'),
+    Column('gets', String(10), nullable=False),
+    PrimaryKeyConstraint('project_id', 'contact_id'),
+    CheckConstraint(f"gets IN {CONTACT_GETS}", name='gets'),
 )
 
 DOC_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice')
