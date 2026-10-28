@@ -98,6 +98,9 @@ class FakeDB:
             return [{'template_name': 'Standard Invoice', 'total_amount': 38.5, 'paid_amount': 10,
                      'doc_type': 'invoice', **inv}
                     for inv in self.invoices.values() if inv[owner] == args[0]]
+        if proc == 'sp_list_search_documents':
+            return [{'doc_type': 'invoice', 'total_amount': 38.5, 'currency_code': 'USD', **inv}
+                    for inv in self.invoices.values() if inv['org_id'] == args[0]]
         if proc == 'sp_get_dashboard_stats':
             return [{'revenue_this_month': 38.5, 'revenue_last_month': 20, 'invoices_created_this_month': 1,
                      'money_received_this_month': 10, 'pending_money_this_month': 28.5}]

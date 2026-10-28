@@ -774,6 +774,18 @@ def list_invoices(conn, org_id, status, limit, offset):
                   o=org_id, s=status, l=limit or 50, off=offset or 0)]
 
 
+@proc('sp_list_search_documents')
+def list_search_documents(conn, org_id):
+    """Every document with what the Ctrl+K search looks at (search.py): number, customer, subject, PO, project."""
+    return [_rows(conn, f"""SELECT i.invoice_id, i.doc_type, i.doc_number, i.status, i.issue_date, i.due_date,
+                                   i.total_amount, {CURRENCY} AS currency_code, c.name AS customer_name,
+                                   {CUSTOMER_SITE} AS customer_site, i.details->>'subject' AS subject,
+                                   i.details->>'buyer_order_no' AS buyer_order_no, p.title AS project_title
+                            FROM invoice i JOIN customer c ON i.customer_id = c.customer_id {TEMPLATE_JOIN}
+                            LEFT JOIN project p ON p.project_id = i.project_id
+                            WHERE i.org_id = :o ORDER BY i.issue_date DESC NULLS LAST, i.invoice_id DESC""", o=org_id)]
+
+
 @proc('sp_get_invoice_payments')
 def get_invoice_payments(conn, invoice_id):
     """Payments counted on this document (an invoice's own, and advances applied to it; a proforma's

@@ -282,7 +282,7 @@ def list_projects(org_id, customer_id=None, status=None) -> List[Dict]:
 
 
 # ---------------------------------------------------------------- Finding a project
-# The same matching runs in the browser, in static/js/project-picker.js: keep the two alike.
+# The same matching runs in the browser, in static/js/fuzzy.js and project-picker.js: keep them alike.
 
 def _words(text) -> List[str]:
     plain = unicodedata.normalize('NFKD', str(text or '')).encode('ascii', 'ignore').decode().lower()
