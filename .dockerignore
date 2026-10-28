@@ -61,3 +61,7 @@ private/
 # Tests aren't needed at runtime
 tests/
 .pytest_cache/
+
+# Frontend: the image builds these itself
+frontend/node_modules/
+static/app/

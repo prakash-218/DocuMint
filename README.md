@@ -29,6 +29,24 @@ flask --app wsgi run --debug                            # http://127.0.0.1:5000
 production). After changing `store/schema.py`, create a migration with
 `alembic revision --autogenerate -m "what changed"` and review it.
 
+### The React screens
+
+New screens are React (TypeScript, built with Vite) in `frontend/`, placed inside the server-rendered
+pages as islands: `{{ island('name', props) }}` (`templates/_macros.html`) renders a `<div data-island>`
+that `frontend/src/main.tsx` mounts, using the component registered under that name in
+`frontend/src/islands.ts`. They read and write through the JSON endpoints in `blueprints/api_bp.py`, with
+the same login, organization and roles as the pages. You need Node 22 for this part.
+
+```bash
+cd frontend
+npm ci                                                  # .npmrc works around an npm resolver bug
+npm run watch                                           # rebuilds static/app on every change
+npm test && npm run typecheck
+```
+
+Without a build the pages work as before, just without their React parts. Docker and CI build it
+themselves (`static/app` isn't committed).
+
 Demo logins (password `demo12345`): `michael.chen@techflow.com` (owner), `sarah.martinez@techflow.com`
 (member), `david.kim@techflow.com` (viewer), `emily.rodriguez@nexus.com` (owner of the Nexus companies).
 
@@ -142,8 +160,9 @@ projects.py               projects, files, grouping
 emailsync.py, worker.py   IMAP sync and the background worker
 activity.py               project events and notifications
 observability.py          JSON logs, request logging, /healthz
-blueprints/               routes
+blueprints/               routes (api_bp: JSON for the React screens)
 templates/, static/       pages, CSS, JS
+frontend/                 React screens (TypeScript), built into static/app; frontend_assets.py loads them
 scripts/dbtool.py         migrate / reset / demo
 tests/                    unit tests; tests/integration against real services
 ```

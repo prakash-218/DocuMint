@@ -3,7 +3,7 @@ Main Flask application.
 """
 
 import logging
-from flask import Flask, render_template, session, g
+from flask import Flask, g, jsonify, render_template, request, session
 from dotenv import load_dotenv
 import os
 import pathlib
@@ -33,6 +33,8 @@ from blueprints.notifications_bp import notifications_bp
 from blueprints.emails_bp import emails_bp
 from blueprints.costings_bp import costings_bp
 from blueprints.search_bp import search_bp
+from blueprints.api_bp import api_bp
+from frontend_assets import frontend_assets
 import doc_urls
 
 
@@ -68,6 +70,7 @@ def create_app(config_name=None):
     app.register_blueprint(emails_bp, url_prefix='/emails')
     app.register_blueprint(costings_bp, url_prefix='/costings')
     app.register_blueprint(search_bp, url_prefix='/search')
+    app.register_blueprint(api_bp, url_prefix='/api')
 
 
     @app.context_processor
@@ -273,6 +276,7 @@ def create_app(config_name=None):
     app.add_template_global(DOC_TYPES, 'DOC_TYPES')
     app.add_template_global(get_type, 'doc_type_info')
     app.add_template_global(can_delete_invoice, 'can_delete_invoice')
+    app.add_template_global(frontend_assets, 'frontend_assets')
     from layout import printed_customer_fields, printed_org_fields
     app.add_template_global(printed_org_fields, 'printed_org_fields')
     app.add_template_global(printed_customer_fields, 'printed_customer_fields')
@@ -289,10 +293,14 @@ def create_app(config_name=None):
 
     @app.errorhandler(404)
     def not_found(error):
+        if request.path.startswith('/api/'):
+            return jsonify(error='Not found'), 404
         return render_template('errors/404.html'), 404
 
     @app.errorhandler(500)
     def internal_error(error):
+        if request.path.startswith('/api/'):
+            return jsonify(error='Something went wrong on our side'), 500
         return render_template('errors/500.html'), 500
 
 
