@@ -34,21 +34,21 @@ def _version(lines, total, due='2026-11-10', **details):
 
 
 def test_what_changed_between_versions():
-    before = _version([('Axle final assembly\nMechanical', 1, 1015000), ('P&F & Transportation', 1, 8000),
-                       ('Commissioning', 1, 25000)], 1048000, subject='Axle assembly',
+    before = _version([('Axle final assembly\nMechanical', 1, 240000), ('P&F & Transportation', 1, 8000),
+                       ('Commissioning', 1, 25000)], 273000, subject='Axle assembly',
                       terms='Taxes: 18% GST\nDelivery: (10-12) weeks')
-    after = _version([('Axle final assembly\nMechanical, pneumatic', 1, 957500), ('Commissioning', 2, 50000),
-                      ('Electrical panel', 1, 35000)], 1042500, due='2026-11-24', subject='Axle assembly',
+    after = _version([('Axle final assembly\nMechanical, pneumatic', 1, 225000), ('Commissioning', 2, 50000),
+                      ('Electrical panel', 1, 35000)], 310000, due='2026-11-24', subject='Axle assembly',
                      terms='Taxes: 18% GST\nDelivery: (8-10) weeks')
     c = revisions.compare(before, after)
     by = {i['description'].splitlines()[0]: i for i in c['items']}
     assert by['Axle final assembly']['change'] == 'changed' and by['Axle final assembly']['what'] == ['price', 'description']
-    assert by['Axle final assembly']['price_after'] == 957500
+    assert by['Axle final assembly']['price_after'] == 225000
     assert by['Commissioning']['what'] == ['qty']                      # same price, twice the days
     assert by['Electrical panel']['change'] == 'added' and by['P&F & Transportation']['change'] == 'removed'
     assert [f['label'] for f in c['fields']] == ['Valid until']
     assert c['terms'] == {'added': ['Delivery: (8-10) weeks'], 'removed': ['Delivery: (10-12) weeks']}
-    assert c['total_change'] == -5500 and not c['nothing']
+    assert c['total_change'] == 37000 and not c['nothing']
 
 
 def test_a_plain_copy_changed_nothing():

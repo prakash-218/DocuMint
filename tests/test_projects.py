@@ -78,7 +78,7 @@ def _project(no, title, customer='Wipro Hydraulics Private Limited', site='', st
 
 def test_finding_a_project_forgives_typos_and_abbreviations():
     from projects import match_score, search_projects
-    rows = [_project(47, 'Piston torque fix', site='A22'), _project(49, 'Burnishing shaft Ø47 (PO 94385456)', site='A22'),
+    rows = [_project(47, 'Piston torque fix', site='A22'), _project(49, 'Burnishing shaft Ø47 (PO 11223344)', site='A22'),
             _project(51, 'Piston torqueing attachment', site='C1', status='completed'),
             _project(62, 'Checking gauges', customer='Tractors and Farm Equipment Limited', site='Madurai plant')]
     found = lambda q: [p['project_no'] for p in search_projects(rows, q)]

@@ -97,7 +97,7 @@ def test_revising_a_quotation_into_another_template(client, gst_org):
     set_next_number(org_id, 'quote', get_org_profile(org_id)[1], 600)
     customer = _customer(org_id, 'Wipro Enterprises Private Limited', 'Tamil Nadu', 'India')
     quote_id, number = _create(client, org_id, 'quote', 'Quotation', customer,
-                               [{'description': 'Axle final assembly', 'price': 1015000, 'qty': 1}], tax_mode='none')
+                               [{'description': 'Assembly fixture', 'price': 250000, 'qty': 1}], tax_mode='none')
     client.post(f'/invoices/{quote_id}/finalize')
     page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
     head, tail = number.rsplit('/', 1)
@@ -110,7 +110,7 @@ def test_revising_a_quotation_into_another_template(client, gst_org):
     revision = _new_id(response)
     header, summary = _summary(revision)
     assert header['doc_number'] == f'{head}R1/{tail}' and header['template_id'] == breakup['template_id']
-    assert header['status'] == 'draft' and summary['total'] == 1015000          # the items came across
+    assert header['status'] == 'draft' and summary['total'] == 250000          # the items came across
     assert _summary(quote_id)[0]['status'] == 'revised'
     # The old version: no revising it again, no going back to draft
     page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)

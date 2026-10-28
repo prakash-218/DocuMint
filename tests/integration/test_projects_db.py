@@ -162,7 +162,7 @@ def test_project_year_the_picker_and_finding_projects(client, gst_org):
     import projects
     org_id = gst_org
     customer = _customer(org_id, 'Wheels India Limited', 'Tamil Nadu', 'India')
-    other = _customer(org_id, 'Venus Traders', 'Tamil Nadu', 'India')
+    other = _customer(org_id, 'Second Customer Private Limited', 'Tamil Nadu', 'India')
     this_year = projects.current_fiscal_year(org_id)
     tool = projects.create_project(org_id, customer, 'Drop set for SRB 65 dia tool')
     spindle = projects.create_project(org_id, customer, 'Spindle repair', fiscal_year='25-26')
