@@ -17,6 +17,11 @@ GETS = {'all': 'Gets everything', 'billing': 'Proformas and invoices only', 'non
 USUALLY = {'all': 'Everything', 'billing': 'Proformas and invoices', 'none': 'Only when picked on a project'}
 MAX_SUGGESTIONS = 8
 
+# Mailboxes on these are one person's, not a company's: a Gmail that collects the company mail doesn't make
+# every Gmail address ours
+FREE_MAIL = {'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.in', 'ymail.com', 'rediffmail.com', 'outlook.com',
+             'hotmail.com', 'live.com', 'msn.com', 'icloud.com', 'me.com', 'aol.com', 'zoho.com', 'zohomail.in',
+             'proton.me', 'protonmail.com'}
 NOT_A_PERSON = re.compile(r'^(no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounces?|notifications?|alerts?)\b', re.I)
 # Indian mobiles (+91 98400 12345, 9840012345) and landlines with an STD code (044-2345 6789)
 PHONE = re.compile(r'(?<![\d+])(?:(?:\+|00)?91[\s.-]?)?(?:[6-9]\d{4}[\s.-]?\d{5}|0\d{2,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4})(?![\d])')
@@ -113,8 +118,10 @@ def _when(value) -> Optional[datetime]:
 def suggestions(messages: List[Dict], contacts: List[Dict], ignored: Iterable[str], own_domains: Iterable[str],
                 own_phones: str = '') -> Dict[str, List[Dict]]:
     """People in these emails who aren't contacts yet, and phone numbers in the signatures of people who
-    are. messages: newest first, as sp_list_project_email_people gives them."""
-    own = {d.lower().lstrip('@') for d in own_domains if d}
+    are. messages: newest first, as sp_list_project_email_people gives them. own_domains may also hold
+    whole addresses (a mailbox on Gmail), which leave out just that address."""
+    own_addresses = {d.lower() for d in own_domains if d and '@' in d.strip('@')}
+    own = {d.lower().lstrip('@') for d in own_domains if d and '@' not in d.strip('@')}
     ignored = set(ignored)
     known = {c['email']: c for c in contacts if c.get('email')}
     own_digits = {digits(p) for p in PHONE.findall(own_phones or '')}
@@ -122,8 +129,8 @@ def suggestions(messages: List[Dict], contacts: List[Dict], ignored: Iterable[st
     phones: List[Dict] = []
 
     def outsider(address):
-        return ('@' in address and address.split('@')[1] not in own and not NOT_A_PERSON.match(address)
-                and address not in known and address not in ignored)
+        return ('@' in address and address.split('@')[1] not in own and address not in own_addresses
+                and not NOT_A_PERSON.match(address) and address not in known and address not in ignored)
 
     for m in messages:
         sender = (m.get('from_address') or '').lower()
@@ -175,18 +182,20 @@ def seen_text(p: Dict) -> str:
 # ---------------------------------------------------------------- Found in emails (with the database)
 
 def own_domains(org_id) -> List[str]:
-    """Our side of the conversation: the organization's domain, its mailboxes' domains, EMAIL_ORG_DOMAIN."""
+    """Our side of the conversation: the organization's domain, EMAIL_ORG_DOMAIN and its mailboxes' domains,
+    except free mail (gmail.com...), where only the mailbox's own address is ours."""
     found = {d.strip().lower() for d in (os.getenv('EMAIL_ORG_DOMAIN') or '').split(',') if d.strip()}
     try:
         org = db.execute_proc_single('sp_get_organization_details', (org_id,)) or {}
         if org.get('domain'):
             found.add(org['domain'].lower())
         for account in db.execute_proc('sp_list_email_accounts', (org_id,)) or []:
-            if '@' in (account.get('address') or ''):
-                found.add(account['address'].split('@')[1].lower())
+            address = (account.get('address') or '').lower()
+            if '@' in address:
+                found.add(address if address.split('@')[1] in FREE_MAIL else address.split('@')[1])
     except DatabaseError:
         pass
-    return sorted(found)
+    return sorted(d for d in found if d not in FREE_MAIL)
 
 
 def project_suggestions(org_id, project: Dict, contacts: List[Dict], own_phones: str = '') -> Dict[str, List[Dict]]:

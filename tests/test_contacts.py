@@ -28,6 +28,18 @@ def test_people_who_wrote_or_were_copied_are_suggested():
     ]
 
 
+def test_a_mailbox_on_free_mail_leaves_out_only_itself(fake_db, monkeypatch):
+    from db import db
+    monkeypatch.setenv('EMAIL_ORG_DOMAIN', '')
+    accounts = [{'address': 'Collector@Gmail.com'}, {'address': 'info@ourworks.example'}]
+    monkeypatch.setattr(db, 'execute_proc', lambda p, a=None, f=True: accounts if p == 'sp_list_email_accounts'
+                        else fake_db.execute_proc(p, a, f))
+    own = contacts.own_domains(ORG_A)
+    assert own == ['a.com', 'collector@gmail.com', 'ourworks.example']
+    messages = [_mail('buyer.one@gmail.com', 'Buyer One', to='collector@gmail.com')]
+    assert [p['email'] for p in contacts.suggestions(messages, [], [], own)['people']] == ['buyer.one@gmail.com']
+
+
 def test_contacts_ignored_and_own_addresses_are_not_suggested():
     messages = [_mail('ravi.k@gearco.example', 'Ravi Kumar', cc='arun.s@gearco.example, MD@OurWorks.example')]
     known = [{'contact_id': 'K1', 'name': 'Ravi Kumar', 'email': 'ravi.k@gearco.example', 'phone': None}]
