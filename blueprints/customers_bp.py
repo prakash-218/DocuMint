@@ -2,11 +2,14 @@
 Customers blueprint - CRUD operations for customers
 """
 
+import re
+
 from flask import Blueprint, request, render_template, redirect, url_for, flash, g
 from db import db, DatabaseError
-from auth import CUSTOMER_EDITORS, require_org, get_current_org_role, quotations_only
+from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, require_org, get_current_org_role, quotations_only
 from access import get_org_customer
 from documents import load_json
+import contacts
 import customers as C
 
 customers_bp = Blueprint('customers_bp', __name__)
@@ -126,7 +129,7 @@ def view_customer(customer_id):
     """View customer details"""
     current_role = get_current_org_role()
     try:
-        customer, contacts = get_org_customer(customer_id, g.current_org_id)
+        customer, _ = get_org_customer(customer_id, g.current_org_id)
 
         if not customer:
             flash('Customer not found', 'error')
@@ -171,12 +174,88 @@ def view_customer(customer_id):
                              custom_defs=_custom_defs(g.current_org_id),
                              custom_values=load_json(customer.get('custom')),
                              customer=customer,
-                             contacts=contacts or [],
+                             contacts=contacts.for_customer(g.current_org_id, customer),
+                             usually=contacts.USUALLY,
                              customer_user=customer_user,
                              current_org_role=current_role)
     except DatabaseError as e:
         flash('Error loading customer', 'error')
         return redirect(url_for('customers_bp.list_customers'))
+
+
+def _contact_back(customer_id):
+    """Back to the project the form was on, when it's this organization's; else to the customer."""
+    project_id = request.form.get('project_id')
+    if project_id:
+        import projects
+        if projects.get_project(project_id, g.current_org_id):
+            return url_for('projects_bp.view_project', project_id=project_id) + '#people'
+    return url_for('customers_bp.view_customer', customer_id=customer_id) + '#contacts'
+
+
+def _contact_fields(form):
+    """(name, email, phone, role, gets) from the contact form, or (None, what's wrong)."""
+    name = (form.get('name') or '').strip()[:150]
+    email = (form.get('email') or '').strip().lower()[:320]
+    if email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+        return None, f'"{email}" doesn\'t look like an email address.'
+    if not name and not email:
+        return None, 'Give the contact a name or an email address.'
+    return (name or contacts.name_from_address(email), email or None, (form.get('phone') or '').strip()[:40] or None,
+            (form.get('role') or '').strip()[:100] or None, contacts.valid_gets(form.get('gets'))), None
+
+
+@customers_bp.route('/<customer_id>/contacts', methods=['POST'])
+@customers_bp.route('/<customer_id>/contacts/<contact_id>', methods=['POST'])
+@require_org
+def save_contact(customer_id, contact_id=None):
+    """Add a contact, or change one."""
+    back = _contact_back(customer_id)
+    if get_current_org_role() not in EDITORS:
+        flash('Viewers can look at contacts but not change them.', 'error')
+        return redirect(back)
+    fields, problem = _contact_fields(request.form)
+    if problem:
+        flash(problem, 'error')
+        return redirect(back)
+    try:
+        db.execute_proc('sp_save_contact', (g.current_org_id, contact_id, customer_id, *fields), fetch=False)
+    except DatabaseError as e:
+        flash(f'{fields[1]} is already a contact here.' if 'uq_contact_customer_email' in str(e)
+              else 'Could not save the contact', 'error')
+    else:
+        flash(f'{fields[0]} saved' if contact_id else f'{fields[0]} added to the contacts', 'success')
+    return redirect(back)
+
+
+@customers_bp.route('/<customer_id>/contacts/<contact_id>/delete', methods=['POST'])
+@require_org
+def delete_contact(customer_id, contact_id):
+    back = _contact_back(customer_id)
+    if get_current_org_role() not in EDITORS:
+        flash('Viewers can look at contacts but not change them.', 'error')
+        return redirect(back)
+    try:
+        db.execute_proc('sp_delete_contact', (g.current_org_id, customer_id, contact_id), fetch=False)
+    except DatabaseError:
+        flash('Could not remove the contact', 'error')
+    else:
+        flash('Contact removed', 'success')
+    return redirect(back)
+
+
+@customers_bp.route('/<customer_id>/ignore-suggestion', methods=['POST'])
+@require_org
+def ignore_contact(customer_id):
+    """Stop suggesting an address (or a phone number, 'tel:<digits>') found in this customer's emails."""
+    back = _contact_back(customer_id)
+    value = (request.form.get('value') or '').strip().lower()
+    if get_current_org_role() in MAIL_READERS and value:
+        try:
+            db.execute_proc('sp_ignore_contact_suggestion', (g.current_org_id, customer_id, value), fetch=False)
+        except DatabaseError:
+            flash('Could not save that', 'error')
+    return redirect(back)
 
 
 @customers_bp.route('/<customer_id>/create-portal-account', methods=['POST'])

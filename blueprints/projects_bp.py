@@ -10,10 +10,12 @@ import re
 from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from access import get_org_customer, get_org_invoice, safe_referrer
-from auth import can_delete_project, can_edit_invoice, get_current_org_role, quotations_only, require_org
+from auth import MAIL_READERS, can_delete_project, can_edit_invoice, get_current_org_role, quotations_only, require_org
 from db import DatabaseError, db
+from document_service import get_org_profile
 import projects as J
 import activity
+import contacts
 import costing
 import revisions
 
@@ -176,13 +178,18 @@ def view_project(project_id):
                   or '/quotes/' in (e.get('link') or '')]
     stages = [s for s in J.project_stages(revisions.collapse(docs), all_files) if not sales or s['key'] == 'quote']
     files = [f for f in all_files if f.get('kind') not in J.EARLIER_KINDS]       # earlier documents show in the stages
+    reads_mail = get_current_org_role() in MAIL_READERS
+    people = contacts.for_project(org_id, project_id)
+    found = contacts.project_suggestions(org_id, project, people, get_org_profile(org_id)[1].get('phone') or '') \
+        if reads_mail else {'people': [], 'phones': []}
     return render_template('projects/view.html', project=project, docs=docs, money=J.project_money(docs, all_files),
+                           people=people, found=found, contact_gets=contacts.GETS, usually=contacts.USUALLY,
                            stages=stages, files=files, other_files=other_files, addable=addable,
                            statuses=J.PROJECT_STATUSES, kinds=J.DOCUMENT_KINDS, po=J.latest_purchase_order(org_id, project_id),
                            years=J.recent_fiscal_years(org_id),
                            events=events,
                            threads=db.execute_proc('sp_list_email_threads', (org_id, project_id, None, False, 50)) or []
-                           if get_current_org_role() in ('owner', 'admin', 'member') else [],
+                           if reads_mail else [],
                            costings=costing.list_for(org_id, project_id) if get_current_org_role() in ('owner', 'admin') else [],
                            current_org_role=get_current_org_role())
 
@@ -212,6 +219,26 @@ def edit_project(project_id):
             activity.record('project_status', f"Project {J.project_label(project)} marked {J.PROJECT_STATUSES[status].lower()}",
                             project_id=project_id, link=back)
         flash('Project updated', 'success')
+    return redirect(back)
+
+
+@projects_bp.route('/<project_id>/people', methods=['POST'])
+@require_org
+def set_person(project_id):
+    """What one of the customer's contacts gets on this project: everything, proformas and invoices, or nothing."""
+    _project_or_404(project_id)
+    back = url_for('projects_bp.view_project', project_id=project_id) + '#people'
+    denied = _need_editor(back)
+    if denied:
+        return denied
+    gets = request.form.get('gets')
+    if gets not in contacts.GETS:
+        return redirect(back)
+    try:
+        db.execute_proc('sp_set_project_contact', (project_id, g.current_org_id, request.form.get('contact_id'), gets),
+                        fetch=False)
+    except DatabaseError:
+        flash('Could not change that contact', 'error')
     return redirect(back)
 
 

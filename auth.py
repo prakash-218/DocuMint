@@ -154,6 +154,7 @@ SALES = 'sales'
 MANAGERS = ('owner', 'admin')
 EDITORS = ('owner', 'admin', 'member', SALES)          # create and edit documents (sales: quotations only)
 CUSTOMER_EDITORS = ('owner', 'admin', SALES)           # add and edit customers
+MAIL_READERS = ('owner', 'admin', 'member')            # read the mailbox (and what's found in it)
 
 # What Sales may open: blueprint -> its pages (None: all of them). Anything else is refused, so a page
 # added later stays closed to Sales until it's listed here. Every document a request is about must be a
@@ -162,7 +163,7 @@ SALES_PAGES = {
     'projects_bp': None,
     'invoices_bp': {'list_invoices', 'create_invoice', 'view_invoice', 'export_pdf', 'finalize_invoice', 'set_status',
                     'revise', 'edit_invoice', 'reopen', 'delete_invoice'},
-    'customers_bp': {'list_customers', 'view_customer', 'create_customer', 'edit_customer'},
+    'customers_bp': {'list_customers', 'view_customer', 'create_customer', 'edit_customer', 'save_contact', 'delete_contact'},
     'search_bp': None,
     'settings_bp': {'index', 'select_org'},
 }

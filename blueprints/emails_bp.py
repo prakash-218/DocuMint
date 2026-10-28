@@ -5,13 +5,13 @@ import logging
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, send_file, url_for
 
-from auth import get_current_org_role, require_org
+from auth import MAIL_READERS, get_current_org_role, require_org
 from db import DatabaseError, db
 
 logger = logging.getLogger(__name__)
 emails_bp = Blueprint('emails_bp', __name__)
 
-READERS = ('owner', 'admin', 'member')          # viewers don't see mail
+READERS = MAIL_READERS                          # viewers and Sales don't see mail
 INLINE = {'application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif'}
 
 
