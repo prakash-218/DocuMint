@@ -63,13 +63,24 @@ def get_current_user():
     return None
 
 
+def wants_json() -> bool:
+    """A request from the React screens (/api/...): refusals come back as JSON, not as redirects to a page."""
+    return request.blueprint == 'api_bp'
+
+
+def _refuse(status, message, page):
+    """JSON for /api requests; otherwise the page (a redirect, usually)."""
+    from flask import jsonify
+    return (jsonify(error=message), status) if wants_json() else page
+
+
 def require_auth(f):
     """Decorator to require authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         user = get_current_user()
         if not user:
-            return redirect(url_for('auth_bp.login'))
+            return _refuse(401, 'Sign in first', redirect(url_for('auth_bp.login')))
 
 
         g.current_user = user
@@ -85,7 +96,7 @@ def require_org(f):
         user = get_current_user()
         
         if not user or not user.get('org_id'):
-            return redirect(url_for('settings_bp.select_org'))
+            return _refuse(403, 'Pick an organization first', redirect(url_for('settings_bp.select_org')))
 
         # Re-read membership on every request so role changes, deactivations
         # and removals take effect immediately instead of at next login.
@@ -99,16 +110,16 @@ def require_org(f):
             if not membership:
                 for key in ('org_id', 'org_name', 'org_status'):
                     session.pop(key, None)
-                return redirect(url_for('settings_bp.select_org'))
+                return _refuse(403, 'You are not a member of this organization', redirect(url_for('settings_bp.select_org')))
             session['org_name'] = membership.get('name')
             session['org_status'] = membership.get('status', 'active')
 
         org_status = session.get('org_status')
         if org_status and org_status != 'active':
             # Render the "Access Status" page instead of the requested route
-            return render_template('errors/org_status.html', 
-                                 status=org_status, 
-                                 org_name=session.get('org_name'))
+            if wants_json():
+                return _refuse(403, f'This organization is {org_status}', None)
+            return render_template('errors/org_status.html', status=org_status, org_name=session.get('org_name'))
         
         g.current_org_id = user['org_id']
         if get_current_org_role() == SALES:
@@ -165,6 +176,7 @@ SALES_PAGES = {
                     'revise', 'edit_invoice', 'reopen', 'delete_invoice'},
     'customers_bp': {'list_customers', 'view_customer', 'create_customer', 'edit_customer', 'save_contact', 'delete_contact'},
     'search_bp': None,
+    'api_bp': {'me'},
     'settings_bp': {'index', 'select_org'},
 }
 
@@ -197,6 +209,8 @@ def _sales_refusal():
         return redirect(home)
     if sales_may(request.endpoint, _request_doc_type()):
         return None
+    if wants_json():
+        return _refuse(403, 'Your role is Sales: projects, quotations and customers only', None)
     flash('Your role is Sales: you can open projects, quotations and customers.', 'error')
     return redirect(home)
 

@@ -40,3 +40,7 @@ private/
 
 # Local file storage (dev)
 var/
+
+# Frontend: dependencies, and what vite builds (Docker and CI build it themselves)
+frontend/node_modules/
+static/app/

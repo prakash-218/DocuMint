@@ -118,3 +118,8 @@
 </details>
 {% endif %}
 {% endmacro %}
+
+{# A React screen (frontend/src/islands.ts) mounted here, with these props; nothing shows until the script runs #}
+{% macro island(name, props={}, label='') %}
+<div data-island="{{ name }}" data-props="{{ props | tojson | forceescape }}"{% if label %} aria-label="{{ label }}"{% endif %}></div>
+{% endmacro %}

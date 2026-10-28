@@ -55,6 +55,20 @@ jobs:
       - name: Install
         run: pip install -r requirements-dev.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'                # what the Dockerfile builds the frontend with
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend (React screens) - type check, tests, build into static/app for the pages' tests
+        working-directory: frontend
+        run: |
+          npm ci --no-fund --no-audit
+          npm run typecheck
+          npm test
+          npm run build
+
       - name: Wait for the mail server and S3 (their tests skip themselves when these aren't up)
         run: |
           for port in 3143 3025 9010; do
