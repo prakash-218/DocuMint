@@ -1,4 +1,4 @@
-# Every push and pull request: the unit tests, and the integration tests against a real PostgreSQL
+# Every push and pull request: the unit tests, and the integration tests against a real PostgreSQL, mail server and S3
 # (migrated from scratch and loaded with the demo data, like tests/integration/conftest.py does locally),
 # then a check that the migrations and store/schema.py agree.
 # With "Wait for CI" on in Railway (each service: Settings > Source), a push to main deploys only
@@ -27,6 +27,16 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      mail:                                 # IMAP / SMTP for the email sync tests
+        image: greenmail/standalone:2.0.1
+        env:
+          GREENMAIL_OPTS: -Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled
+        ports: ['3143:3143', '3025:3025']
+      s3:                                   # an S3 bucket for the file storage test
+        image: adobe/s3mock:3.11.0
+        env:
+          initialBuckets: documint
+        ports: ['9010:9090']
     env:
       DOCUMINT_INTEGRATION_DB: '1'
       DATABASE_URL: postgresql+psycopg://postgres:dev@localhost:5432/documint_test
@@ -45,8 +55,14 @@ jobs:
       - name: Install
         run: pip install -r requirements-dev.txt
 
+      - name: Wait for the mail server and S3 (their tests skip themselves when these aren't up)
+        run: |
+          for port in 3143 3025 9010; do
+            timeout 90 bash -c "until (echo > /dev/tcp/127.0.0.1/$port) 2>/dev/null; do sleep 2; done" || { echo "port $port isn't up"; exit 1; }
+          done
+
       - name: Tests
-        run: python -m pytest -q
+        run: python -m pytest -q -rs
 
       - name: Migrations match the schema
         run: python -m alembic check
