@@ -4,12 +4,18 @@
   The letterhead prints at the top of every page, in a frame header_height (pt) tall;
   measure_header=true renders just the letterhead, to measure it. numbered=true adds
   page numbers (for a quote that runs past a page).
+  The letterhead follows Settings → Business profile: centred (the default) or the logo on
+  the left with the address opposite; its colour and accent; and a logo that already says
+  the company's name, printed in place of the typed name.
 #}
 {% set measure_header = measure_header | default(false) %}
 {% set header_height = header_height | default(100) %}
 {% set numbered = numbered | default(false) %}
 {% set cur = invoice.currency_code %}
 {% set d = invoice.details | fromjson %}
+{% set lh_color = profile.letterhead_color or '#1f2fd1' %}
+{% set lh_accent = profile.letterhead_accent or lh_color %}
+{% set logo_named = profile.logo and profile.logo_has_name %}
 {% macro cell(value) -%}
     {%- if not value -%}
     {%- elif value.data_type == 'number' -%}
@@ -32,7 +38,8 @@
     {% endif %}
     body { font-family: {{ fonts.regular or 'Helvetica' }}; font-size: 9.5pt; color: #111; line-height: 1.25; }
     p { margin: 0 0 5pt 0; }
-    .head { text-align: center; color: #1f2fd1; font-family: {{ fonts.mono or 'Courier' }}; font-weight: bold; }
+    .head { text-align: center; color: {{ lh_color }}; font-family: {{ fonts.mono or 'Courier' }}; font-weight: bold; }
+    .split-name { color: {{ lh_color }}; font-family: {{ fonts.mono or 'Courier' }}; font-weight: bold; font-size: 16pt; letter-spacing: 1pt; }
     .head .name { font-size: 20pt; letter-spacing: 1pt; }
     .head .line { font-size: 8pt; line-height: 1.2; }
     table { width: 100%; border-collapse: collapse; }
@@ -48,9 +55,30 @@
 </head>
 <body>
     <div id="letterhead">
+    {% if profile.letterhead_style == 'left' %}
+    <table><tr>
+        <td style="width: 52%; vertical-align: middle; padding: 0;">
+            {% if profile.logo %}<img src="{{ profile.logo }}" style="height: 46pt; width: {{ profile.logo | image_width(46) }}pt;">{% endif %}
+            {% if not logo_named %}<div class="split-name">{{ invoice.organization_name | upper }}</div>{% endif %}
+        </td>
+        <td style="width: 48%; vertical-align: bottom; text-align: right; padding: 0; font-size: 8pt; color: {{ lh_color }};">
+            {% if invoice.organization_street_address %}<div class="ln">{{ invoice.organization_street_address }}</div>{% endif %}
+            <div class="ln">{{ [invoice.organization_city, invoice.organization_zip_code] | select | join(' ') }}{% if invoice.organization_country %}, {{ invoice.organization_country }}{% endif %}</div>
+            {% if profile.gstin %}<div class="ln"><b>GSTIN</b>&nbsp; {{ profile.gstin }}</div>{% endif %}
+            {% if profile.email or profile.phone %}<div class="ln">{{ [profile.email, profile.phone] | select | join(' · ') }}</div>{% endif %}
+            {% for f in org_fields | default([]) %}<div class="ln"><b>{{ f.label }}</b>&nbsp; {{ f.value }}</div>{% endfor %}
+        </td>
+    </tr></table>
+    {# A line under both: the accent under the logo, then the letterhead colour #}
+    <table style="margin: 9pt 0 12pt;"><tr>
+        <td style="width: 24%; background-color: {{ lh_accent }}; font-size: 1.6pt; line-height: 1.6pt; padding: 0;">&nbsp;</td>
+        <td style="width: 76%; background-color: {{ lh_color }}; font-size: 1.6pt; line-height: 1.6pt; padding: 0;">&nbsp;</td>
+    </tr></table>
+    {% else %}
     <div class="head">
-        {% if profile.logo %}<img src="{{ profile.logo }}" style="height: 34pt;"><br>{% endif %}
-        <div class="name">{{ invoice.organization_name | upper }}</div>
+        {% if profile.logo %}<img src="{{ profile.logo }}" style="height: {{ 44 if logo_named else 34 }}pt; width: {{ profile.logo | image_width(44 if logo_named else 34) }}pt;"><br>
+        <div style="font-size: 5pt; line-height: 5pt;">&nbsp;</div>{% endif %}
+        {% if not logo_named %}<div class="name">{{ invoice.organization_name | upper }}</div>{% endif %}
         {% if invoice.organization_street_address %}<div class="line">{{ invoice.organization_street_address | upper }}</div>{% endif %}
         <div class="line">{{ [invoice.organization_city, invoice.organization_zip_code] | select | join('-') | upper }}{% if invoice.organization_country %}, {{ invoice.organization_country | upper }}{% endif %}</div>
         {% if profile.email %}<div class="line">E-MAIL: {{ profile.email }}</div>{% endif %}
@@ -58,7 +86,8 @@
         {% if profile.gstin %}<div class="line">GSTIN: {{ profile.gstin }}</div>{% endif %}
         {% for f in org_fields | default([]) %}<div class="line">{{ f.label | upper }}: {{ f.value }}</div>{% endfor %}
     </div>
-    <table style="margin: 4pt 0 12pt;"><tr><td style="background-color: #1f2fd1; font-size: 3pt; line-height: 3pt;">&nbsp;</td></tr></table>
+    <table style="margin: 4pt 0 12pt;"><tr><td style="background-color: {{ lh_accent }}; font-size: 3pt; line-height: 3pt;">&nbsp;</td></tr></table>
+    {% endif %}
     </div>
     {% if not measure_header %}
     {% if numbered %}<div id="pagefoot" style="font-size: 7.5pt; color: #888; text-align: center;">{{ invoice | doc_number }} · Page <pdf:pagenumber> of <pdf:pagecount></div>{% endif %}

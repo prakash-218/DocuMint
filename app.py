@@ -195,6 +195,13 @@ def create_app(config_name=None):
     def doc_label_filter(doc_type):
         return get_type(doc_type).label
 
+    @app.template_filter('image_width')
+    def image_width_filter(data_uri, height):
+        """The width (pt) an image prints at for this height, from its own proportions. PDFs stretch an image
+        given only a height across a table cell."""
+        from app_helpers import image_ratio
+        return round(height * image_ratio(data_uri), 1)
+
     @app.template_filter('doc_type_plural')
     def doc_type_plural_filter(doc_type):
         return get_type(doc_type).plural
