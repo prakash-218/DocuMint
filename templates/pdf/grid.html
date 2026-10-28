@@ -1,10 +1,16 @@
 {#
   Boxed-grid layout for proforma, tax and export invoices (modelled on the
   usual Indian GST invoice format). xhtml2pdf: tables only, simple CSS.
-  Expects: invoice, sections_data, summary, payments, profile, fonts, copies
+  Expects: invoice, sections_data, summary, payments, profile, fonts, copy
+  (the copy's label: "Original Copy"; one copy per render).
   With packing=true it prints the packing list for an export invoice instead
   (no prices or tax; packages and weights).
+  The header box prints at the top of every page, in a frame header_height (pt)
+  tall; measure_header=true renders just the header box, to measure it.
 #}
+{% set measure_header = measure_header | default(false) %}
+{% set header_height = header_height | default(200) %}
+{% set copy = copy | default('') %}
 {% set t = doc_type_info(invoice.doc_type) %}
 {% set cur = invoice.currency_code %}
 {% set d = invoice.details | fromjson %}
@@ -22,7 +28,7 @@
         {%- if value.val_number is none -%}{%- elif value.is_currency -%}{{ value.val_number | currency(cur) }}{%- else -%}{{ value.val_number | number }}{%- endif -%}
     {%- elif value.data_type == 'date' -%}{{ value.val_date | date }}
     {%- elif value.data_type == 'boolean' -%}{{ 'Yes' if value.val_boolean else 'No' }}
-    {%- else -%}{{ value.val_string | multiline }}{%- endif -%}
+    {%- else -%}{{ value.val_string | multiline(blocks=true) }}{%- endif -%}
 {%- endmacro %}
 <!DOCTYPE html>
 <html>
@@ -30,8 +36,14 @@
 <meta charset="UTF-8">
 <title>{{ title }} {{ invoice | doc_number }}</title>
 <style>
-    @page { size: a4 portrait; margin: 1.2cm 1.2cm 1.4cm 1.2cm;
+    {% if measure_header %}
+    @page { size: a4 portrait; margin: 1.2cm 1.2cm 1.4cm 1.2cm; }
+    {% else %}
+    {# The header frame is a little taller than the header, so it always fits; the items start right under it #}
+    @page { size: a4 portrait; margin: {{ 34.02 + header_height }}pt 1.2cm 1.4cm 1.2cm;
+            @frame dochead { -pdf-frame-content: dochead; top: 1.2cm; margin-left: 1.2cm; margin-right: 1.2cm; height: {{ header_height + 2 }}pt; }
             @frame footer { -pdf-frame-content: footer; bottom: 0.6cm; margin-left: 1.2cm; margin-right: 1.2cm; height: 0.6cm; } }
+    {% endif %}
     body { font-family: {{ fonts.regular or 'Helvetica' }}; font-size: 8.5pt; color: #111; line-height: 1.3; }
     table { width: 100%; border-collapse: collapse; }
     td, th { vertical-align: top; padding: 2pt 4pt; }
@@ -50,10 +62,11 @@
     .items tr.sum td { border-top: 0.6pt solid #222; font-weight: bold; }
     .small { font-size: 7.5pt; }
     .sign { height: 40pt; }
+    .ln { line-height: 1.1; margin: 0; }
 </style>
 </head>
 <body>
-{% for copy in copies %}
+<div id="dochead">
 <table class="box">
     <tr>
         <td rowspan="{{ 6 if packing else 5 }}" style="width: 50%;">
@@ -119,6 +132,8 @@
         </td>
     </tr>
 </table>
+</div>
+{% if not measure_header %}
 
 {# ---- Line items ---- #}
 {% set items = sections_data.values() | selectattr('type', 'eq', 'line_item') | rejectattr('breakup') | list %}
@@ -162,7 +177,7 @@
 {% set has_dims = pack.box_fields | selectattr('key', 'eq', 'dimensions') | list | length > 0 %}
 {% set item_share = 81 - 9 * (bfields | length) %}
 {% macro iw(n) %}{{ (ns_w.weights[n - 1] * item_share / total_weight) | round(1) }}%{% endmacro %}
-<table class="box items">
+<table class="box items" repeat="1">
     <tr>
         <td width="13%" class="head center">Box No.{% if has_dims %} &amp; Size{% endif %}</td>
         <td width="6%" class="head center">SL No.</td>
@@ -201,7 +216,7 @@
     </tr>
 </table>
 {% else %}
-<table class="box items">
+<table class="box items" repeat="1">
     <tr>
         <td width="6%" class="head center">SL No.</td>
         {% for i in cols %}
@@ -291,6 +306,9 @@
 {% endif %}
 {% endif %}{# not packing #}
 
+{# The footer box sits in a one-row table, which never splits: when the seal and signature
+   don't fit on the page, the whole footer goes over with them #}
+<table><tr><td style="padding: 0;">
 <table class="box">
     <tr>
         <td style="width: 50%;">
@@ -340,8 +358,8 @@
     </tr>
     <tr><td colspan="2" class="center small">This is a Computer Generated Invoice</td></tr>
 </table>
-{% if not loop.last %}<pdf:nextpage />{% endif %}
-{% endfor %}
+</td></tr></table>
 <div id="footer" class="small center" style="color: #888;">{{ invoice.organization_name }} · {{ title }} {{ d.packing_list_no if packing and d.packing_list_no else invoice | doc_number }} · Page <pdf:pagenumber> of <pdf:pagecount></div>
+{% endif %}{# not measure_header #}
 </body>
 </html>

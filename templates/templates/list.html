@@ -23,6 +23,7 @@
             <h3>{{ tpl.name }}</h3>
             <span class="badge {{ 'badge-warning' if tpl.is_archived else 'badge-secondary' }}">{{ 'Archived' if tpl.is_archived else tpl.currency_code }}</span>
         </div>
+        <p class="template-used-for">For {{ tpl.used_for | map('doc_type_plural') | join(', ') | lower if tpl.used_for | length < 3 else 'every document type' }}</p>
         {% for sec in tpl.sections %}
         <div>
             <div class="text-tertiary" style="font-size: var(--font-size-xs); margin-bottom: 4px;">{{ sec.title }}{% if sec.type == 'line_item' %} · line items{% endif %}</div>

@@ -83,7 +83,7 @@ DOC_TYPES: Dict[str, DocType] = {
     ),
     'proforma': DocType(
         key='proforma', label='Proforma Invoice', short='Proforma', plural='Proforma invoices', icon='file-clock',
-        statuses=('draft', 'sent', 'converted'),
+        statuses=('draft', 'sent', 'revised', 'converted'),
         sent_status='sent',
         default_format='PI {num:03}({fy})',
         converts_to=('invoice',),

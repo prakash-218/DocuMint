@@ -154,3 +154,50 @@ def test_ongoing_project_with_earlier_documents(client, gst_org):
     response = client.post('/invoices/create', data={'doc_type': 'invoice', 'customer_id': customer,
                                                      'template_id': _template(org_id, 'Tax Invoice')['template_id']})
     assert '/invoices/create' in response.headers['Location']
+
+
+def test_project_year_the_picker_and_finding_projects(client, gst_org):
+    """A project has a financial year (this one when started, or its earliest document's); the picker gets a
+    customer's projects as JSON; the projects page searches loosely and filters by year."""
+    import projects
+    org_id = gst_org
+    customer = _customer(org_id, 'Wheels India Limited', 'Tamil Nadu', 'India')
+    other = _customer(org_id, 'Second Customer Private Limited', 'Tamil Nadu', 'India')
+    this_year = projects.current_fiscal_year(org_id)
+    tool = projects.create_project(org_id, customer, 'Drop set for SRB 65 dia tool')
+    spindle = projects.create_project(org_id, customer, 'Spindle repair', fiscal_year='25-26')
+    projects.create_project(org_id, other, 'Drop set for a press')
+    assert projects.get_project(tool, org_id)['fiscal_year'] == this_year
+
+    # The year is set when starting a project, and can be changed (anything not a year is ignored)
+    response = client.post('/projects/new', data={'customer_id': customer, 'title': 'Gauge set', 'fiscal_year': '24-25'})
+    gauges = re.search(r'/projects/([0-9a-f-]{36})', response.headers['Location']).group(1)
+    assert projects.get_project(gauges, org_id)['fiscal_year'] == '24-25'
+    edit = {'title': 'Spindle repair', 'reference': '', 'status': 'open', 'notes': ''}
+    client.post(f'/projects/{spindle}/edit', data={**edit, 'fiscal_year': '26-27'})
+    assert projects.get_project(spindle, org_id)['fiscal_year'] == '26-27'
+    client.post(f'/projects/{spindle}/edit', data={**edit, 'fiscal_year': 'next year'})
+    assert projects.get_project(spindle, org_id)['fiscal_year'] == '26-27'
+    assert 'FY 26-27' in client.get(f'/projects/{spindle}').get_data(as_text=True)
+
+    # The picker's list: the customer's own projects, with their years
+    data = client.get(f'/projects/options?customer_id={customer}&exact=1').get_json()
+    assert {(p['title'], p['fy']) for p in data['projects']} == {
+        ('Drop set for SRB 65 dia tool', this_year), ('Spindle repair', '26-27'), ('Gauge set', '24-25')}
+    assert data['this_year'] == this_year and all(p['no'].startswith('PRJ-') for p in data['projects'])
+    everyone = client.get('/projects/options').get_json()['projects']
+    assert 'Drop set for a press' in {p['title'] for p in everyone}
+
+    # The projects page: a loose search, and a year
+    page = client.get('/projects/?status=all&q=drop+st+srb').get_data(as_text=True)
+    assert 'Drop set for SRB 65 dia tool' in page and 'Drop set for a press' not in page
+    page = client.get(f'/projects/?status=all&customer_id={customer}&fy=24-25').get_data(as_text=True)
+    assert 'Gauge set' in page and 'Spindle repair' not in page and '<option value="24-25" selected>' in page
+
+    # A document's page offers the picker, fed by its customer's projects
+    invoice_id, _ = _create(client, org_id, 'invoice', 'Tax Invoice', customer,
+                            [{'description': 'Drop set', 'rate': 15000, 'qty': 1}], project_id=tool)
+    page = client.get(f'/invoices/{invoice_id}').get_data(as_text=True)
+    assert 'data-project-picker' in page and f'customer_id={customer}' in page and 'Move to another project' in page
+    client.post(f'/projects/for-document/{invoice_id}', data={'project_id': spindle})
+    assert projects.project_of(invoice_id, org_id) == spindle

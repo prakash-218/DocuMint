@@ -15,6 +15,7 @@ Attachments of the email threads in a project are copied into its files, once ea
 import logging
 import os
 import re
+import unicodedata
 from datetime import date
 from typing import Dict, Iterable, List, Optional, Set
 
@@ -128,9 +129,32 @@ def _links(org_id) -> List[Dict]:
     return db.execute_proc('sp_list_org_document_links', (org_id,)) or []
 
 
-def create_project(org_id, customer_id, title, reference=None, notes=None, user_id=None) -> str:
+def current_fiscal_year(org_id) -> str:
+    """This financial year in the organization's terms ('26-27'), for a project started today."""
+    from document_service import get_org_profile
+    from documents import fiscal_year, fy_start_month
+    return fiscal_year(date.today(), fy_start_month(get_org_profile(org_id)[1]))
+
+
+def fiscal_year_of(docs: Iterable[Dict]) -> Optional[str]:
+    """The year of the earliest document: a project started from documents belongs to that year."""
+    dated = sorted((d for d in docs if d.get('fiscal_year')), key=lambda d: str(d.get('issue_date') or '9999'))
+    return dated[0]['fiscal_year'] if dated else None
+
+
+def recent_fiscal_years(org_id, count=3) -> List[str]:
+    """This financial year and the ones before it ('26-27', '25-26', ...), to pick a project's year from."""
+    this = current_fiscal_year(org_id)
+    if '-' not in this:
+        return [str(int(this) - n) for n in range(count)]
+    first = int(this[:2])
+    return [f'{(first - n) % 100:02d}-{(first - n + 1) % 100:02d}' for n in range(count)]
+
+
+def create_project(org_id, customer_id, title, reference=None, notes=None, user_id=None, fiscal_year=None) -> str:
     row = db.execute_proc_single('sp_create_project', (org_id, customer_id, (title or 'New project').strip()[:200],
-                                                   (reference or '').strip()[:100], (notes or '').strip(), user_id))
+                                                   (reference or '').strip()[:100], (notes or '').strip(), user_id,
+                                                   fiscal_year or current_fiscal_year(org_id)))
     return row['project_id']
 
 
@@ -160,7 +184,8 @@ def group_family(invoice_id, org_id, user_id=None, title=None) -> str:
     members = [by_id[i] for i in family if i in by_id]
     project_id = next((m['project_id'] for m in members if m.get('project_id')), None)
     if not project_id:
-        project_id = create_project(org_id, by_id[invoice_id]['customer_id'], title or suggest_title(members), user_id=user_id)
+        project_id = create_project(org_id, by_id[invoice_id]['customer_id'], title or suggest_title(members), user_id=user_id,
+                                    fiscal_year=fiscal_year_of(members))
     for m in members:
         if not m.get('project_id'):
             set_project(m['invoice_id'], org_id, project_id)
@@ -178,7 +203,8 @@ def group_all(org_id, user_id=None) -> int:
             continue
         project_id = next((m['project_id'] for m in members if m.get('project_id')), None)
         if not project_id:
-            project_id = create_project(org_id, members[0]['customer_id'], suggest_title(members), user_id=user_id)
+            project_id = create_project(org_id, members[0]['customer_id'], suggest_title(members), user_id=user_id,
+                                        fiscal_year=fiscal_year_of(members))
             created += 1
         for m in members:
             if not m.get('project_id'):
@@ -253,6 +279,94 @@ def unassigned_documents(org_id, customer_id) -> List[Dict]:
 
 def list_projects(org_id, customer_id=None, status=None) -> List[Dict]:
     return db.execute_proc('sp_list_projects', (org_id, customer_id, status)) or []
+
+
+# ---------------------------------------------------------------- Finding a project
+# The same matching runs in the browser, in static/js/project-picker.js: keep the two alike.
+
+def _words(text) -> List[str]:
+    plain = unicodedata.normalize('NFKD', str(text or '')).encode('ascii', 'ignore').decode().lower()
+    return re.findall(r'[a-z0-9]+', plain)
+
+
+def _one_edit_apart(a: str, b: str) -> bool:
+    """a and b differ by one letter added, dropped, changed, or two neighbours swapped."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return a == b
+    if len(a) == len(b):
+        diff = [i for i in range(len(a)) if a[i] != b[i]]
+        return len(diff) == 1 or (len(diff) == 2 and diff[1] == diff[0] + 1
+                                  and a[diff[0]] == b[diff[1]] and a[diff[1]] == b[diff[0]])
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    i = next((i for i in range(len(short)) if short[i] != long_[i]), len(short))
+    return short[i:] == long_[i + 1:]
+
+
+def _in_order(token: str, word: str) -> bool:
+    """'trq' in 'torque': the letters appear in order."""
+    it = iter(word)
+    return all(ch in it for ch in token)
+
+
+def _word_score(token: str, words: List[str]) -> int:
+    best = 0
+    for w in words:
+        if w == token:
+            return 10
+        if w.startswith(token):
+            score = 8
+        elif token in w:
+            score = 5
+        elif len(token) >= 4 and (_one_edit_apart(token, w) or _one_edit_apart(token, w[:len(token)])):
+            score = 4
+        elif len(token) >= 2 and w[:1] == token[:1] and _in_order(token, w):
+            score = 3
+        else:
+            continue
+        best = max(best, score)
+    return best
+
+
+def match_score(project: Dict, query: str) -> Optional[int]:
+    """How well a project matches a search such as 'piston torqe', 'prj 47' or 'wipro a22'; None when it
+    doesn't. Each word of the search has to match a word of the project's name, number, customer, site or
+    reference: exactly, as its start, inside it, with one typo, or as an abbreviation ('trq' for torque).
+    The project's own number ('47', 'PRJ-047') counts most, then matches in the name."""
+    tokens = _words(query)
+    if not tokens:
+        return 0
+    no = int(project.get('project_no') or 0)
+    title = _words(project.get('title'))
+    other = _words(' '.join(str(project.get(k) or '') for k in ('customer_name', 'customer_site', 'reference'))) + ['prj']
+    total = 0
+    for token in tokens:
+        if token.removeprefix('prj').lstrip('0') == str(no) and token.removeprefix('prj').isdigit():
+            total += 15
+            continue
+        in_title = _word_score(token, title)
+        score = max(in_title + 2 if in_title else 0, _word_score(token, other))
+        if not score:
+            return None
+        total += score
+    return total
+
+
+def search_projects(projects: List[Dict], query: str) -> List[Dict]:
+    """The projects that match, best first (open ones, then the most recent, on a tie)."""
+    scored = [(match_score(p, query), p) for p in projects]
+    hits = [(s, p) for s, p in scored if s is not None]
+    hits.sort(key=lambda sp: (-sp[0], sp[1].get('status') != 'open', -(sp[1].get('project_no') or 0)))
+    return [p for _, p in hits]
+
+
+def picker_rows(projects: List[Dict]) -> List[Dict]:
+    """What the project picker needs of each project (JSON)."""
+    return [{'id': p['project_id'], 'no': project_label(p), 'project_no': p.get('project_no') or 0,
+             'customer_id': str(p.get('customer_id') or ''),
+             'title': p.get('title') or '', 'customer': p.get('customer_name') or '', 'site': p.get('customer_site') or '',
+             'reference': p.get('reference') or '', 'fy': p.get('fiscal_year') or '', 'status': p.get('status') or 'open',
+             'docs': p.get('document_count') or 0, 'last': str(p.get('last_issue_date') or '')}
+            for p in projects]
 
 
 # ---------------------------------------------------------------- Customer documents

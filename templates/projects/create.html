@@ -24,6 +24,12 @@
                 <label for="reference" class="form-label">Customer reference</label>
                 <input type="text" id="reference" name="reference" class="form-input" maxlength="100" placeholder="Enquiry / RFQ no.">
             </div>
+            <div class="form-group">
+                <label for="fiscal_year" class="form-label">Financial year</label>
+                <select id="fiscal_year" name="fiscal_year" class="form-select">
+                    {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+                </select>
+            </div>
         </div>
         <div class="form-group">
             <label for="notes" class="form-label">Notes</label>

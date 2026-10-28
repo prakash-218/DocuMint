@@ -73,3 +73,14 @@ def test_layout_from_form():
     assert pack['key'] == 'shipping_list' and pack['columns'] == ['description', 'qty']
     assert [(f['key'], f['sum']) for f in pack['box_fields']] == [('dimensions', False), ('pallet_no', False),
                                                                  ('net_wt_kg', True)]
+
+
+def test_what_a_template_is_for():
+    from layout import template_types
+    assert template_types('Proforma Invoice', {}) == ['proforma']
+    assert template_types('Quotation with cost break-up', {}) == ['quote']
+    assert template_types('Export Invoice', {}) == ['invoice']
+    assert template_types('Job card', {}) == ['quote', 'proforma', 'invoice']          # says nothing: any type
+    assert template_types('Quotation', normalize({'used_for': ['quote', 'invoice', 'export_invoice']})) == ['quote', 'invoice']
+    assert template_types('Quotation', normalize({'used_for': []})) == ['quote', 'proforma', 'invoice']
+    assert normalize({})['used_for'] is None and normalize({'used_for': ['quote']})['used_for'] == ['quote']

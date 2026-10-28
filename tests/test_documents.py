@@ -97,3 +97,27 @@ def test_details_from_form_keeps_only_type_fields():
     form = {'detail_kind_attn': ' Mr. X ', 'detail_buyer_order_no': 'PO-1', 'detail_subject': ''}
     assert details_from_form('quote', form) == {'kind_attn': 'Mr. X'}
     assert details_from_form('invoice', form) == {'buyer_order_no': 'PO-1'}
+
+
+@pytest.mark.parametrize('number,details,expected', [
+    ('KKR/Q/029/26-27', {}, 'KKR/Q/029R1/26-27'),          # the way KKR numbered revisions before DocuMint
+    ('KKR/Q/029R1/26-27', {}, 'KKR/Q/029R2/26-27'),
+    ('KKR/Q/023A/26-27', {}, 'KKR/Q/023AR1/26-27'),        # an alternative offer, revised
+    ('PI 007(26-27)', {}, 'PI 007R1(26-27)'),
+    ('KKR-PI-005', {}, 'KKR-PI-005 Rev.1'),                 # no year at the end: " Rev.N"
+    ('Q/027/26-27 Rev.1', {'base_number': 'Q/027/26-27', 'revision': 1}, 'Q/027/26-27 Rev.2'),   # revised that way before
+])
+def test_revision_numbers(number, details, expected):
+    import json
+    from document_service import next_revision_number
+    new, keep = next_revision_number({'doc_number': number, 'details': json.dumps(details)})
+    assert new == expected
+    assert bool(keep) == expected.endswith(tuple(f' Rev.{n}' for n in range(1, 10)))     # only " Rev.N" remembers its base
+
+
+def test_imported_revisions_keep_their_numbering():
+    """Q/029R1 was imported through the app's revise, so its details say base Q/029, revision 1: the number decides."""
+    import json
+    from document_service import next_revision_number
+    doc = {'doc_number': 'KKR/Q/029R1/26-27', 'details': json.dumps({'base_number': 'KKR/Q/029/26-27', 'revision': 1})}
+    assert next_revision_number(doc)[0] == 'KKR/Q/029R2/26-27'

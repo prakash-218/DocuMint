@@ -559,6 +559,11 @@ def get_template_layout(conn, template_id, org_id):
     return [_rows(conn, "SELECT layout FROM template_layout WHERE template_id = :t AND org_id = :o", t=template_id, o=org_id)]
 
 
+@proc('sp_list_template_layouts')
+def list_template_layouts(conn, org_id):
+    return [_rows(conn, "SELECT template_id, layout FROM template_layout WHERE org_id = :o", o=org_id)]
+
+
 @proc('sp_save_template_layout')
 def save_template_layout(conn, template_id, org_id, layout):
     _require(conn, "SELECT 1 FROM template WHERE template_id = :t AND org_id = :o", 'Template does not exist',
@@ -818,6 +823,27 @@ def list_open_advances(conn, org_id, customer_id, currency):
                             ORDER BY p.payment_date""", o=org_id, c=customer_id, cur=currency)]
 
 
+@proc('sp_move_open_advances')
+def move_open_advances(conn, from_proforma, to_proforma):
+    """A revised proforma's advances not applied to an invoice yet go to its revision."""
+    rows = _rows(conn, """SELECT p.payment_id, i.org_id FROM payment p JOIN invoice i ON i.invoice_id = p.invoice_id
+                          WHERE p.invoice_id = :f AND p.advance_of = :f""", f=from_proforma)
+    for r in rows:
+        _exec(conn, "UPDATE payment SET invoice_id = :t, advance_of = :t WHERE payment_id = :p", t=to_proforma, p=r['payment_id'])
+        _audit(conn, r['org_id'], 'payment', r['payment_id'], 'UPDATE', 'advance_of', from_proforma, to_proforma,
+               'Advance moved to the revision of its proforma')
+    return [[{'moved': len(rows)}]]
+
+
+@proc('sp_log_document_change')
+def log_document_change(conn, invoice_id, field, old, new, info):
+    """A change to a document after it was sent (a correction), in the audit log."""
+    row = _one(conn, "SELECT org_id FROM invoice WHERE invoice_id = :i", i=invoice_id)
+    if row:
+        _audit(conn, row['org_id'], 'invoice', invoice_id, 'UPDATE', field, old, new, info)
+    return []
+
+
 @proc('sp_apply_advance')
 def apply_advance(conn, payment_id, invoice_id, org_id):
     """Move an advance from its proforma to an invoice of the same customer and currency."""
@@ -970,25 +996,25 @@ def set_document_series(conn, org_id, doc_type, fy, next_number):
 
 
 @proc('sp_create_project')
-def create_project(conn, org_id, customer_id, title, reference, notes, user_id):
+def create_project(conn, org_id, customer_id, title, reference, notes, user_id, fiscal_year):
     _require(conn, "SELECT 1 FROM customer WHERE customer_id = :c AND org_id = :o", 'Customer does not exist',
              c=customer_id, o=org_id)
     conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {'k': f'project_no:{org_id}'})
     no = _one(conn, "SELECT COALESCE(MAX(project_no), 0) + 1 AS n FROM project WHERE org_id = :o", o=org_id)['n']
     pid = _new_id()
-    _exec(conn, """INSERT INTO project (project_id, org_id, customer_id, project_no, title, reference, notes, created_by)
-                   VALUES (:p, :o, :c, :n, :t, NULLIF(:r, ''), NULLIF(:no, ''), :u)""",
-          p=pid, o=org_id, c=customer_id, n=no, t=title, r=reference or '', no=notes or '', u=user_id)
+    _exec(conn, """INSERT INTO project (project_id, org_id, customer_id, project_no, fiscal_year, title, reference, notes, created_by)
+                   VALUES (:p, :o, :c, :n, :fy, :t, NULLIF(:r, ''), NULLIF(:no, ''), :u)""",
+          p=pid, o=org_id, c=customer_id, n=no, fy=fiscal_year, t=title, r=reference or '', no=notes or '', u=user_id)
     return [[{'project_id': pid, 'project_no': no}]]
 
 
 @proc('sp_update_project')
-def update_project(conn, project_id, org_id, title, reference, status, notes):
+def update_project(conn, project_id, org_id, title, reference, status, notes, fiscal_year):
     if status not in ('open', 'completed', 'cancelled'):
         raise ProcError('Unknown project status')
     _exec(conn, """UPDATE project SET title = :t, reference = NULLIF(:r, ''), status = :s, notes = NULLIF(:n, ''),
-                   updated_at = now() WHERE project_id = :p AND org_id = :o""",
-          p=project_id, o=org_id, t=title, r=reference or '', s=status, n=notes or '')
+                   fiscal_year = :fy, updated_at = now() WHERE project_id = :p AND org_id = :o""",
+          p=project_id, o=org_id, t=title, r=reference or '', s=status, n=notes or '', fy=fiscal_year)
     return []
 
 
@@ -1001,7 +1027,7 @@ def get_project(conn, project_id, org_id):
 
 @proc('sp_list_projects')
 def list_projects(conn, org_id, customer_id, status):
-    return [_rows(conn, f"""SELECT p.project_id, p.project_no, p.title, p.reference, p.status, p.customer_id,
+    return [_rows(conn, f"""SELECT p.project_id, p.project_no, p.fiscal_year, p.title, p.reference, p.status, p.customer_id,
                                   c.name AS customer_name, {CUSTOMER_SITE} AS customer_site, p.created_at, p.updated_at,
                                   (SELECT COUNT(*) FROM invoice i WHERE i.project_id = p.project_id) AS document_count,
                                   (SELECT COUNT(*) FROM attachment a WHERE a.project_id = p.project_id) AS file_count,
@@ -1039,7 +1065,8 @@ def get_invoice_project(conn, invoice_id, org_id):
 @proc('sp_list_org_document_links')
 def list_org_document_links(conn, org_id):
     return [_rows(conn, """SELECT invoice_id, doc_type, doc_number, source_invoice_id, customer_id, project_id,
-                                  issue_date, status, details->>'base_number' AS base_number, details->>'subject' AS subject
+                                  issue_date, fiscal_year, status, details->>'base_number' AS base_number,
+                                  details->>'subject' AS subject
                            FROM invoice WHERE org_id = :o""", o=org_id)]
 
 

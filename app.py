@@ -93,6 +93,7 @@ def create_app(config_name=None):
 
     EVENT_ICONS = {'document_created': 'file-plus', 'document_sent': 'send', 'document_converted': 'arrow-right-left',
                    'quote_accepted': 'circle-check', 'quote_declined': 'circle-x', 'quote_revised': 'file-diff',
+                   'document_corrected': 'pencil', 'document_reopened': 'undo-2',
                    'payment': 'banknote', 'file_uploaded': 'paperclip', 'email_received': 'mail',
                    'email_sent': 'mail-check', 'project_created': 'briefcase', 'project_status': 'flag'}
     app.add_template_global(lambda kind: EVENT_ICONS.get(kind, 'bell'), 'event_icon')
@@ -126,8 +127,11 @@ def create_app(config_name=None):
         return format_money(value, code or 'USD')
 
     @app.template_filter('multiline')
-    def multiline_filter(text):
-        """Escape text and keep its line breaks; '-' / '•' lines are indented as break-up bullets."""
+    def multiline_filter(text, blocks=False):
+        """Escape text and keep its line breaks; '-' / '•' lines are indented as break-up bullets.
+
+        blocks=True (PDFs) puts each line in its own <div class="ln">: xhtml2pdf measures a table
+        cell of <br>-separated lines short, so long descriptions ran over the next row."""
         from markupsafe import Markup, escape
         if not text:
             return ''
@@ -138,6 +142,8 @@ def create_app(config_name=None):
                 lines.append(Markup('&nbsp;&nbsp;&nbsp;- ') + escape(stripped[1:].strip()))
             else:
                 lines.append(escape(line))
+        if blocks:
+            return Markup('').join(Markup('<div class="ln">%s</div>') % (line or Markup('&nbsp;')) for line in lines)
         return Markup('<br>').join(lines)
 
     @app.template_filter('notes')
@@ -186,6 +192,10 @@ def create_app(config_name=None):
     @app.template_filter('doc_label')
     def doc_label_filter(doc_type):
         return get_type(doc_type).label
+
+    @app.template_filter('doc_type_plural')
+    def doc_type_plural_filter(doc_type):
+        return get_type(doc_type).plural
 
     @app.template_filter('project_label')
     def project_label_filter(project):

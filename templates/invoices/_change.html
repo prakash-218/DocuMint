@@ -1,0 +1,61 @@
+{# "Change" on a sent document: correct it (same number), make a revision (a new version), or move it back to draft.
+   Expects invoice, t (its type), status, can_revise, revision_number, revise_templates, reopen_blocker #}
+{% set sent_word = 'finalized' if t.sent_status == 'pending' else 'sent' %}
+<dialog class="k-dialog" id="change-dialog" aria-labelledby="change-title">
+    <div class="k-dialog-head">
+        <h2 id="change-title">Change {{ invoice | doc_number }}</h2>
+        <button type="button" class="btn btn-ghost btn-xs" data-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="k-dialog-body change-options">
+        <section class="change-option">
+            <div>
+                <h3>Correct this {{ t.short | lower }}</h3>
+                <p>Fix a mistake: a wrong PO number, date, rate or spelling. It keeps its number{% if t.takes_payments %} and its payments{% endif %},
+                    and the correction replaces what was {{ sent_word }}. Recorded in the audit log.</p>
+            </div>
+            <a href="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id, correct=1) }}" class="btn btn-secondary btn-sm"><i data-lucide="pencil"></i>Correct it</a>
+        </section>
+
+        {% if t.key in ('quote', 'proforma') %}
+        <section class="change-option">
+            <div>
+                <h3>Make a revision</h3>
+                {% if can_revise %}
+                <p>A new version, <strong>{{ revision_number }}</strong>, for a changed offer: other prices, items or terms. This one stays as it was
+                    {{ sent_word }}, marked revised{% if t.key == 'proforma' %}; advances received move to the revision{% endif %}.</p>
+                {% else %}
+                <p class="text-tertiary">{% if status == 'revised' %}A newer revision replaced this one; revise the latest.{% elif status == 'converted' %}It was converted already.{% else %}Not possible now.{% endif %}</p>
+                {% endif %}
+            </div>
+            {% if can_revise %}
+            <form method="POST" action="{{ url_for('invoices_bp.revise', invoice_id=invoice.invoice_id) }}" class="change-revise">
+                {% if revise_templates | length > 1 %}
+                <label for="revise_template" class="form-label">Template</label>
+                <select id="revise_template" name="template_id" class="form-select form-select-sm">
+                    {% for tpl in revise_templates %}<option value="{{ tpl.template_id }}" {% if tpl.template_id == invoice.template_id %}selected{% endif %}>{{ tpl.name }}{% if tpl.template_id == invoice.template_id %} (same as now){% endif %}</option>{% endfor %}
+                </select>
+                {% endif %}
+                <button type="submit" class="btn btn-secondary btn-sm"><i data-lucide="file-diff"></i>Make {{ revision_number }}</button>
+            </form>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        <section class="change-option">
+            <div>
+                <h3>Back to draft</h3>
+                {% if reopen_blocker %}
+                <p class="text-tertiary">Not possible: {{ reopen_blocker[:1] | lower }}{{ reopen_blocker[1:] }}</p>
+                {% else %}
+                <p>Undo "{{ 'Finalize' if t.sent_status == 'pending' else 'Mark as sent' }}" when it was done by mistake. It keeps its number;
+                    edit it and {{ 'finalize' if t.sent_status == 'pending' else 'send' }} it again.</p>
+                {% endif %}
+            </div>
+            {% if not reopen_blocker %}
+            <form method="POST" action="{{ url_for('invoices_bp.reopen', invoice_id=invoice.invoice_id) }}">
+                <button type="submit" class="btn btn-secondary btn-sm"><i data-lucide="undo-2"></i>Back to draft</button>
+            </form>
+            {% endif %}
+        </section>
+    </div>
+</dialog>
