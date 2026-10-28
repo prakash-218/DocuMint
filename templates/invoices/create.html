@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state, customer_options %}
+{% from "_macros.html" import empty_state, customer_options, project_picker %}
 
 {% block title %}New {{ doc_type.label | lower }}{% endblock %}
 {% block page_title %}New {{ doc_type.label | lower }}{% endblock %}
@@ -18,20 +18,11 @@
                 
             </div>
         </div>
-        {% if open_projects %}
-        <ul class="pick-list">
-            {% for j in open_projects %}
-            <li>
-                <a href="{{ url_for('invoices_bp.create_invoice', doc_type=doc_type.key, project_id=j.project_id) }}">
-                    <span class="pick-main">
-                        <span class="pick-title">{{ j.title }}</span>
-                        <span class="pick-sub">{{ j | customer_label }} · {{ j | project_label }}</span>
-                    </span>
-                    <i data-lucide="chevron-right"></i>
-                </a>
-            </li>
-            {% endfor %}
-        </ul>
+        {% if has_open_projects %}
+        <div class="card-body">
+            {{ project_picker('new_doc_project', url_for('projects_bp.picker_options', status='open'),
+                              href=url_for('invoices_bp.create_invoice', doc_type=doc_type.key, project_id='__ID__')) }}
+        </div>
         {% else %}
         <div class="card-body"><p class="text-tertiary" style="margin: 0;">No open projects yet.</p></div>
         {% endif %}
@@ -72,13 +63,13 @@
 
     <section class="card">
         <div class="card-header"><h2 class="card-title">Choose a template</h2></div>
-        {% if templates %}
+        {% macro template_links(list) %}
         <ul class="pick-list">
-            {% for tpl in templates %}
+            {% for tpl in list %}
             <li>
                 <a href="{{ url_for('invoices_bp.create_invoice', doc_type=doc_type.key, template_id=tpl.template_id, project_id=project.project_id if project else None) }}">
                     <span class="pick-main">
-                        <span class="pick-title">{{ tpl.name }}{% if tpl.suggested %} <span class="badge badge-info">Suggested</span>{% endif %}</span>
+                        <span class="pick-title">{{ tpl.name }}</span>
                         <span class="pick-sub">{{ tpl.currency_code }}</span>
                     </span>
                     <i data-lucide="chevron-right"></i>
@@ -86,6 +77,15 @@
             </li>
             {% endfor %}
         </ul>
+        {% endmacro %}
+        {% if templates %}
+        {{ template_links(templates) }}
+        {% if other_templates %}
+        <details class="other-templates">
+            <summary>Other templates ({{ other_templates | length }}), made for other document types</summary>
+            {{ template_links(other_templates) }}
+        </details>
+        {% endif %}
         {% else %}
         {{ empty_state('layout-template', 'No templates yet', 'Add the ready-made templates from Settings, or build your own.',
                        url_for('templates_bp.list_templates'), 'Templates') }}

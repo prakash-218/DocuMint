@@ -9,16 +9,18 @@ from auth import require_org, get_current_org_role, can_create_invoice, can_edit
 from access import get_org_invoice, get_org_template
 from app_helpers import invoice_is_overdue
 from documents import CHOOSABLE, DOC_TYPES, TAX_MODES, get_type, invoice_kind, load_json
-from document_service import (DocumentError, apply_document_form, convert_document, customer_tax_hints,
-                              form_defaults, get_org_profile, preview_number, revise_document, revision_info)
+from document_service import (REVISABLE, DocumentError, apply_document_form, convert_document, customer_tax_hints,
+                              form_defaults, get_org_profile, next_revision_number, preview_number, revise_document)
 import uuid
 from datetime import date, datetime
-from layout import load_layout, packing_page, pages_for, template_is_export
+from layout import load_layout, packing_page, pages_for, template_is_export, types_by_template
 import projects
 import activity
 import advances
 import doc_urls
-from invoice_service import get_template_fields, build_sections, invoice_summary, recalculate_invoice, render_invoice_pdf, PdfUnavailable
+import revisions
+from invoice_service import (get_template_fields, build_sections, invoice_summary, item_lines, recalculate_invoice,
+                             render_invoice_pdf, PdfUnavailable)
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +46,13 @@ def list_invoices():
 
     types = LIST_GROUPS[group]['types']
     documents = [d for d in documents if (d.get('doc_type') or 'invoice') in types]
+    if group in ('quote', 'proforma'):
+        documents = revisions.collapse(documents)          # a revised document once, as its latest version
     if query:
         q = query.lower()
-        documents = [d for d in documents
-                     if q in (d.get('customer_name') or '').lower()
-                     or q in (d.get('doc_number') or '').lower()
-                     or q in (d.get('invoice_id') or '').lower()]
+        documents = [d for d in documents if revisions.matches(d, lambda v: q in (v.get('customer_name') or '').lower()
+                                                               or q in (v.get('doc_number') or '').lower()
+                                                               or q in (v.get('invoice_id') or '').lower())]
 
     tabs = LIST_GROUPS[group]['tabs']
     if status_filter not in tabs:
@@ -93,7 +96,6 @@ LIST_GROUPS = {
             'sent': ('Sent', _status_is('sent')),
             'accepted': ('Accepted', _status_is('accepted')),
             'declined': ('Declined', _status_is('declined')),
-            'revised': ('Revised', _status_is('revised')),
             'converted': ('Converted', _status_is('converted')),
         },
     },
@@ -303,12 +305,18 @@ def create_invoice():
 
 
 # Template names that suit each document type, for the "Suggested" badge and ordering
-_TEMPLATE_HINTS = {'quote': ('quot',), 'proforma': ('proforma',), 'invoice': ('invoice',)}
-
-
 def _latest_templates(org_id):
     return [t for t in db.execute_proc('sp_list_templates', (org_id, False)) or []
             if t.get('version') == t.get('latest_version')]
+
+
+def _templates_for(org_id, templates, doc_type):
+    """(the templates for doc_type, the others): what each template is used for, from its settings.
+    An export invoice is an invoice made with an export template. With none for the type, all are offered."""
+    kind = 'invoice' if doc_type == 'export_invoice' else doc_type
+    types = types_by_template(org_id, templates)
+    mine = [t for t in templates if kind in types[t['template_id']]]
+    return (mine, [t for t in templates if t not in mine]) if mine else (templates, [])
 
 
 def _editor_sections(fields):
@@ -330,21 +338,18 @@ def _create_form(org_id, doc_type):
     customers = db.execute_proc('sp_list_customers', (org_id, False)) or []
     if not project:
         return render_template('invoices/create.html', step='project', doc_type=get_type(doc_type), project=None,
-                               open_projects=projects.list_projects(org_id, None, 'open'), customers=customers)
+                               has_open_projects=bool(projects.list_projects(org_id, None, 'open')), customers=customers)
 
-    templates = _latest_templates(org_id)
-    hints = _TEMPLATE_HINTS.get(doc_type, ())
-    for t in templates:
-        name = (t.get('name') or '').lower()
-        t['suggested'] = any(h in name for h in hints) and not (doc_type == 'invoice' and 'proforma' in name)
-    templates.sort(key=lambda t: (not t['suggested'], (t.get('name') or '').lower()))
+    templates = sorted(_latest_templates(org_id), key=lambda t: (t.get('name') or '').lower())
     template_id = request.args.get('template_id')
     selected = next((t for t in templates if t['template_id'] == template_id), None)
     if not selected:
         if template_id:
             flash('Template not found', 'error')
+        mine, others = _templates_for(org_id, templates, doc_type)
         return render_template('invoices/create.html', step='template', doc_type=get_type(doc_type),
-                               doc_types={k: DOC_TYPES[k] for k in CHOOSABLE}, templates=templates, project=project)
+                               doc_types={k: DOC_TYPES[k] for k in CHOOSABLE}, templates=mine, other_templates=others,
+                               project=project)
 
     org, profile = get_org_profile(org_id)
     doc_type = invoice_kind(doc_type, template_is_export(template_id, org_id))
@@ -388,12 +393,16 @@ def view_invoice(invoice_id):
                  if t.get('version') == t.get('latest_version')]
     # Template each conversion starts with: the export one when this document is for export
     export = invoice_header.get('doc_type') == 'export_invoice' or invoice_header.get('tax_mode') == 'lut'
+    types = types_by_template(g.current_org_id, templates)
     convert_defaults = {}
     for target in get_type(invoice_header.get('doc_type')).converts_to:
-        word = 'proforma' if target == 'proforma' else 'invoice'
-        names = [(t['template_id'], (t.get('name') or '').lower()) for t in templates]
-        match = [tid for tid, n in names if word in n and ('export' in n) == export and (target != 'invoice' or 'proforma' not in n)]
-        convert_defaults[target] = (match or [invoice_header.get('template_id')])[0]
+        match = [t['template_id'] for t in templates if target in types[t['template_id']] and len(types[t['template_id']]) < 3]
+        same_market = [tid for tid in match if template_is_export(tid, g.current_org_id) == export]
+        convert_defaults[target] = (same_market or match or [invoice_header.get('template_id')])[0]
+    # Revising can move to another template made for the same type ("Quotation" -> "Quotation with cost break-up")
+    own_type = 'invoice' if invoice_header.get('doc_type') == 'export_invoice' else invoice_header.get('doc_type')
+    revise_templates = sorted((t for t in templates if own_type in types[t['template_id']] or t['template_id'] == invoice_header.get('template_id')),
+                              key=lambda t: (t['template_id'] != invoice_header.get('template_id'), (t.get('name') or '').lower()))
 
     doc_type = get_type(invoice_header.get('doc_type'))
     advances_in = advances.on_proforma(invoice_id) if doc_type.takes_advances else []
@@ -406,18 +415,20 @@ def view_invoice(invoice_id):
     files = projects.list_attachments(g.current_org_id, project_id=project['project_id']) if project else \
         projects.list_attachments(g.current_org_id, invoice_id=invoice_id)
     return render_template('invoices/view.html',
-                           convert_defaults=convert_defaults,
+                           convert_defaults=convert_defaults, revise_templates=revise_templates,
+                           can_revise=(invoice_header.get('status') or 'draft') in REVISABLE.get(invoice_header.get('doc_type'), ()),
+                           revision_number=next_revision_number(invoice_header)[0],
+                           reopen_blocker=reopen_blocker(invoice_header, payments),
                            project=project,
-                           project_docs=projects.project_documents(project['project_id'], g.current_org_id) if project else [],
-                           customer_projects=[j for j in projects.list_projects(g.current_org_id, invoice_header['customer_id'], 'open')
-                                              if j['customer_id'] == invoice_header['customer_id']],   # not its sites'
+                           project_docs=revisions.collapse(projects.project_documents(project['project_id'], g.current_org_id))
+                           if project else [],
                            files=files, file_kinds=projects.DOCUMENT_KINDS,
                            extra_pages=[p for p in pages if not p['with_document']],
                            has_packing=any(p['kind'] == 'packing' for p in pages),
                            base_currency=org_profile.get('default_currency') or 'INR',
                            has_seal=bool(org_profile.get('stamp')),
                            today=date.today().isoformat(),
-                           revisions=_quote_revisions(invoice_header, g.current_org_id),
+                           **_versions(invoice_header, sections_data, g.current_org_id),
                            invoice=invoice_header,
                            sections_data=sections_data,
                            payments=payments,
@@ -567,17 +578,21 @@ def _into_project(source, new_id, org_id):
 @invoices_bp.route('/<invoice_id>/revise', methods=['POST'])
 @require_org
 def revise(invoice_id):
-    """Start a new revision of a sent quotation (same number + " Rev.N")."""
+    """Start a new revision of a sent quotation or proforma (Q/029 -> Q/029R1), in its template or another one."""
     if not can_create_invoice():
-        flash('You need to be a Member or Owner to revise quotations.', 'error')
+        flash('You need to be a Member or Owner to revise documents.', 'error')
         return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
 
     source, values = get_org_invoice(invoice_id, g.current_org_id)
     if not source:
         flash('Document not found', 'error')
         return redirect(url_for('invoices_bp.list_invoices', type='quote'))
+    template_id = request.form.get('template_id') or None
+    if template_id and not get_org_template(template_id, g.current_org_id):
+        flash('Template not found', 'error')
+        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
     try:
-        new_id = revise_document(source, values, g.current_org_id)
+        new_id = revise_document(source, values, g.current_org_id, template_id)
     except DocumentError as e:
         flash(str(e), 'error')
         return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
@@ -589,7 +604,9 @@ def revise(invoice_id):
     new_header, _ = get_org_invoice(new_id, g.current_org_id)
     if new_header:
         activity.document_event('quote_revised', new_header, 'started (revision)')
-    flash('New revision created as a draft. Make your changes, then mark it as sent.', 'success')
+    moved = source.get('doc_type') == 'proforma' and bool(advances.on_proforma(new_id))
+    flash(f"Revision {(new_header or {}).get('doc_number') or ''} created as a draft"
+          f"{', with the advances received' if moved else ''}. Make your changes, then mark it as sent.", 'success')
     return redirect(url_for('invoices_bp.edit_invoice', invoice_id=new_id))
 
 
@@ -650,21 +667,25 @@ def packing(invoice_id):
                            summary=packing_summary(header, sections, box_fields))
 
 
-def _quote_revisions(header, org_id):
-    """All versions of a quote (original + revisions), oldest first."""
-    if header.get('doc_type') != 'quote':
-        return []
-    base, _ = revision_info(header)
-    if not base:
-        return []
-    quotes = [d for d in db.execute_proc('sp_list_invoices', (org_id, None, 1000, 0)) or []
-              if d.get('doc_type') == 'quote'
-              and (d.get('doc_number') == base or (d.get('doc_number') or '').startswith(base + ' Rev.'))]
+def _version(header, sections) -> dict:
+    return {'header': header, 'lines': item_lines(sections), 'details': load_json(header.get('details')),
+            'total': header.get('total_amount')}
 
-    def rev(d):
-        number = d.get('doc_number') or ''
-        return int(number.rsplit('Rev.', 1)[1]) if 'Rev.' in number and number.rsplit('Rev.', 1)[1].isdigit() else 0
-    return sorted(quotes, key=rev) if len(quotes) > 1 else []
+
+def _versions(header, sections, org_id) -> dict:
+    """A revised quotation's or proforma's versions (oldest first), and what changed from the one before this."""
+    if header.get('doc_type') not in revisions.REVISED_TYPES:
+        return {'versions': [], 'changes': None, 'changed_from': None}
+    docs = db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []
+    versions = revisions.chains(docs).get(header['invoice_id']) or []
+    before = revisions.previous(versions, header['invoice_id'])
+    changes = None
+    if before:
+        before_header, before_values = get_org_invoice(before['invoice_id'], org_id)
+        if before_header:
+            changes = revisions.compare(_version(before_header, build_sections(before_header, before_values)),
+                                        _version(header, sections))
+    return {'versions': versions, 'changes': changes, 'changed_from': before}
 
 
 def _document_form_context(doc_type, org, profile, customers, header=None, org_id=None, currency=None):
@@ -721,10 +742,13 @@ def edit_invoice(invoice_id):
             return redirect(url_for('invoices_bp.list_invoices'))
 
 
-        current_status = invoice_header.get('status', 'draft')
-        if current_status != 'draft':
-            flash('Only draft invoices can be edited', 'error')
+        current_status = invoice_header.get('status') or 'draft'
+        # A sent document is corrected in place (same number) only when asked for: ?correct=1
+        correcting = current_status != 'draft' and request.values.get('correct') == '1'
+        if current_status != 'draft' and not correcting:
+            flash('This document has been sent. Use "Change" on its page to correct it or make a revision.', 'error')
             return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        total_before = invoice_header.get('total_amount')
     except DatabaseError as e:
         flash('Error loading invoice', 'error')
         return redirect(url_for('invoices_bp.list_invoices'))
@@ -880,6 +904,11 @@ def edit_invoice(invoice_id):
             invoice_header, invoice_values = get_org_invoice(invoice_id, org_id)
             recalculate_invoice(invoice_id, invoice_header, invoice_values)
 
+            if correcting:
+                _corrected(invoice_header, total_before)
+                flash(f'{invoice_header.get("doc_number") or "Document"} corrected. It keeps its number; download the PDF '
+                      'again and send the corrected one.', 'success')
+                return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
             flash(f'{get_type(invoice_header.get("doc_type")).label} updated', 'success')
 
             return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
@@ -1019,7 +1048,7 @@ def edit_invoice(invoice_id):
 
         org, profile = get_org_profile(org_id)
         return render_template('invoices/editor.html',
-                             invoice=invoice_header,
+                             invoice=invoice_header, correcting=correcting,
                              sections_data=sections_data,
                              template_name=invoice_header.get('template_name') or '',
                              project=projects.get_project(projects.project_of(invoice_id, org_id), org_id),
@@ -1028,6 +1057,69 @@ def edit_invoice(invoice_id):
     except DatabaseError as e:
         flash('Error loading form data', 'error')
     return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+
+def _corrected(header, total_before):
+    """After a sent document is corrected: an invoice's paid / pending follows its new total; the audit log and
+    the project's activity say what happened."""
+    from money import format_money
+    invoice_id = header['invoice_id']
+    total_after = (get_org_invoice(invoice_id, g.current_org_id)[0] or header).get('total_amount')
+    db.execute_proc('sp_settle_invoice', (invoice_id,), fetch=False)
+    db.execute_proc('sp_log_document_change', (invoice_id, 'corrected', total_before, total_after,
+                                                f"Corrected after it was sent, by {(g.get('current_user') or {}).get('email') or 'a user'}"),
+                    fetch=False)
+    changed = abs(float(total_before or 0) - float(total_after or 0)) > 0.004
+    currency = header.get('currency_code') or 'INR'
+    activity.document_event('document_corrected', header, 'corrected after sending' + (
+        f" (total {format_money(total_before or 0, currency)} → {format_money(total_after or 0, currency)})" if changed else ''))
+
+
+REOPENABLE = ('sent', 'accepted', 'declined', 'pending')
+
+
+def reopen_blocker(header, payments) -> str:
+    """Why a sent document can't go back to draft, or '' when it can."""
+    status = header.get('status') or 'draft'
+    label = get_type(header.get('doc_type')).short.lower()
+    if status == 'draft':
+        return 'It is a draft already.'
+    if status == 'converted':
+        return f'It was converted; the {"invoice" if header.get("doc_type") == "proforma" else "document"} made from it would lose its source.'
+    if status == 'revised':
+        return 'A newer revision replaced it.'
+    if payments:
+        return f'Payments are recorded on this {label}. Remove them first, or correct it instead.'
+    if status not in REOPENABLE:
+        return f"A {status} {label} can't go back to draft."
+    return ''
+
+
+@invoices_bp.route('/<invoice_id>/reopen', methods=['POST'])
+@require_org
+def reopen(invoice_id):
+    """Undo "Mark as sent" / "Finalize": back to a draft (same number) to edit and send again."""
+    back = redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    if not can_finalize_invoice():
+        flash('You need to be a Member or Owner to change documents.', 'error')
+        return back
+    header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    if not header:
+        flash('Document not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+    blocker = reopen_blocker(header, db.execute_proc('sp_get_invoice_payments', (invoice_id,)) or [])
+    if blocker:
+        flash(f"Can't move it back to draft. {blocker}", 'error')
+        return back
+    try:
+        db.execute_proc('sp_update_invoice_status', (invoice_id, 'draft'), fetch=False)
+    except DatabaseError:
+        logger.exception("Failed to reopen %s", invoice_id)
+        flash('Could not move it back to draft', 'error')
+        return back
+    activity.document_event('document_reopened', header, 'moved back to draft')
+    flash('Back to draft. Edit it, then send it again; it keeps its number.', 'success')
+    return back
 
 
 @invoices_bp.route('/<invoice_id>/delete', methods=['POST'])

@@ -255,15 +255,26 @@ def test_quote_revisions(client, gst_org):
     response = client.post(f'/invoices/{quote_id}/revise')
     rev1 = re.search(r'/(?:quotes|proformas|invoices)/([0-9a-f-]{36})', response.headers['Location']).group(1)
     r1, s1 = _summary(rev1)
-    assert r1['doc_number'] == f'{number} Rev.1' and r1['status'] == 'draft' and s1['total'] == 2000
+    head, tail = number.rsplit('/', 1)                          # TF/Q/500/26-27 -> TF/Q/500R1/26-27
+    rev1_number, rev2_number = f'{head}R1/{tail}', f'{head}R2/{tail}'
+    assert r1['doc_number'] == rev1_number and r1['status'] == 'draft' and s1['total'] == 2000
     assert _summary(quote_id)[0]['status'] == 'revised'
 
     client.post(f'/invoices/{rev1}/finalize')
     response = client.post(f'/invoices/{rev1}/revise')
     rev2 = re.search(r'/(?:quotes|proformas|invoices)/([0-9a-f-]{36})', response.headers['Location']).group(1)
-    assert _summary(rev2)[0]['doc_number'] == f'{number} Rev.2'
+    assert _summary(rev2)[0]['doc_number'] == rev2_number
+    # The latest version's page: every version, and what changed from the one before (nothing: it's a copy)
     page = client.get(f'/quotes/{rev2}').get_data(as_text=True)
-    assert 'Revisions' in page and f'{number} Rev.1' in page
+    assert 'class="version-bar"' in page and 'Revision 2' in page and rev1_number in page
+    assert f'What changed from {rev1_number}' in page and 'Nothing changed in the items, prices or terms' in page
+    assert 'This is an earlier version' not in page
+    # An earlier version says so, and links to the latest
+    page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
+    assert 'This is an earlier version' in page and f'/quotes/{rev2}' in page
+    # The list shows the quotation once, as its latest version; searching the original number finds it
+    listed = client.get(f'/quotes/?q={number}').get_data(as_text=True)
+    assert listed.count('class="cell-primary"') == 1 and rev2_number in listed and '2 earlier versions' in listed
 
 
 def _pages(pdf_bytes):
@@ -541,6 +552,7 @@ def test_pdf_with_or_without_seal(client, gst_org, monkeypatch):
     real = invoice_service.render_template
     monkeypatch.setattr(invoice_service, 'render_template', lambda *a, **k: rendered.append(real(*a, **k)) or rendered[-1])
     monkeypatch.setattr(invoice_service, '_pdf_bytes', lambda html: b'%PDF-1.4')
+    monkeypatch.setattr(invoice_service, '_page_count', lambda pdf: 1)
     monkeypatch.setattr(invoice_service, '_merge', lambda parts: parts[0])
     try:
         assert client.get(f'/quotes/{quote_id}/pdf').status_code == 200

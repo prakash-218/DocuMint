@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Pages &amp; printing · {{ info.template_name }}{% endblock %}
+{% block title %}Pages &amp; printing · {{ info.name }}{% endblock %}
 {% block page_title %}Pages &amp; printing{% endblock %}
-{% block page_description %}<p class="header-description">{{ info.template_name }}</p>{% endblock %}
+{% block page_description %}<p class="header-description">{{ info.name }}</p>{% endblock %}
 
 {% block header_actions %}
 <a href="{{ url_for('templates_bp.view_template', template_id=template_id) }}" class="btn btn-secondary"><i data-lucide="arrow-left"></i><span class="btn-label">Back to template</span></a>
@@ -13,6 +13,13 @@
     <input type="hidden" name="page_count" value="{{ layout.pages | length }}">
     <section class="card">
         <div class="card-body">
+            <fieldset class="form-group used-for">
+                <legend class="form-label">Used for</legend>
+                {% for key in choosable %}
+                <label class="form-check"><input type="checkbox" name="used_for" value="{{ key }}" class="form-checkbox" {% if key in used_for %}checked{% endif %}> {{ doc_types[key].plural }}</label>
+                {% endfor %}
+                <p class="form-text">New documents of these types offer this template{% if layout.used_for is none %} (now guessed from its name){% endif %}. Leave all unticked to offer it for every type.</p>
+            </fieldset>
             <label for="export" class="form-label">Used for exports</label>
             <select id="export" name="export" class="form-select" style="max-width: 360px;">
                 <option value="auto" {% if layout.export is none %}selected{% endif %}>Automatic ({{ 'yes' if auto_export else 'no' }}: {{ 'foreign currency or "export" in the name' if auto_export else 'home currency' }})</option>

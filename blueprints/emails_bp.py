@@ -49,11 +49,8 @@ def thread(thread_id):
     by_message = {}
     for f in files:
         by_message.setdefault(f['message_id'], []).append(f)
-    projects = db.execute_proc('sp_list_projects', (g.current_org_id, thread.get('customer_id'), 'open')) or []
-    if not projects and thread.get('customer_id'):
-        projects = db.execute_proc('sp_list_projects', (g.current_org_id, None, 'open')) or []
     return render_template('emails/thread.html', thread=thread, messages=messages, files=by_message,
-                           projects=projects, current_org_role=get_current_org_role())
+                           current_org_role=get_current_org_role())
 
 
 @emails_bp.route('/<thread_id>/project', methods=['POST'])

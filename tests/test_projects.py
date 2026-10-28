@@ -69,3 +69,41 @@ def test_project_money_per_currency():
     assert money['invoiced'] == {'INR': 1180, 'USD': 300}
     assert money['received'] == {'INR': 500, 'USD': 300}
     assert money['due'] == {'INR': 680}
+
+
+def _project(no, title, customer='Wipro Hydraulics Private Limited', site='', status='open', fy='26-27', reference=''):
+    return {'project_id': f'p{no}', 'project_no': no, 'title': title, 'customer_name': customer, 'customer_site': site,
+            'status': status, 'fiscal_year': fy, 'reference': reference}
+
+
+def test_finding_a_project_forgives_typos_and_abbreviations():
+    from projects import match_score, search_projects
+    rows = [_project(47, 'Piston torque fix', site='A22'), _project(49, 'Burnishing shaft Ø47 (PO 11223344)', site='A22'),
+            _project(51, 'Piston torqueing attachment', site='C1', status='completed'),
+            _project(62, 'Checking gauges', customer='Tractors and Farm Equipment Limited', site='Madurai plant')]
+    found = lambda q: [p['project_no'] for p in search_projects(rows, q)]
+    assert found('piston') == [47, 51]                    # open first on a tie
+    assert found('pistn torqe') == [47, 51]               # a typo in each word
+    assert found('trq') == [47, 51]                       # an abbreviation
+    assert found('guage') == [62] and found('tafe madurai') == []   # every word must match
+    assert found('tractors madurai') == [62]
+    assert found('47')[0] == 47 and found('PRJ-047') == [47] and found('prj047') == [47]   # the number beats "Ø47"
+    assert found('wipro a22') == [49, 47]
+    assert match_score(rows[0], '') == 0 and match_score(rows[0], 'xyzzy') is None
+
+
+def test_project_year_is_its_earliest_document():
+    from projects import fiscal_year_of
+    assert fiscal_year_of([{'fiscal_year': '26-27', 'issue_date': '2026-04-02'},
+                           {'fiscal_year': '25-26', 'issue_date': '2026-03-30'}, {'fiscal_year': None}]) == '25-26'
+    assert fiscal_year_of([{'issue_date': '2026-04-02'}]) is None
+
+
+def test_recent_years(monkeypatch):
+    import projects
+    monkeypatch.setattr(projects, 'current_fiscal_year', lambda org_id: '26-27')
+    assert projects.recent_fiscal_years('o') == ['26-27', '25-26', '24-25']
+    monkeypatch.setattr(projects, 'current_fiscal_year', lambda org_id: '00-01')
+    assert projects.recent_fiscal_years('o', 2) == ['00-01', '99-00']
+    monkeypatch.setattr(projects, 'current_fiscal_year', lambda org_id: '2026')
+    assert projects.recent_fiscal_years('o', 2) == ['2026', '2025']

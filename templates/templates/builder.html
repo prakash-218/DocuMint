@@ -73,6 +73,12 @@
                     {% for c in currencies %}<option {% if c == default_currency %}selected{% endif %}>{{ c }}</option>{% endfor %}
                 </select>
             </div>
+            <fieldset class="form-group used-for">
+                <legend class="form-label">Used for</legend>
+                {% for key in choosable %}
+                <label class="form-check"><input type="checkbox" name="used_for" value="{{ key }}" class="form-checkbox" {% if key in request.form.getlist('used_for') %}checked{% endif %}> {{ doc_types[key].plural }}</label>
+                {% endfor %}
+            </fieldset>
         </div>
     </section>
     {% elif in_use %}

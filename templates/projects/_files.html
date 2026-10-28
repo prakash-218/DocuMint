@@ -1,7 +1,8 @@
 {# Customer documents card: list + upload. Used on project, customer and document pages.
    ctx: hidden fields saying where an upload goes ({'project_id': ...} / {'customer_id': ...} / {'invoice_id': ...}).
-   projects: the customer's projects, offered for moving a file (customer page only). #}
-{% macro files_card(files, ctx, kinds, can_edit, title='Customer documents', subtitle='', projects=None, show_where=False, po_hint=False) %}
+   move_source: the projects a file can move to (a projects_bp.picker_options URL; customer page only). #}
+{% from "_macros.html" import project_picker %}
+{% macro files_card(files, ctx, kinds, can_edit, title='Customer documents', subtitle='', move_source=None, show_where=False, po_hint=False) %}
 <div class="card files-card">
     <div class="card-header">
         <div>
@@ -32,21 +33,17 @@
             </div>
             <div class="file-actions">
                 <a href="{{ url_for('projects_bp.download_file', attachment_id=f.attachment_id, download=1) }}" class="btn btn-ghost btn-xs" title="Download" aria-label="Download {{ f.file_name }}"><i data-lucide="download"></i></a>
+                {% if can_edit and move_source %}
+                <button type="button" class="btn btn-ghost btn-xs" title="Move to a project" aria-label="Move {{ f.file_name }} to a project"
+                        data-move-file="{{ url_for('projects_bp.link_file', attachment_id=f.attachment_id) }}" data-current="{{ f.project_id or '' }}"
+                        data-file-name="{{ f.title }}"><i data-lucide="folder-input"></i></button>
+                {% endif %}
                 {% if can_edit %}
                 <form method="POST" action="{{ url_for('projects_bp.delete_file', attachment_id=f.attachment_id) }}" data-confirm="Delete {{ f.file_name }}? This can't be undone.">
                     <button type="submit" class="btn btn-ghost btn-xs" title="Delete" aria-label="Delete {{ f.file_name }}"><i data-lucide="trash-2"></i></button>
                 </form>
                 {% endif %}
             </div>
-            {% if can_edit and projects %}
-            <form method="POST" action="{{ url_for('projects_bp.link_file', attachment_id=f.attachment_id) }}" class="file-move">
-                <label class="sr-only" for="move_{{ f.attachment_id }}">Project</label>
-                <select id="move_{{ f.attachment_id }}" name="project_id" class="form-select form-select-sm" onchange="this.form.submit()">
-                    <option value="">Not in a project</option>
-                    {% for j in projects %}<option value="{{ j.project_id }}" {% if j.project_id == f.project_id %}selected{% endif %}>{{ j | project_label }} · {{ j.title }}</option>{% endfor %}
-                </select>
-            </form>
-            {% endif %}
         </li>
         {% endfor %}
     </ul>
@@ -99,6 +96,22 @@
             <button type="submit" class="btn btn-primary btn-sm"><i data-lucide="upload"></i>Upload</button>
         </form>
     </details>
+    {% endif %}
+
+    {% if can_edit and move_source and files %}
+    <dialog class="k-dialog" id="file-move-dialog" aria-labelledby="file-move-title">
+        <form method="POST">
+            <div class="k-dialog-head">
+                <h2 id="file-move-title">Move <span class="file-move-name"></span> to a project</h2>
+                <button type="button" class="btn btn-ghost btn-xs" data-close aria-label="Close"><i data-lucide="x"></i></button>
+            </div>
+            <div class="k-dialog-body">{{ project_picker('file_project', move_source) }}</div>
+            <div class="k-dialog-foot">
+                <button type="submit" name="project_id" value="" class="btn btn-secondary btn-sm" data-unlink>Take it out of its project</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-close>Cancel</button>
+            </div>
+        </form>
+    </dialog>
     {% endif %}
 </div>
 {% endmacro %}

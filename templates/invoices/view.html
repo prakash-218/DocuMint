@@ -32,6 +32,9 @@
         {% endif %}
     </div>
 </details>
+{% if status != 'draft' and can_edit %}
+<button type="button" class="btn btn-secondary" data-open-dialog="change-dialog"><i data-lucide="pencil"></i><span class="btn-label">Change</span></button>
+{% endif %}
 {% if status == 'draft' and can_edit %}
 <a href="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-secondary">
     <i data-lucide="pencil"></i><span class="btn-label">Edit</span>
@@ -45,11 +48,13 @@
 
 {% block content %}
 {% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in ('owner', 'admin', 'member') %}
-{% if status == 'revised' %}
+{% if status == 'revised' and not versions %}
 <div class="alert alert-warning">This version was revised. The newest revision is the one to send or convert.</div>
 {% endif %}
+{% if status != 'draft' and can_edit %}{% include "invoices/_change.html" %}{% endif %}
 <div class="invoice-layout">
     <div>
+        {% if versions %}{% include "invoices/_versions.html" %}{% endif %}
         {% include "invoices/_document.html" %}
     </div>
 
@@ -72,32 +77,7 @@
                     </form>
                     {% endfor %}
                 </div>
-                <p class="form-text">Click again to undo.</p>
-                <form method="POST" action="{{ url_for('invoices_bp.revise', invoice_id=invoice.invoice_id) }}" style="margin-top: var(--spacing-md);"
-                      data-confirm="Create a new revision of {{ invoice | doc_number }}? This version will be marked as revised.">
-                    <button type="submit" class="btn btn-secondary btn-block"><i data-lucide="file-diff"></i>Revise quotation</button>
-                </form>
-            </div>
-        </div>
-        {% endif %}
-
-        {% if revisions %}
-        <div class="card">
-            <div class="card-header"><h2 class="card-title">Revisions</h2></div>
-            <div class="card-body">
-                <ul class="timeline">
-                    {% for r in revisions %}
-                    <li>
-                        <span class="dot" style="{{ '' if r.invoice_id == invoice.invoice_id else 'background: var(--surface-2); color: var(--ink-3);' }}"><i data-lucide="{{ 'eye' if r.invoice_id == invoice.invoice_id else 'file' }}"></i></span>
-                        <div>
-                            {% if r.invoice_id == invoice.invoice_id %}<strong>{{ r | doc_number }}</strong>
-                            {% else %}<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=r.invoice_id) }}">{{ r | doc_number }}</a>{% endif %}
-                            <div class="when">{{ r.issue_date | date }} · {{ r.status }}</div>
-                        </div>
-                        <span class="num">{{ r.total_amount | currency(r.currency_code) }}</span>
-                    </li>
-                    {% endfor %}
-                </ul>
+                <p class="form-text">Click again to undo. To change the offer, use <button type="button" class="link-button" data-open-dialog="change-dialog">Change → Make a revision</button>.</p>
             </div>
         </div>
         {% endif %}

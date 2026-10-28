@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import project_picker %}
 
 {% block title %}{{ thread.subject }}{% endblock %}
 {% block page_title %}{{ thread.subject }}{% endblock %}
@@ -45,19 +46,21 @@
         <div class="card">
             <div class="card-header"><h2 class="card-title">Project</h2></div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('emails_bp.link_project', thread_id=thread.thread_id) }}">
-                    <label for="project_id" class="sr-only">Project</label>
-                    <select id="project_id" name="project_id" class="form-select">
-                        <option value="">Not in a project</option>
-                        {% for p in projects %}
-                        <option value="{{ p.project_id }}" {% if p.project_id == thread.project_id %}selected{% endif %}>{{ p | project_label }} · {{ p.title }}{% if not thread.customer_id %} ({{ p | customer_label }}){% endif %}</option>
-                        {% endfor %}
-                        {% if thread.project_id and thread.project_id not in projects | map(attribute='project_id') | list %}
-                        <option value="{{ thread.project_id }}" selected>{{ thread | project_label }} · {{ thread.project_title }}</option>
+                {% if thread.project_id %}
+                <p style="margin: 0 0 var(--spacing-sm);">
+                    <a href="{{ url_for('projects_bp.view_project', project_id=thread.project_id) }}"><strong>{{ thread.project_title }}</strong></a><br>
+                    <span class="text-tertiary" style="font-size: var(--font-size-xs);">{{ thread | project_label }}</span>
+                </p>
+                {% endif %}
+                <details class="pp-toggle"{% if not thread.project_id %} open{% endif %}>
+                    <summary class="btn btn-secondary btn-sm">{{ 'Move to another project' if thread.project_id else 'Add to a project' }}</summary>
+                    <form method="POST" action="{{ url_for('emails_bp.link_project', thread_id=thread.thread_id) }}">
+                        {{ project_picker('thread_project', url_for('projects_bp.picker_options'), current=thread.project_id, prefer=thread.customer_id) }}
+                        {% if thread.project_id %}
+                        <div class="pp-actions"><button type="submit" name="project_id" value="" class="link-button">Remove from the project</button></div>
                         {% endif %}
-                    </select>
-                    <button type="submit" class="btn btn-secondary btn-block" style="margin-top: var(--spacing-sm);">Save</button>
-                </form>
+                    </form>
+                </details>
                 {% if thread.linked_by and thread.linked_by != 'manual' %}
                 <p class="form-text">Linked automatically ({{ {'number': 'project number in the subject', 'document': 'document number in the subject'}.get(thread.linked_by, thread.linked_by) }}).</p>
                 {% endif %}

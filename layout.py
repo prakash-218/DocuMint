@@ -1,7 +1,10 @@
 """
 Template print layout: the pages a template prints, and custom fields.
 
-A layout (stored per template in template_layout) is a list of pages:
+A layout (stored per template in template_layout) says what the template is for and lists the pages it prints:
+
+    'used_for': ['quote'],                 # document types it's for (CHOOSABLE); [] = any; missing = guess from the name
+    'export': None,                        # True / False, or None to decide by currency and name
 
     {'key': 'packing', 'kind': 'packing', 'title': 'Packing List',
      'doc_types': ['export_invoice'],      # empty = every document type
@@ -24,7 +27,7 @@ import re
 from copy import deepcopy
 from typing import Dict, List, Optional
 
-from documents import DOC_TYPES, load_json
+from documents import CHOOSABLE, DOC_TYPES, load_json
 
 PAGE_KINDS = {
     'document': 'Main document',
@@ -63,9 +66,10 @@ def normalize(layout) -> Dict:
     """Validate a layout from the database or a form; always returns a usable layout."""
     data = load_json(layout) if not isinstance(layout, dict) else layout
     export = data.get('export') if isinstance(data.get('export'), bool) else None   # None = decide automatically
+    used_for = _clean_list(data['used_for'], CHOOSABLE) if isinstance(data.get('used_for'), list) else None
     pages_in = data.get('pages') if isinstance(data.get('pages'), list) else None
     if not pages_in:
-        return {'pages': deepcopy(DEFAULT_PAGES), 'export': export}
+        return {'pages': deepcopy(DEFAULT_PAGES), 'export': export, 'used_for': used_for}
 
     pages, keys = [], set()
     for raw in pages_in:
@@ -103,7 +107,7 @@ def normalize(layout) -> Dict:
     if not any(p['kind'] == 'document' for p in pages):
         pages.insert(0, deepcopy(DEFAULT_PAGES[0]))
     pages.sort(key=lambda p: p['kind'] != 'document')   # main document always first
-    return {'pages': pages, 'export': export}
+    return {'pages': pages, 'export': export, 'used_for': used_for}
 
 
 def load_layout(template_id, org_id) -> Dict:
@@ -137,6 +141,33 @@ def template_is_export(template_id, org_id, layout: Optional[Dict] = None) -> bo
     from document_service import get_org_profile
     home = get_org_profile(org_id)[1].get('default_currency') or 'INR'
     return (info.get('currency_code') or home) != home or 'export' in (info.get('name') or '').lower()
+
+
+# A template's name says what it's for, when its settings don't: 'Proforma Invoice', 'Quotation with split up'
+NAME_HINTS = {'quote': ('quot', 'offer'), 'proforma': ('proforma', 'pro forma', 'pro-forma'), 'invoice': ('invoice', 'bill')}
+
+
+def template_types(name: Optional[str], layout: Dict) -> List[str]:
+    """The document types a template is for (quote / proforma / invoice): its setting, else guessed from its name;
+    every type when neither says."""
+    if layout.get('used_for') is not None:
+        return layout['used_for'] or list(CHOOSABLE)
+    name = (name or '').lower()
+    guessed = [t for t, hints in NAME_HINTS.items() if any(h in name for h in hints)]
+    if 'proforma' in guessed and 'invoice' in guessed:        # "Proforma Invoice"
+        guessed.remove('invoice')
+    return guessed or list(CHOOSABLE)
+
+
+def types_by_template(org_id, templates: List[Dict]) -> Dict[str, List[str]]:
+    """template_id -> template_types, for a list of templates (one query)."""
+    from db import db, DatabaseError
+    try:
+        layouts = {r['template_id']: r['layout'] for r in db.execute_proc('sp_list_template_layouts', (org_id,)) or []}
+    except DatabaseError:
+        layouts = {}
+    return {t['template_id']: template_types(t.get('name') or t.get('template_name'), normalize(layouts.get(t['template_id'])))
+            for t in templates}
 
 
 def pages_for(layout: Dict, doc_type: str) -> List[Dict]:
@@ -200,6 +231,7 @@ def layout_from_form(form) -> Dict:
     except ValueError:
         count = 0
     export = {'yes': True, 'no': False}.get(form.get('export'))
+    used_for = form.getlist('used_for') if hasattr(form, 'getlist') else form.get('used_for') or []
     for i in range(1, count + 1):
         if not form.get(f'page_{i}_present'):
             continue
@@ -226,7 +258,7 @@ def layout_from_form(form) -> Dict:
                                    'label': label, 'sum': bool(form.get(f'{p}box_sum_{j}'))})
         page['box_fields'] = box_fields
         pages.append(page)
-    return normalize({'pages': pages, 'export': export})
+    return normalize({'pages': pages, 'export': export, 'used_for': used_for})
 
 
 def new_page(kind: str) -> Dict:

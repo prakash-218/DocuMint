@@ -367,6 +367,41 @@ def _pdf_bytes(html: str) -> bytes:
     return buffer.getvalue()
 
 
+def _flow_height(html: str) -> float:
+    """Points the content of an HTML page takes, laid out at its page's width: sizes the frame
+    that prints the same content (a document's header) at the top of every page."""
+    from reportlab.pdfgen.canvas import Canvas
+    from reportlab.platypus import Frame
+    from xhtml2pdf.document import pisaStory
+    context = pisaStory(BytesIO(html.encode('utf-8')), encoding='utf-8')
+    width = context.templateList['body'].frames[0]._aW
+    probe = Frame(0, 0, width, 10_000, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    canvas = Canvas(BytesIO())
+    for flowable in context.story:
+        probe.add(flowable, canvas)
+    return 10_000 - probe._y
+
+
+def _page_count(pdf: bytes) -> int:
+    from pypdf import PdfReader
+    return len(PdfReader(BytesIO(pdf)).pages)
+
+
+def _document_pdf(template: str, number_if_long: bool = False, **context) -> bytes:
+    """One copy of a document, its header at the top of every page.
+
+    The template is rendered first with measure_header=True (just the header) to measure it,
+    then in full with that height (header_height: the templates make the header's frame a
+    little taller, so the header always fits, and start the page's content right under it).
+    With number_if_long, a document that runs past a page is rendered once more with page
+    numbers (numbered=True)."""
+    height = round(_flow_height(render_template(template, measure_header=True, **context)), 2)
+    pdf = _pdf_bytes(render_template(template, header_height=height, **context))
+    if number_if_long and _page_count(pdf) > 1:
+        pdf = _pdf_bytes(render_template(template, header_height=height, numbered=True, **context))
+    return pdf
+
+
 def _merge(parts: List[bytes]) -> bytes:
     if len(parts) == 1:
         return parts[0]
@@ -431,13 +466,15 @@ def render_invoice_pdf(header: Dict, values: List[Dict], copies: Optional[int] =
                 labels = COPY_LABELS[:max(1, min(int(copies or len(COPY_LABELS)), len(COPY_LABELS)))]
             else:
                 labels = ['']
-            template = 'pdf/quote.html' if doc_type.key == 'quote' else 'pdf/grid.html'
-            parts.append(_pdf_bytes(render_template(template, page=pg, copies=labels, packing=False, **common)))
+            if doc_type.key == 'quote':
+                parts.append(_document_pdf('pdf/quote.html', number_if_long=True, page=pg, **common))
+            else:
+                parts += [_document_pdf('pdf/grid.html', page=pg, copy=label, packing=False, **common) for label in labels]
         elif pg['kind'] == 'packing':
-            parts.append(_pdf_bytes(render_template('pdf/grid.html', page=pg, copies=pg['copies'] or [''],
-                                                    packing=True, **common)))
+            parts += [_document_pdf('pdf/grid.html', page=pg, copy=label, packing=True, **common)
+                      for label in pg['copies'] or ['']]
         else:
-            parts.append(_pdf_bytes(render_template('pdf/annexure.html', page=pg, copies=pg['copies'] or [''], **common)))
+            parts += [_document_pdf('pdf/annexure.html', page=pg, copy=label, **common) for label in pg['copies'] or ['']]
 
     filename = ''.join(c if c.isalnum() or c in '-_' else '_' for c in display_number(header)).strip('_')
     prefix = slug_title(selected[0]['title']) if page_key and selected[0]['title'] else doc_type.short

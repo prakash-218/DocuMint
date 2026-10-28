@@ -1,0 +1,85 @@
+{# A revised quotation's or proforma's page: its versions, a note on an earlier one, and what changed from the version before.
+   Expects invoice, versions (oldest first), changes (revisions.compare), changed_from #}
+{% set latest = versions[-1] %}
+{% set cur = invoice.currency_code %}
+{% if invoice.invoice_id != latest.invoice_id %}
+<div class="alert alert-warning version-note">
+    <span>This is an earlier version of the {{ doc_type_info(invoice.doc_type).label | lower }}. <strong>{{ latest | doc_number }}</strong>{% if latest.issue_date %} ({{ latest.issue_date | date }}){% endif %}
+        replaced it, and is the one to send or convert.</span>
+    <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=latest.invoice_id) }}" class="btn btn-secondary btn-sm">Open the latest version</a>
+</div>
+{% endif %}
+
+<nav class="version-bar" aria-label="Versions of this {{ doc_type_info(invoice.doc_type).label | lower }}">
+    {% for v in versions %}
+    {% set here = v.invoice_id == invoice.invoice_id %}
+    <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=v.invoice_id) }}" class="version{{ ' is-here' if here }}"{% if here %} aria-current="page"{% endif %}>
+        <span class="version-name">{{ 'Original' if loop.first else 'Revision ' ~ loop.index0 }}{% if loop.last %} <span class="badge badge-info">Latest</span>{% endif %}</span>
+        <span class="version-meta">{{ v | doc_number }}</span>
+        <span class="version-meta">{{ v.issue_date | date or 'no date' }} · {{ v.total_amount | currency(v.currency_code) }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+{% if changes %}
+{% macro line(l) %}{{ l.qty | number }}{{ ' ' ~ l.unit if l.unit }} × {{ (l.amount / l.qty if l.qty else l.amount) | currency(cur) }} = {{ l.amount | currency(cur) }}{% endmacro %}
+{% set n_items = changes['items'] | length %}
+<details class="card version-changes" open>
+    <summary class="card-header">
+        <div>
+            <h2 class="card-title">What changed from {{ changed_from | doc_number }}</h2>
+            <p class="card-subtitle">
+                {% if changes.total_change %}Total {{ changes.total_before | currency(cur) }} → {{ changes.total_after | currency(cur) }}
+                    <span class="total-delta">({{ '+' if changes.total_change > 0 else '−' }}{{ changes.total_change | abs | currency(cur) }})</span>
+                {% else %}Same total, {{ changes.total_after | currency(cur) }}{% endif %}
+                {% if n_items %} · {{ n_items }} item{{ 's' if n_items > 1 }} changed{% endif %}
+            </p>
+        </div>
+        <i data-lucide="chevron-down" class="version-changes-toggle"></i>
+    </summary>
+    <div class="card-body">
+        {% if changes.nothing %}
+        <p class="text-tertiary" style="margin: 0;">Nothing changed in the items, prices or terms.</p>
+        {% endif %}
+        {% if n_items %}
+        <ul class="change-list">
+            {% for c in changes['items'] %}
+            <li class="change-{{ c.change }}">
+                <span class="badge badge-{{ {'added': 'success', 'removed': 'error', 'changed': 'warning'}[c.change] }}">{{ c.change | capitalize }}</span>
+                <div class="change-main">
+                    <span class="change-item">{{ (c.description or 'Item').splitlines()[0] }}</span>
+                    {% if c.change == 'added' %}<span class="change-detail">{{ line(c.after) }}</span>
+                    {% elif c.change == 'removed' %}<span class="change-detail"><s>{{ line(c.before) }}</s></span>
+                    {% else %}
+                    <span class="change-detail">
+                        {% if 'qty' in c.what %}Qty {{ c.before.qty | number }} → <strong>{{ c.after.qty | number }}</strong>{% if 'price' in c.what %} · {% endif %}{% endif %}
+                        {% if 'price' in c.what %}Price {{ c.price_before | currency(cur) }} → <strong>{{ c.price_after | currency(cur) }}</strong>{% endif %}
+                        {% if 'qty' in c.what or 'price' in c.what %} · Amount {{ c.before.amount | currency(cur) }} → <strong>{{ c.after.amount | currency(cur) }}</strong>{% endif %}
+                        {% if 'description' in c.what %}{% if 'qty' in c.what or 'price' in c.what %} · {% endif %}Description reworded{% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if changes.fields or changes.terms or changes.notes_changed %}
+        <dl class="change-fields">
+            {% for f in changes.fields %}
+            <dt>{{ f.label }}</dt>
+            <dd>{% if f.dates %}{{ f.before | date or 'none' }} → <strong>{{ f.after | date or 'none' }}</strong>
+                {% else %}{{ f.before or '(blank)' }} → <strong>{{ f.after or '(blank)' }}</strong>{% endif %}</dd>
+            {% endfor %}
+            {% if changes.terms %}
+            <dt>Terms</dt>
+            <dd>
+                {% for t in changes.terms.added %}<div class="term-added">+ {{ t }}</div>{% endfor %}
+                {% for t in changes.terms.removed %}<div class="term-removed">− <s>{{ t }}</s></div>{% endfor %}
+            </dd>
+            {% endif %}
+            {% if changes.notes_changed %}<dt>Notes / scope</dt><dd>Changed</dd>{% endif %}
+        </dl>
+        {% endif %}
+    </div>
+</details>
+{% endif %}

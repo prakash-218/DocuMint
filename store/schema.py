@@ -186,6 +186,7 @@ project = Table(
     _ref('org_id', 'organization.org_id', 'CASCADE'),
     _ref('customer_id', 'customer.customer_id', 'RESTRICT'),
     Column('project_no', Integer, nullable=False),
+    Column('fiscal_year', String(7), nullable=False),     # '26-27': when the job is, for filtering by year
     Column('title', String(200), nullable=False),
     Column('reference', String(100)),
     Column('status', String(20), nullable=False, server_default='open'),

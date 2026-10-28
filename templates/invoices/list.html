@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge, empty_state, pager %}
+{% from "_macros.html" import status_badge, empty_state, pager, earlier_versions %}
 {% set new_type = doc_type_info(group_info.new_type) %}
 
 {% block title %}{{ group_info.title }}{% endblock %}
@@ -56,6 +56,7 @@
                             <span class="show-mobile">{{ invoice | customer_label }}</span>
                             <span class="hide-mobile">{{ invoice.doc_type | doc_label if group == 'invoices' else (invoice.template_name or '') }}</span>
                         </span>
+                        {{ earlier_versions(invoice) }}
                     </td>
                     <td class="hide-mobile">{{ invoice | customer_label }}</td>
                     <td class="num hide-mobile" style="white-space: nowrap;" data-sort="{{ invoice.issue_date or '' }}">{{ invoice.issue_date | date or '—' }}</td>
