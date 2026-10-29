@@ -20,8 +20,7 @@ export default defineRailway(() => {
     build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     preDeploy: "python scripts/dbtool.py migrate",       // migrations run before the new version takes traffic
     healthcheck: "/healthz",
-    healthcheckTimeout: 60,
-    deploy: { restartPolicyType: "ON_FAILURE", restartPolicyMaxRetries: 10 },
+    healthcheckTimeout: 60,                             // and Railway's default restart: on failure, up to 10 times
     regions: { "asia-southeast1-eqsg3a": 1 },          // Singapore, one replica
     env: Object.fromEntries(VARIABLES.map((name) => [name, preserve()])),
   });

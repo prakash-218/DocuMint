@@ -5,7 +5,7 @@
 - the Dockerfile build;
 - migrations as the pre-deploy step;
 - the `/healthz` health check;
-- restart on failure;
+- restart on failure (Railway's default, up to 10 times);
 - the Singapore region with one replica.
 
 It manages only that service. The Worker, Postgres and the bucket keep their settings in the Railway dashboard. Variables are listed with `preserve()`, so their values stay in Railway and never appear in this file.
@@ -17,6 +17,12 @@ cd .railway
 npm ci                      # once: the Railway SDK the CLI uses to read railway.ts (Node 22.6+)
 railway config plan         # what would change in Railway (reads only)
 railway config apply        # make those changes; asks to confirm, then redeploys the service
+```
+
+On Windows, the SDK checks the CLI version by running the program named in the `_` environment variable, and the npm `railway` wrapper fails that check. Point `_` at the real program first (PowerShell):
+
+```powershell
+$env:_ = "$env:APPDATA\npm\node_modules\@railway\cli\bin\railway.exe"; & $env:_ config plan
 ```
 
 Add a new variable to `VARIABLES` in `railway.ts` before applying. Otherwise the plan stops and lists the variable it doesn't know about.
