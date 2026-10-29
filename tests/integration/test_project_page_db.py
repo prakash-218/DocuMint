@@ -37,13 +37,18 @@ def test_a_job_from_quotation_to_paid(client, gst_org):
     assert client.get(f'/projects/{project_id}/new').status_code == 200
     assert _where(_page(client, project_id)) == ('quoted', ['New quotation'])
 
-    quote_id, _ = _create(client, org_id, 'quote', 'Quotation', customer, [{'description': 'Hob arbor', 'price': 10000, 'qty': 1}],
+    quote_id, quote_no = _create(client, org_id, 'quote', 'Quotation', customer, [{'description': 'Hob arbor', 'price': 10000, 'qty': 1}],
                           tax_mode='none', project_id=project_id)
     assert _where(_page(client, project_id)) == ('quoted', ['Edit quotation'])
     client.post(f'/quotes/{quote_id}/finalize')
     page = _page(client, project_id)
     assert _where(page) == ('accepted', ['Mark accepted'])
     assert page['money'][0]['quoted'] == 10000 and page['documents'][0]['status'] == 'sent'
+    # the projects list says the same, for every project at once
+    assert client.get('/projects/board').status_code == 200
+    row = next(r for r in client.get('/api/projects').get_json()['projects'] if r['id'] == project_id)
+    assert (row['stage'], row['pill']['text'], row['action'], row['quoted']) == ('accepted', 'Waiting for an answer', 'Mark accepted', 10000)
+    assert row['url'] == f'/projects/{project_id}/new' and row['numbers'] == [quote_no]   # for the search
 
     _run(client, page['next']['actions'][0])                                   # the customer said yes
     page = _page(client, project_id)
@@ -70,6 +75,8 @@ def test_a_job_from_quotation_to_paid(client, gst_org):
     page = _page(client, project_id)
     assert page['stage']['current'] is None and page['stage']['pill']['text'] == 'Paid'
     assert [a['label'] for a in page['next']['actions']] == ['Mark the project completed']
+    row = next(r for r in client.get('/api/projects').get_json()['projects'] if r['id'] == project_id)
+    assert (row['stage'], row['pill']['text'], row['due']) == (None, 'Paid', 0)
 
     # The page's own changes: complete it, a note, the details, a contact and what they get
     assert client.patch(f'/api/projects/{project_id}', json={'status': 'completed'}).status_code == 200
@@ -97,6 +104,8 @@ def test_a_job_from_quotation_to_paid(client, gst_org):
         assert {d['doc_type'] for d in page['documents']} == {'quote'} and set(page['money'][0]) == {'currency', 'quoted'}
         assert page['costings'] is None and not page['found']['people']
         assert not any(i['kind'] in ('payment', 'document_converted') for i in page['timeline'])
+        row = next(r for r in client.get('/api/projects').get_json()['projects'] if r['id'] == project_id)
+        assert row['due'] is None and row['stage'] in ('accepted', None) and len(row['numbers']) == 1   # the quotation only
         login(client, OWNER)
         _set_role(client, VIEWER, 'viewer')
         login(client, VIEWER)

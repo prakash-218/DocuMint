@@ -14,6 +14,7 @@ from app_helpers import to_date
 from documents import balance_of, display_number, get_type
 from money import format_money
 
+FOLLOW_UP_AFTER = 14        # days a quotation waits for an answer before the next step is to chase it
 STEPS = (('quoted', 'Quoted'), ('accepted', 'Accepted'), ('advance', 'Advance'), ('invoiced', 'Invoiced'), ('paid', 'Paid'))
 INVOICE_TYPES = ('invoice', 'export_invoice')
 SENT_QUOTE = ('sent', 'accepted', 'declined', 'converted')
@@ -176,10 +177,12 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
                             _status('Cancel the project', 'cancelled')])
     elif current == 'accepted':
         waited = _days_since(q.get('issue_date'), today)
-        out.update(tone='wait', text=f'Quotation {no(q)} sent on {_day(q.get("issue_date"))}.',
-                   sub=f'No answer for {waited} day{"" if waited == 1 else "s"}.' if waited is not None else '',
-                   actions=[_post('Mark accepted', url('invoices_bp.set_status', invoice_id=q['invoice_id']), {'status': 'accepted'}, True),
-                            _email('Send a follow-up', q['invoice_id']),
+        chase = waited is not None and waited > FOLLOW_UP_AFTER          # long enough without an answer to chase it
+        out.update(tone='action' if chase else 'wait', text=f'Quotation {no(q)} sent on {_day(q.get("issue_date"))}.',
+                   sub=(f'No answer for {waited} day{"" if waited == 1 else "s"}.' if waited is not None else '')
+                   + (' Time to follow it up.' if chase else ''),
+                   actions=[_post('Mark accepted', url('invoices_bp.set_status', invoice_id=q['invoice_id']), {'status': 'accepted'}, not chase),
+                            _email('Send a follow-up', q['invoice_id'], chase),
                             _post('Mark declined', url('invoices_bp.set_status', invoice_id=q['invoice_id']), {'status': 'declined'},
                                   confirm=f'Mark {no(q)} declined?'),
                             _post('Make a revision', url('invoices_bp.revise', invoice_id=q['invoice_id']))])
@@ -331,6 +334,55 @@ def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date]
         'years': sorted(set(projects.recent_fiscal_years(org_id)) | {project.get('fiscal_year')} - {None}, reverse=True),
         'statuses': projects.PROJECT_STATUSES,
     })
+
+
+BOARD = (('quoted', 'Quoting'), ('accepted', 'Waiting for an answer'), ('advance', 'Advance'),
+         ('invoiced', 'To invoice'), ('paid', 'Waiting for payment'))
+
+
+def projects_list(org_id, role: str, url: Callable, today: Optional[date] = None) -> Dict:
+    """Every project with where it is and what's next, for the projects list and board: two queries (all the
+    projects, all the documents) and the same stage logic as the project page."""
+    import projects
+    import revisions
+    from auth import EDITORS, SALES
+    from db import db
+    sales = role == SALES
+    can = {'edit': role in EDITORS, 'sales': sales}
+    by_project: Dict[str, List[Dict]] = {}
+    for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []:
+        if d.get('project_id') and (not sales or d.get('doc_type') == 'quote'):
+            by_project.setdefault(str(d['project_id']), []).append(d)
+    order = {'quote': 0, 'proforma': 1, 'invoice': 2, 'export_invoice': 2}
+    rows = []
+    for p in projects.list_projects(org_id):
+        docs = revisions.collapse(sorted(by_project.get(str(p['project_id']), []),
+                                         key=lambda d: (order.get(d.get('doc_type'), 3), str(d.get('issue_date') or ''))))
+        st = stage(docs, p.get('status') or 'open', today)
+        nxt = next_step(docs, st, p, can, url, today)
+        f = facts(docs)
+        currency = (docs[0].get('currency_code') if docs else None) or 'INR'
+        step = next((s for s in st['steps'] if s['key'] == st['current']), None)
+        rows.append({
+            'id': p['project_id'], 'label': projects.project_label(p), 'title': p['title'], 'reference': p.get('reference') or '',
+            'url': url('projects_bp.view_project_new', project_id=p['project_id']),
+            'customer': {'id': p['customer_id'], 'name': p.get('customer_name'), 'site': p.get('customer_site')},
+            'fiscal_year': p.get('fiscal_year'), 'status': p.get('status') or 'open',
+            'stage': st['current'] if not (sales and st['current'] not in ('quoted', 'accepted', None)) else 'accepted',
+            'pill': st['pill'], 'sub': (step or {}).get('sub') or '',
+            'next': nxt['text'], 'action': next((a['label'] for a in nxt['actions'] if a['primary']), None),
+            'tone': nxt['tone'], 'currency': currency,
+            'quoted': float((f['quote'] or {}).get('total_amount') or 0),
+            'due': None if sales else f['due'],
+            'last_activity': max(filter(None, [str(p.get('updated_at') or ''), str(p.get('last_issue_date') or '')]), default=None),
+            'numbers': [x for d in docs for x in [d.get('doc_number'), *[v.get('doc_number') for v in d.get('versions') or []]] if x],
+        })
+    years = sorted({r['fiscal_year'] for r in rows if r['fiscal_year']}, reverse=True)
+    customers = sorted({(r['customer']['id'], r['customer']['name']) for r in rows}, key=lambda c: (c[1] or '').lower())
+    return _plain({'can': can, 'projects': rows, 'board': [{'key': k, 'label': label} for k, label in BOARD],
+                   'years': years, 'customers': [{'id': i, 'name': n} for i, n in customers],
+                   'new_project': url('projects_bp.create_project') if can['edit'] else None,
+                   'classic_url': url('projects_bp.list_projects')})
 
 
 def _plain(value):

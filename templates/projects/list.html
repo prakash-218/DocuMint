@@ -6,6 +6,7 @@
 
 
 {% block header_actions %}
+<a href="{{ url_for('projects_bp.board') }}" class="btn btn-ghost"><i data-lucide="sparkles"></i><span class="btn-label">Try the new list</span></a>
 {% if current_org_role in editor_roles %}
 <a href="{{ url_for('projects_bp.create_project', customer_id=customer_id) }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New project</span></a>
 {% endif %}

@@ -194,6 +194,13 @@ def view_project(project_id):
                            current_org_role=get_current_org_role())
 
 
+@projects_bp.route('/board')
+@require_org
+def board():
+    """The new projects list, with a board by stage (React, frontend/src/islands/board/): opt-in for now."""
+    return render_template('projects/board.html')
+
+
 @projects_bp.route('/<project_id>/new')
 @require_org
 def view_project_new(project_id):
