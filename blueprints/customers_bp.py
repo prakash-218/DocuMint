@@ -133,6 +133,29 @@ def create_customer():
                            **_form_context(org_id, defaults=request.form if request.method == 'POST' else defaults))
 
 
+@customers_bp.route('/<customer_id>/statement.pdf')
+@require_org
+def statement_pdf(customer_id):
+    """Their statement of account as a PDF (statement.py): ?fy=26-27 (or all; the latest year by default), ?currency=."""
+    import statement
+    from flask import make_response
+    from invoice_service import PdfUnavailable
+    customer, _ = get_org_customer(customer_id, g.current_org_id)
+    if not customer:
+        flash('Customer not found', 'error')
+        return redirect(url_for('customers_bp.list_customers'))
+    data = statement.gather(g.current_org_id, customer, url_for, request.args.get('fy'), request.args.get('currency'))
+    try:
+        pdf = statement.render_pdf(data)
+    except PdfUnavailable:
+        flash('PDFs cannot be made on this server.', 'error')
+        return redirect(_customer_page(customer_id))
+    response = make_response(pdf)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'{"attachment" if request.args.get("download") else "inline"}; filename="{statement.filename(data)}"'
+    return response
+
+
 @customers_bp.route('/<customer_id>/classic')
 @require_org
 def view_customer_classic(customer_id):

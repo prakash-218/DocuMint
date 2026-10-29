@@ -137,7 +137,7 @@ export default function CustomerPage({ customerId }: { customerId: string }) {
                     onDelete={(p) => void change(() => api.del(`/api/customers/${p.customer_id}/contacts/${p.contact_id}`), `${p.name} removed`)} />
         )}
         {shown === 'documents' && <Documents data={data} />}
-        {shown === 'statement' && m && <Statement accounts={m.statement} />}
+        {shown === 'statement' && m && <Statement accounts={m.statement} links={data.links} />}
         {shown === 'files' && (
           <Files data={data} onSave={(fileId, kind, referenceNo) => change(() => api.patch(`/api/files/${fileId}`, { kind, reference_no: referenceNo }), 'File saved')} />
         )}

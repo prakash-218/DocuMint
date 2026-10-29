@@ -264,6 +264,35 @@ def customer(customer_id):
     return jsonify(customer_view.build(g.current_org_id, found, get_current_org_role(), url_for))
 
 
+@api_bp.route('/customers/<customer_id>/statement/compose')
+@require_org
+def statement_compose(customer_id):
+    """The email form for a customer's statement (?fy=26-27 or all, ?currency=): their billing contacts, the PDF."""
+    found, refused = _customer(customer_id)
+    if refused:
+        return refused
+    if get_current_org_role() not in EDITORS:
+        return jsonify(error='Viewers can look at the statement but not email it'), 403
+    return jsonify(mailsend.statement_compose(g.current_org_id, session.get('org_name') or '', found,
+                                              request.args.get('fy'), request.args.get('currency')))
+
+
+@api_bp.route('/customers/<customer_id>/statement/emails', methods=['POST'])
+@require_org
+def send_statement(customer_id):
+    """Email a customer's statement: {to, cc, subject, body, invoice_ids: ['statement'], fy, currency}."""
+    found, refused = _customer(customer_id)
+    if refused:
+        return refused
+    if get_current_org_role() not in EDITORS:
+        return jsonify(error='Viewers can look at the statement but not email it'), 403
+    try:
+        sent = mailsend.send_statement(g.current_org_id, session.get('org_name') or '', found, request.get_json(silent=True) or {})
+    except mailsend.SendError as e:
+        return jsonify(error=str(e)), e.status
+    return jsonify(sent), 201
+
+
 @api_bp.route('/customers/<customer_id>/contacts', methods=['POST'])
 @api_bp.route('/customers/<customer_id>/contacts/<contact_id>', methods=['POST'])
 @require_org

@@ -1,0 +1,128 @@
+{#
+  A customer's statement of account (statement.py): the letterhead on every page, who it's for, the period, the
+  ledger (opening balance, each invoice owed and payment made, the balance after each, the balance due) and the
+  invoices still unpaid with when they were due. Expects: invoice (the letterhead's organization_* fields), profile,
+  org_fields, fonts, customer, sites, today, account, period, unpaid, overdue, title. measure_header=true renders just
+  the letterhead, to measure it; numbered=true adds page numbers.
+#}
+{% set measure_header = measure_header | default(false) %}
+{% set header_height = header_height | default(100) %}
+{% set numbered = numbered | default(false) %}
+{% set lh_color = profile.letterhead_color or '#1f2fd1' %}
+{% set lh_accent = profile.letterhead_accent or lh_color %}
+{% set logo_named = profile.logo and profile.logo_has_name %}
+{% set cur = account.currency if account else 'INR' %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>{{ title }} · {{ customer.name }}</title>
+<style>
+    {% if measure_header %}
+    @page { size: a4 portrait; margin: 1.0cm 1.8cm 1.3cm 1.8cm; }
+    {% else %}
+    @page { size: a4 portrait; margin: {{ 28.35 + header_height }}pt 1.8cm 1.3cm 1.8cm;
+            @frame letterhead { -pdf-frame-content: letterhead; top: 1.0cm; margin-left: 1.8cm; margin-right: 1.8cm; height: {{ header_height + 2 }}pt; }
+            {% if numbered %}@frame pagefoot { -pdf-frame-content: pagefoot; bottom: 0.5cm; margin-left: 1.8cm; margin-right: 1.8cm; height: 0.6cm; }{% endif %} }
+    {% endif %}
+    body { font-family: {{ fonts.regular or 'Helvetica' }}; font-size: 9.5pt; color: #111; line-height: 1.25; }
+    p { margin: 0 0 5pt 0; }
+    {% include "pdf/_letterhead_css.html" %}
+    .ln { line-height: 1.1; margin: 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { vertical-align: top; padding: 2pt 4pt; }
+    h1 { font-size: 13pt; text-align: center; margin: 0 0 8pt; letter-spacing: 1pt; }
+    h2 { font-size: 10pt; margin: 12pt 0 4pt; }
+    .grid td, .grid th { border: 0.8pt solid #000; padding: 2pt 5pt; }
+    .grid th { text-align: left; font-weight: bold; background-color: #f2f2f2; }
+    .grid th.num { text-align: right; }
+    .num { text-align: right; }
+    .muted { color: #555; }
+    .small { font-size: 8pt; }
+    .total td { font-weight: bold; }
+</style>
+</head>
+<body>
+    {% include "pdf/_letterhead.html" %}
+    {% if not measure_header %}
+    {% if numbered %}<div id="pagefoot" style="font-size: 7.5pt; color: #888; text-align: center;">{{ title }} · {{ customer.name }} · Page <pdf:pagenumber> of <pdf:pagecount></div>{% endif %}
+
+    <h1>STATEMENT OF ACCOUNT</h1>
+    <table>
+        <tr>
+            <td style="width: 58%;">
+                <b>M/s. {{ customer.name }}</b>{% if customer.parent_id and customer.site %} · {{ customer.site }}{% endif %}<br>
+                {% if customer.street_address %}{{ customer.street_address }}<br>{% endif %}
+                {{ [customer.city, customer.state, customer.zip_code] | select | join(', ') }}{% if customer.country %}<br>{{ customer.country }}{% endif %}
+                {% if customer.tax_id %}<br>GSTIN: {{ customer.tax_id }}{% endif %}
+                {% if sites %}<br><span class="muted">With its sites</span>{% endif %}
+            </td>
+            <td class="num" style="width: 42%;">
+                {% if period %}<b>FY {{ account.fy }}</b><br>{{ period[0] | date }} to {{ period[1] | date }}<br>
+                {% else %}<b>Every year, to date</b><br>{% endif %}
+                As of {{ today | date }}<br>
+                Amounts in {{ cur }}
+            </td>
+        </tr>
+    </table>
+
+    {% if not account %}
+    <p style="margin-top: 12pt;">No invoices or payments yet.</p>
+    {% else %}
+    <table class="grid" style="margin-top: 10pt;">
+        <tr><th width="15%">Date</th><th width="37%">Particulars</th><th class="num" width="16%">Debit</th>
+            <th class="num" width="16%">Credit</th><th class="num" width="16%">Balance</th></tr>
+        {% if account.fy %}
+        <tr><td>&nbsp;</td><td>Opening balance</td><td>&nbsp;</td><td>&nbsp;</td><td class="num">{{ account.opening | currency(cur) }}</td></tr>
+        {% endif %}
+        {% for line in account.lines %}
+        <tr>
+            <td>{{ line.date | date }}</td>
+            <td>{{ line.text }}{% if line.sub %}<br><span class="small muted">{{ line.sub }}</span>{% endif %}</td>
+            <td class="num">{{ line.owed | currency(cur) if line.owed else '&nbsp;' | safe }}</td>
+            <td class="num">{{ line.paid | currency(cur) if line.paid else '&nbsp;' | safe }}</td>
+            <td class="num">{{ line.balance | currency(cur) }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="total">
+            <td>&nbsp;</td><td>{{ 'Paid ahead (an advance not on an invoice yet)' if account.closing < -0.005 else 'Balance due' }}</td>
+            <td class="num">{{ account.owed | currency(cur) }}</td><td class="num">{{ account.paid | currency(cur) }}</td>
+            <td class="num">{{ account.closing | currency(cur) }}</td>
+        </tr>
+    </table>
+    {% endif %}
+
+    {% if unpaid %}
+    <h2>Invoices not yet paid{% if overdue %} · {{ overdue | currency(cur) }} past the due date{% endif %}</h2>
+    <table class="grid">
+        <tr><th width="36%">Invoice</th><th width="16%">Date</th><th width="16%">Due</th>
+            <th class="num" width="16%">Amount</th><th class="num" width="16%">Still due</th></tr>
+        {% for x in unpaid %}
+        <tr>
+            <td>{{ x.text }}{% if sites and x.site %}<br><span class="small muted">{{ x.site }}</span>{% endif %}</td>
+            <td>{{ x.date | date }}</td>
+            <td>{% if x.due %}{{ x.due | date }}{% if x.late %}<br><span class="small"><b>{{ x.late }} day{{ '' if x.late == 1 else 's' }} late</b></span>{% endif %}{% else %}—{% endif %}</td>
+            <td class="num">{{ x.total | currency(cur) }}</td>
+            <td class="num">{{ x.balance | currency(cur) }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if profile.bank_account %}
+    <h2>Please pay to</h2>
+    <table style="width: 70%;">
+        {% for label, key in [('Account name', None), ('Bank', 'bank_name'), ('Account no.', 'bank_account'), ('IFSC', 'bank_ifsc'),
+                              ('Branch', 'bank_branch'), ('SWIFT', 'bank_swift')] %}
+        {% set value = invoice.organization_name if key is none else profile[key] %}
+        {% if value %}<tr><td style="width: 30%; padding: 0 4pt 0 0;" class="muted">{{ label }}</td><td style="padding: 0;">{{ value }}</td></tr>{% endif %}
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    <p class="small muted" style="margin-top: 14pt;">Please let us know if anything here differs from your records.
+        Proformas are not on a statement until an advance is paid on them.</p>
+    <p style="margin-top: 8pt;">For {{ invoice.organization_name }}</p>
+    {% endif %}
+</body>
+</html>

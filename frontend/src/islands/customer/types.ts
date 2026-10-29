@@ -80,7 +80,13 @@ export interface CustomerData {
   people: Contact[];
   usually: Record<string, string>;
   sites: { id: string; name: string; tax_id: string | null; archived: boolean; documents: number; url: string }[];
-  links: { new_project: string | null; new_quote: string | null; edit: string | null; add_site: string | null; archive?: string | null };
+  links: {
+    new_project: string | null; new_quote: string | null; edit: string | null; add_site: string | null; archive?: string | null;
+    /** The statement as a PDF (add ?fy=26-27 or all, &currency=). */
+    statement_pdf?: string | null;
+    /** Emailing the statement: where the email form loads from and sends to. */
+    statement_email?: { compose: string; send: string } | null;
+  };
   upload?: { action: string; kinds: Record<string, string> } | null;
   /** Owners and admins: the customer portal login, or where giving one posts. */
   portal?: { email: string | null; login_url: string; create: string | null } | null;
