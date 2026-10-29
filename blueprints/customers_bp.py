@@ -108,7 +108,7 @@ def create_customer():
                 if defs:
                     _save_custom(customer_id, org_id, request.form, defs)
                 flash('Customer created successfully', 'success')
-                return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+                return redirect(_customer_page(customer_id))
             else:
                 flash('Failed to create customer', 'error')
         except DatabaseError as e:
@@ -197,6 +197,16 @@ def view_customer_new(customer_id):
     return render_template('customers/new_view.html', customer=customer)
 
 
+def _customer_page(customer_id):
+    """The customer's page to go back to: the new one when that's where the form was sent from (or the editor was
+    opened from, ?from=new), else the classic one."""
+    from urllib.parse import urlparse
+    ref = urlparse(request.referrer or '')
+    if (not ref.netloc or ref.netloc == request.host) and ref.path.rstrip('/').endswith(f'/{customer_id}/new')             or request.args.get('from') == 'new':
+        return url_for('customers_bp.view_customer_new', customer_id=customer_id)
+    return url_for('customers_bp.view_customer', customer_id=customer_id)
+
+
 def _contact_back(customer_id):
     """Back to the project the form was on, when it's this organization's; else to the customer."""
     project_id = request.form.get('project_id')
@@ -267,7 +277,7 @@ def create_portal_account(customer_id):
     current_role = get_current_org_role()
     if current_role not in ('owner', 'admin'):
         flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to create portal accounts.', 'error')
-        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+        return redirect(_customer_page(customer_id))
     
     org_id = g.current_org_id
 
@@ -277,11 +287,11 @@ def create_portal_account(customer_id):
 
     if not email or not password:
         flash('Email and password are required', 'error')
-        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+        return redirect(_customer_page(customer_id))
 
     if len(password) < 8:
         flash('Password must be at least 8 characters', 'error')
-        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+        return redirect(_customer_page(customer_id))
 
     customer, _ = get_org_customer(customer_id, org_id)
     if not customer:
@@ -297,7 +307,7 @@ def create_portal_account(customer_id):
         result = db.execute_proc('sp_create_customer_user', (customer_id, email, password_hash, None))
         if not result or len(result) == 0:
             flash('Failed to create portal account', 'error')
-            return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+            return redirect(_customer_page(customer_id))
 
         customer_user_id = result[0].get('customer_user_id')
 
@@ -312,7 +322,7 @@ def create_portal_account(customer_id):
         else:
             flash(f'Portal account created for {email}. Customer can now login at /customer/login', 'success')
 
-        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+        return redirect(_customer_page(customer_id))
 
     except DatabaseError as e:
         error_msg = str(e)
@@ -320,7 +330,7 @@ def create_portal_account(customer_id):
             flash(f'Email {email} already has a portal account', 'error')
         else:
             flash(f'Error creating portal account: {error_msg}', 'error')
-        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+        return redirect(_customer_page(customer_id))
 
 
 @customers_bp.route('/<customer_id>/edit', methods=['GET', 'POST'])
@@ -330,7 +340,7 @@ def edit_customer(customer_id):
     current_role = get_current_org_role()
     if current_role not in CUSTOMER_EDITORS:
         flash(f'Your role is {current_role or "unknown"}. You need to be an owner, admin or sales to edit customers.', 'error')
-        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+        return redirect(_customer_page(customer_id))
     
     org_id = g.current_org_id
 
@@ -399,7 +409,7 @@ def edit_customer(customer_id):
                 _save_custom(customer_id, org_id, request.form, defs)
 
             flash('Customer updated successfully', 'success')
-            return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+            return redirect(_customer_page(customer_id))
         except DatabaseError as e:
             flash(f'Error updating customer: {str(e)}', 'error')
 
@@ -414,7 +424,7 @@ def delete_customer(customer_id):
     current_role = get_current_org_role()
     if current_role not in ('owner', 'admin'):
         flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to delete customers.', 'error')
-        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+        return redirect(_customer_page(customer_id))
     
     org_id = g.current_org_id
 
@@ -460,7 +470,7 @@ def archive_customer(customer_id):
     current_role = get_current_org_role()
     if current_role not in ('owner', 'admin'):
         flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to archive customers.', 'error')
-        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+        return redirect(_customer_page(customer_id))
     
     org_id = g.current_org_id
     
@@ -470,7 +480,7 @@ def archive_customer(customer_id):
     except DatabaseError as e:
         flash(f'Error archiving customer: {str(e)}', 'error')
     
-    return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+    return redirect(_customer_page(customer_id))
 
 
 @customers_bp.route('/<customer_id>/unarchive', methods=['POST'])
@@ -480,7 +490,7 @@ def unarchive_customer(customer_id):
     current_role = get_current_org_role()
     if current_role not in ('owner', 'admin'):
         flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to unarchive customers.', 'error')
-        return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+        return redirect(_customer_page(customer_id))
     
     org_id = g.current_org_id
     
@@ -490,5 +500,5 @@ def unarchive_customer(customer_id):
     except DatabaseError as e:
         flash(f'Error unarchiving customer: {str(e)}', 'error')
     
-    return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+    return redirect(_customer_page(customer_id))
 

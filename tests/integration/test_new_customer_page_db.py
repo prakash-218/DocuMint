@@ -91,7 +91,7 @@ def test_a_company_and_its_site_on_the_new_page(client, gst_org):
         _set_role(client, VIEWER, 'viewer')
         login(client, VIEWER)
         page = _page(client, site)
-        assert not page['can']['edit'] and page['links'] == {'new_project': None, 'new_quote': None, 'edit': None, 'add_site': None}
+        assert not page['can']['edit'] and page['links'] == {'new_project': None, 'new_quote': None, 'edit': None, 'add_site': None, 'archive': None}
         assert client.post(f'/api/customers/{site}/contacts', json={'name': 'x', 'email': 'x@x.example'}).status_code == 403
     finally:
         login(client, OWNER)

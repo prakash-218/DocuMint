@@ -64,7 +64,8 @@ def file_groups(files: List[Dict], projects_by_id: Dict[str, Dict], url: Callabl
         g = groups.setdefault(key, {'project': {'id': key, 'title': p['title'], 'label': p['label'], 'url': p['url']} if p
                                     else ({'id': key, 'title': project_label(f) or 'Project', 'label': '', 'url': None} if key else None),
                                     'files': []})
-        g['files'].append(file_row(f, url))
+        g['files'].append({**file_row(f, url), 'customer_id': str(f.get('customer_id')),
+                           'move': url('projects_bp.link_file', attachment_id=f['attachment_id'])})
     latest = sorted(groups.values(), key=lambda g: max(str(x['date'] or '') for x in g['files']), reverse=True)
     return sorted(latest, key=lambda g: g['project'] is None)
 
@@ -119,6 +120,8 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
     state = customer.get('state') or ''
     tax_note = {'cgst_sgst': f'{state}, so CGST + SGST' if state else 'CGST + SGST', 'igst': f'{state}, so IGST' if state else 'IGST',
                 'lut': 'Export, under LUT'}.get(suggest_tax_mode('invoice', org, customer), '')
+    portal = (db.execute_proc('sp_get_customer_users', (customer_id,)) or [None])[0] if can['manage'] else None
+    kinds = {k: v for k, v in projects.DOCUMENT_KINDS.items() if not (sales and k in projects.NOT_QUOTATIONS)}
     people = contacts.for_customer(org_id, customer)
     values = load_json(customer.get('custom'))
     custom = [{'label': f['label'], 'value': values[f['key']]} for f in custom_field_defs(profile, 'customer') if values.get(f['key'])]
@@ -141,6 +144,9 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
         'statuses': projects.PROJECT_STATUSES,
         'files': file_groups(files, {str(r['id']): r for r in rows}, url),
         'files_count': len(files),
+        'upload': {'action': url('projects_bp.upload_file'), 'kinds': kinds} if can['edit'] and not customer.get('is_archived') else None,
+        'portal': {'email': portal.get('email') if portal else None, 'login_url': url('customer_portal_bp.login', _external=True),
+                   'create': None if portal else url('customers_bp.create_portal_account', customer_id=customer_id)} if can['manage'] else None,
         'people': [{'contact_id': p['contact_id'], 'customer_id': p['customer_id'], 'name': p['name'], 'email': p.get('email'),
                     'phone': p.get('phone'), 'role': p.get('role'), 'gets': p['gets'], 'initials': p['initials'],
                     'at_parent': str(p['customer_id']) != customer_id} for p in people],
@@ -152,8 +158,10 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
             'new_project': url('projects_bp.create_project', customer_id=customer_id) if can['edit'] and not customer.get('is_archived') else None,
             'new_quote': url('invoices_bp.create_invoice', doc_type='quote', customer_id=customer_id)
             if can['edit'] and not customer.get('is_archived') else None,
-            'edit': url('customers_bp.edit_customer', customer_id=customer_id) if can['edit_customer'] else None,
+            'edit': url('customers_bp.edit_customer', customer_id=customer_id, **{'from': 'new'}) if can['edit_customer'] else None,
             'add_site': url('customers_bp.create_customer', parent_id=customer_id)
             if can['manage'] and not customer.get('parent_id') and not customer.get('is_archived') else None,
+            'archive': url('customers_bp.unarchive_customer' if customer.get('is_archived') else 'customers_bp.archive_customer',
+                           customer_id=customer_id) if can['manage'] else None,
         },
     })

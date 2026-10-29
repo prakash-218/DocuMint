@@ -80,6 +80,7 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
       <div className="cols">
         <div className="col-main">
           <Documents docs={page.documents} newDocument={page.new_document} canEdit={can.edit} sales={can.sales} current={page.stage.current}
+                     addable={page.addable} documentsUrl={page.links?.documents}
                      onEmail={(invoiceId) => setCompose({ invoiceId })} />
           <Timeline items={page.timeline} canEdit={can.edit} readMail={can.read_mail}
                     onNote={(text) => change(() => api.post(`${base}/notes`, { text }), 'Note added')}
@@ -93,7 +94,7 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
                                                             fields.contact_id ? `${fields.name} saved` : `${fields.name || fields.email} added`)}
                   onIgnore={(value) => void change(() => api.post(`${base}/ignore`, { value }), "It won't be suggested again")} />
           <Files page={page} onSave={(fileId, kind, referenceNo) => change(() => api.patch(`/api/files/${fileId}`, { kind, reference_no: referenceNo }), 'File saved')} />
-          {page.costings && <Costings costings={page.costings} />}
+          {page.costings && <Costings costings={page.costings} projectId={project.id} links={page.links} />}
           <Details page={page} onSave={(fields: DetailFields) => change(() => api.patch(base, fields), 'Project saved')} />
         </aside>
       </div>

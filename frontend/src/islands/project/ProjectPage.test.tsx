@@ -168,4 +168,22 @@ describe('ProjectPage', () => {
     await waitFor(() => expect(sent(fetch, 'PATCH')).toEqual([['/api/files/F-1', { kind: 'po', reference_no: '4500 0188' }]]));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Delete the file' })).not.toBeInTheDocument());   // closed after saving
   });
+
+  it('adds a document of theirs to the project, takes one out, starts a costing and deletes the project', async () => {
+    serve({ ...PAGE, costings: [],
+            addable: [{ invoice_id: 'Q-9', number: 'Q/039', kind: 'Quotation', total: 5000, currency: 'INR' }],
+            links: { documents: '/projects/P-1/documents', delete: '/projects/P-1/delete', new_costing: '/costings/new', rates: '/costings/rates' } });
+    render(<ProjectPage projectId="P-1" />);
+    const add = (await screen.findByLabelText("Add one of their documents that's in no project")).closest('form')!;
+    expect(add).toHaveAttribute('action', '/projects/P-1/documents');
+    expect(within(add).getByRole('option', { name: 'Q/039 · Quotation · ₹5,000' })).toBeInTheDocument();
+    const out = screen.getAllByRole('button', { name: 'Take out of the project' })[0].closest('form')!;
+    expect(out).toHaveAttribute('action', '/projects/P-1/documents');
+    expect(out.querySelector('input[name=action]')).toHaveValue('remove');
+    const costing = screen.getByRole('button', { name: 'New costing' }).closest('form')!;
+    expect(costing).toHaveAttribute('action', '/costings/new');
+    expect(costing.querySelector('input[name=project_id]')).toHaveValue('P-1');
+    expect(screen.getByRole('link', { name: 'Rates list' })).toHaveAttribute('href', '/costings/rates');
+    expect(screen.getByRole('button', { name: 'Delete the project' }).closest('form')).toHaveAttribute('action', '/projects/P-1/delete');
+  });
 });

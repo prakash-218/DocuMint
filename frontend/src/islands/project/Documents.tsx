@@ -28,12 +28,15 @@ interface Props {
   onEmail: (invoiceId: string) => void;
   /** Where the job is (stage.current): the empty slot for its next document is the highlighted one. */
   current?: string | null;
+  /** The customer's documents in no project, and where adding or taking one out posts (projects_bp.project_document). */
+  addable?: Page['addable'];
+  documentsUrl?: string | null;
 }
 
 const NEXT_SLOT: Record<string, string> = { quoted: 'quote', advance: 'proforma', invoiced: 'invoice' };
 
 /** The chain from quotation to payment; revisions sit under their document, the next one waits as a slot. */
-export function Documents({ docs, newDocument, canEdit, sales, onEmail, current }: Props) {
+export function Documents({ docs, newDocument, canEdit, sales, onEmail, current, addable = [], documentsUrl = null }: Props) {
   const groups = sales ? GROUPS.slice(0, 1) : GROUPS;
   const firstEmpty = current ? NEXT_SLOT[current] : undefined;
   return (
@@ -59,15 +62,27 @@ export function Documents({ docs, newDocument, canEdit, sales, onEmail, current 
                 </li>
               );
             }
-            return mine.map((d) => <DocNode key={d.invoice_id} doc={d} canEdit={canEdit} onEmail={onEmail} />);
+            return mine.map((d) => <DocNode key={d.invoice_id} doc={d} canEdit={canEdit} onEmail={onEmail} documentsUrl={documentsUrl} />);
           })}
         </ol>
+        {canEdit && documentsUrl && addable.length > 0 && (
+          <form method="post" action={documentsUrl} className="add-existing">
+            <label htmlFor="pp-add-doc" className="muted">Add one of their documents that's in no project</label>
+            <div className="add-existing-row">
+              <select id="pp-add-doc" name="invoice_id" className="form-select" required defaultValue="">
+                <option value="" disabled>Choose a document…</option>
+                {addable.map((d) => <option key={d.invoice_id} value={d.invoice_id}>{d.number} · {d.kind} · {money(d.total, d.currency)}</option>)}
+              </select>
+              <button type="submit" className="btn btn-secondary btn-sm">Add</button>
+            </div>
+          </form>
+        )}
       </div>
     </section>
   );
 }
 
-function DocNode({ doc: d, canEdit, onEmail }: { doc: Doc; canEdit: boolean; onEmail: (id: string) => void }) {
+function DocNode({ doc: d, canEdit, onEmail, documentsUrl }: { doc: Doc; canEdit: boolean; onEmail: (id: string) => void; documentsUrl: string | null }) {
   const s = status(d);
   const paid = d.status === 'paid' || (d.doc_type === 'proforma' && d.paid > 0);
   return (
@@ -104,6 +119,14 @@ function DocNode({ doc: d, canEdit, onEmail }: { doc: Doc; canEdit: boolean; onE
             <button type="button" className="btn btn-secondary btn-xs" onClick={() => onEmail(d.invoice_id)}>
               <Icon name="mail" size={14} />Email
             </button>
+          )}
+          {canEdit && documentsUrl && (
+            <form method="post" action={documentsUrl} className="inline-form"
+                  onSubmit={(e) => { if (!window.confirm(`Take ${d.number} out of this project? The document itself is kept.`)) e.preventDefault(); }}>
+              <input type="hidden" name="invoice_id" value={d.invoice_id} />
+              <input type="hidden" name="action" value="remove" />
+              <button type="submit" className="btn btn-ghost btn-xs">Take out of the project</button>
+            </form>
           )}
         </div>
       </div>
