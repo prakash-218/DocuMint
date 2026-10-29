@@ -402,6 +402,8 @@ def view_invoice_new(invoice_id):
         import contacts
         people = contacts.for_project(g.current_org_id, project['project_id'])
         events = db.execute_proc('sp_list_project_events', (project['project_id'], g.current_org_id, 200)) or []
+    if role == SALES:                                   # their files: not the POs, invoices and the like
+        context['files'] = [f for f in context['files'] if f.get('kind') not in projects.NOT_QUOTATIONS]
     context.update(
         doc_pill=doc_pill,
         doc_money=document_view.money_strip(invoice, summary, context['payments'], advance_received),

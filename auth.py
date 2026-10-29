@@ -178,7 +178,7 @@ SALES_PAGES = {
                      'delete_contact'},
     'search_bp': None,
     'api_bp': {'me', 'compose', 'send_email', 'list_projects', 'project', 'update_project', 'add_note', 'set_person',
-               'save_person', 'customer', 'save_customer_contact', 'delete_customer_contact'},
+               'save_person', 'customer', 'save_customer_contact', 'delete_customer_contact', 'update_file'},
     'settings_bp': {'index', 'select_org'},
 }
 

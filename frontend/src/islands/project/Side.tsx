@@ -3,10 +3,15 @@ import { day, money } from '../../format';
 import { Icon } from '../../icons';
 import type { Page } from './types';
 
-/** The project's files (drawings, POs, email attachments) and a way to add one. */
-export function Files({ page }: { page: Page }) {
+export const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt,.dwg,.dxf,.step,.stp,.igs,.iges,.zip,.eml,.msg';
+
+/** The project's files (drawings, POs, email attachments), and the prototype's drop zone to add more: dropped or
+    chosen files are uploaded straight away (static/js/app.js), each one's kind guessed from its name; its tag opens
+    a small form to say what it is and its number. */
+export function Files({ page, onSave }: { page: Page; onSave?: (fileId: string, kind: string, referenceNo: string) => Promise<boolean> }) {
   const { files, upload, project } = page;
   const id = useId();
+  const [editing, setEditing] = useState<string | null>(null);
   return (
     <section className="side-sec" aria-labelledby="pp-files">
       <h2 id="pp-files">Files <span className="muted" style={{ fontWeight: 400, fontSize: 12.5 }}>{files.length ? `${files.length} file${files.length === 1 ? '' : 's'}` : ''}</span></h2>
@@ -18,9 +23,18 @@ export function Files({ page }: { page: Page }) {
               <div style={{ minWidth: 0 }}>
                 <a href={f.url} className="fn">{f.title || f.name}</a>
                 <div className="fs">
-                  <span className="tag tone-draft">{f.kind_label}</span>{' '}
+                  {upload && onSave ? (
+                    <button type="button" className="tag tone-draft tag-button" aria-expanded={editing === f.id}
+                            aria-label={`${f.kind_label}: change what ${f.name} is`} onClick={() => setEditing(editing === f.id ? null : f.id)}>
+                      {f.kind_label}
+                    </button>
+                  ) : <span className="tag tone-draft">{f.kind_label}</span>}{' '}
                   {[f.reference_no && `No. ${f.reference_no}`, f.from_email ? 'From email' : '', day(f.date), f.size].filter(Boolean).join(' · ')}
                 </div>
+                {editing === f.id && upload && onSave && (
+                  <FileForm file={f} kinds={upload.kinds} onCancel={() => setEditing(null)}
+                            onSave={async (kind, ref) => { const ok = await onSave(f.id, kind, ref); if (ok) setEditing(null); return ok; }} />
+                )}
               </div>
               <a href={f.url} className="btn btn-ghost btn-xs" aria-label={`Download ${f.name}`}><Icon name="download" size={14} /></a>
             </li>
@@ -28,18 +42,55 @@ export function Files({ page }: { page: Page }) {
         </ul>
       )}
       {upload && (
-        <form className="drop" method="post" action={upload.action} encType="multipart/form-data">
+        <form className="drop" data-dropzone method="post" action={upload.action} encType="multipart/form-data">
           <input type="hidden" name="project_id" value={project.id} />
-          <label htmlFor={`${id}-kind`} className="sr-only">What it is</label>
-          <select id={`${id}-kind`} name="kind" className="form-select" defaultValue="drawing">
-            {Object.entries(upload.kinds).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-          </select>
-          <label htmlFor={`${id}-file`} className="sr-only">File</label>
-          <input id={`${id}-file`} type="file" name="file" required />
-          <button type="submit" className="btn btn-secondary btn-sm"><Icon name="upload" size={14} />Upload</button>
+          <input id={`${id}-file`} type="file" name="file" multiple accept={ACCEPT} className="sr-only" />
+          <span data-drop-label>Drop files here or <label htmlFor={`${id}-file`} className="linkish">choose files</label></span>
         </form>
       )}
     </section>
+  );
+}
+
+interface FileFormProps {
+  file: Page['files'][number];
+  kinds: Record<string, string>;
+  onSave: (kind: string, referenceNo: string) => Promise<boolean>;
+  onCancel: () => void;
+}
+
+/** What a file is and its number (a PO's goes onto the project's documents), or delete it. */
+function FileForm({ file, kinds, onSave, onCancel }: FileFormProps) {
+  const id = useId();
+  const [kind, setKind] = useState(file.kind);
+  const [ref, setRef] = useState(file.reference_no ?? '');
+  const [saving, setSaving] = useState(false);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    await onSave(kind, ref);
+    setSaving(false);
+  }
+  return (
+    <div className="file-form">
+      <form className="stack-form" onSubmit={submit} aria-label={`What ${file.name} is`}>
+        <label htmlFor={`${id}-kind`} className="form-label">What it is</label>
+        <select id={`${id}-kind`} className="form-select" value={kind} onChange={(e) => setKind(e.target.value)}>
+          {Object.entries(kinds).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+        <label htmlFor={`${id}-ref`} className="form-label">Number <span className="muted">(PO or drawing no.)</span></label>
+        <input id={`${id}-ref`} className="form-input" value={ref} maxLength={100} onChange={(e) => setRef(e.target.value)} />
+        <div className="form-actions-row">
+          <button type="submit" className="btn btn-primary btn-xs" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          <button type="button" className="btn btn-ghost btn-xs" onClick={onCancel}>Cancel</button>
+        </div>
+      </form>
+      {file.delete && (
+        <form method="post" action={file.delete} onSubmit={(e) => { if (!window.confirm(`Delete ${file.name}? This can't be undone.`)) e.preventDefault(); }}>
+          <button type="submit" className="btn btn-ghost btn-xs file-delete"><Icon name="trash" size={14} />Delete the file</button>
+        </form>
+      )}
+    </div>
   );
 }
 

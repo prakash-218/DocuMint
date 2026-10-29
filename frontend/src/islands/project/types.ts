@@ -71,6 +71,8 @@ export interface FileRow {
   size: string;
   from_email: boolean;
   url: string;
+  /** Where its delete form posts. */
+  delete?: string;
 }
 
 export interface MoneyRow {

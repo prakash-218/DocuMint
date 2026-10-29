@@ -145,6 +145,27 @@ describe('ProjectPage', () => {
     expect(screen.queryByText('Invoiced', { selector: '.pp-money-label' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Emails' })).not.toBeInTheDocument();
     expect(screen.queryByText("Found in this project's emails")).not.toBeInTheDocument();
-    expect(screen.queryByText('No proforma (only when an advance is asked for)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Proforma for the advance')).not.toBeInTheDocument();
+  });
+
+  it('takes files dropped or chosen, and says what one is with its number', async () => {
+    const files: Page['files'] = [{ id: 'F-1', name: 'scan 0041.pdf', kind: 'other', kind_label: 'Other', title: 'scan 0041.pdf', reference_no: null,
+                                    date: '2026-10-20', size: '12 KB', from_email: false, url: '/projects/files/F-1', delete: '/projects/files/F-1/delete' }];
+    const fetch = serve({ ...PAGE, files });
+    render(<ProjectPage projectId="P-1" />);
+    const zone = (await screen.findByText(/Drop files here or/)).closest('form')!;
+    expect(zone).toHaveAttribute('data-dropzone');
+    expect(zone).toHaveAttribute('action', '/projects/files');
+    expect(zone.querySelector('input[type=file]')).toHaveAttribute('multiple');
+    expect(zone.querySelector('input[name=project_id]')).toHaveValue('P-1');
+    expect(screen.getByText('choose files')).toHaveAttribute('for', zone.querySelector('input[type=file]')!.id);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Other: change what scan 0041.pdf is' }));
+    const form = screen.getByRole('form', { name: 'What scan 0041.pdf is' });
+    await userEvent.selectOptions(within(form).getByLabelText('What it is'), 'po');
+    await userEvent.type(within(form).getByLabelText(/Number/), '4500 0188');
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(sent(fetch, 'PATCH')).toEqual([['/api/files/F-1', { kind: 'po', reference_no: '4500 0188' }]]));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Delete the file' })).not.toBeInTheDocument());   // closed after saving
   });
 });

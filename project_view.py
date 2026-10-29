@@ -278,7 +278,8 @@ def file_row(f: Dict, url: Callable) -> Dict:
             'kind_label': projects.DOCUMENT_KINDS.get(f.get('kind'), 'File'), 'title': f.get('title'),
             'reference_no': f.get('reference_no'), 'date': f.get('doc_date') or f.get('created_at'),
             'size': projects.human_size(f.get('file_size') or 0), 'from_email': bool(f.get('email_thread_id')),
-            'url': url('projects_bp.download_file', attachment_id=f['attachment_id'])}
+            'url': url('projects_bp.download_file', attachment_id=f['attachment_id']),
+            'delete': url('projects_bp.delete_file', attachment_id=f['attachment_id'])}
 
 
 SALES_EVENTS = ('project_created', 'project_status', 'file_uploaded', 'note')

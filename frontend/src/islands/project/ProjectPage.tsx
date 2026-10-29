@@ -92,7 +92,7 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
                   onSave={(fields: ContactFields) => change(() => api.post(`${base}/contacts`, fields),
                                                             fields.contact_id ? `${fields.name} saved` : `${fields.name || fields.email} added`)}
                   onIgnore={(value) => void change(() => api.post(`${base}/ignore`, { value }), "It won't be suggested again")} />
-          <Files page={page} />
+          <Files page={page} onSave={(fileId, kind, referenceNo) => change(() => api.patch(`/api/files/${fileId}`, { kind, reference_no: referenceNo }), 'File saved')} />
           {page.costings && <Costings costings={page.costings} />}
           <Details page={page} onSave={(fields: DetailFields) => change(() => api.patch(base, fields), 'Project saved')} />
         </aside>

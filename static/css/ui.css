@@ -151,9 +151,11 @@
 .ui .fi { width: 30px; height: 30px; border-radius: 7px; background: var(--surface-2); display: grid; place-items: center; color: var(--ink-2); }
 .ui .fn { font-weight: 500; overflow-wrap: anywhere; font-size: 13.5px; color: var(--ink); }
 .ui .fs { color: var(--ink-3); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
-.ui .drop { border: 1.5px dashed var(--line); border-radius: 8px; padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--ink-3); font-size: 12.5px; }
-.ui .drop .form-select { width: auto; flex: 0 1 auto; }
-.ui .drop input[type=file] { flex: 1 1 160px; min-width: 0; font-size: 12.5px; }
+.ui .drop { display: block; border: 1.5px dashed var(--line); border-radius: 8px; padding: 10px; text-align: center; color: var(--ink-3); font-size: 12.5px; margin: 0;
+            transition: border-color var(--transition-fast), background var(--transition-fast); }
+.ui .drop.is-over { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+.ui .drop.is-sending { opacity: .7; pointer-events: none; }
+.ui .linkish { background: none; border: 0; color: var(--accent-ink); cursor: pointer; padding: 0; text-decoration: underline; font: inherit; }
 .ui .facts { margin: 0; display: grid; gap: 8px; font-size: 13.5px; }
 .ui .facts div { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 8px; }
 .ui .facts dt { color: var(--ink-3); }
@@ -376,3 +378,9 @@
 .ui .doc-page .version-bar, .ui .doc-page .version-changes { margin: 0; }
 .ui .col-side .card .card-header { padding: 12px 14px; }
 .ui .col-side .card .card-body { padding: 12px 14px; }
+
+/* A file's kind tag opens a small form to say what it is */
+.ui .tag-button { border: 0; cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 500; }
+.ui .tag-button:hover, .ui .tag-button[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+.ui .file-form { margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); display: grid; gap: 6px; }
+.ui .file-delete { color: var(--red); }
