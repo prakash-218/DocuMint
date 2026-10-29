@@ -7,7 +7,7 @@ import io
 import logging
 import re
 
-from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, flash, g, jsonify, redirect, request, send_file, url_for
 
 from access import get_org_customer, get_org_invoice, safe_referrer
 from auth import can_delete_project, can_edit_invoice, quotations_only, require_org
@@ -100,9 +100,8 @@ def create_project():
         flash('Project created', 'success')
         return redirect(url_for('projects_bp.view_project', project_id=project_id))
 
-    customers = db.execute_proc('sp_list_customers', (org_id, False)) or []
-    return render_template('projects/create.html', customers=customers, customer_id=request.args.get('customer_id'),
-                           years=J.recent_fiscal_years(org_id))
+    import nav
+    return nav.spa('New project', 'page')                  # the form: project_view.new_project
 
 
 @projects_bp.route('/')

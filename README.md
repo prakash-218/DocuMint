@@ -34,11 +34,13 @@ production). After changing `store/schema.py`, create a migration with
 DocuMint is moving to a single-page app: React (TypeScript, built with Vite, React Router) in `frontend/`. The app
 (`frontend/src/app/`) draws the whole page (sidebar, header and screen) and moves between its screens without
 loading a page. `frontend/src/app/routes.tsx` lists them: Home, the projects list and a project, the quotation,
-proforma and invoice lists, a document, a new document and the editor, a document's packing, and a customer. Flask
-still checks access for each of those addresses, then sends one page (`templates/spa.html`, `nav.spa()`) with what
-the app starts with (`nav.boot()`: who's signed in, the sidebar for their role, the page's messages). Everything
-else is still a server page, which the app opens with an ordinary page load. Both draw the same sidebar from
-`nav.sidebar()`.
+proforma and invoice lists, a document, a new document and the editor, a document's packing, the customers (list,
+page, new and edit), a new project, the emails, notifications, and settings (the business profile, name and
+address, the audit log). A form still posts to its Flask route; when that doesn't save, `nav.spa(posted=True)`
+sends the app back with what was typed. Flask still checks access for each of those addresses, then sends one page
+(`templates/spa.html`, `nav.spa()`) with what the app starts with (`nav.boot()`: who's signed in, the sidebar for
+their role, the page's messages). Everything else is still a server page, which the app opens with an ordinary page
+load. Both draw the same sidebar from `nav.sidebar()`.
 
 A server page can still hold a React part as an island: `{{ island('name', props) }}`
 (`templates/_macros.html`) renders a `<div data-island>` that `frontend/src/main.tsx` mounts, using the
@@ -185,6 +187,8 @@ nav.py                    the sidebar, the New menu and the React app's page (sp
 document_page.py          a document's page for the React app (GET /api/document/<id>)
 editor_page.py            the new-document steps and the editor for the React app (GET /api/editor/...)
 packing_page.py           a document's packing, box by box, for the React app (GET /api/packing/<id>)
+customer_view.py, email_view.py, notifications_view.py, settings_view.py
+                          the other screens' JSON (GET /api/customers, /api/emails, /api/notifications, /api/settings...)
 observability.py          JSON logs, request logging, /healthz
 blueprints/               routes (api_bp: JSON for the React screens)
 templates/, static/       pages, CSS, JS

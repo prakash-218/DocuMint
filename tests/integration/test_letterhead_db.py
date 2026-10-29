@@ -29,8 +29,10 @@ def test_letterhead_settings_are_saved_and_printed(client, gst_org):
     assert profile['logo_has_name'] is True
     assert base64.b64decode(profile['logo_small'].split(',', 1)[1]) == _png(2, 2)
 
-    page = client.get('/settings/profile').get_data(as_text=True)
-    assert 'value="left" checked' in page and 'value="#2b3138"' in page and 'name="logo_has_name" class="form-checkbox" checked' in page
+    from tests.spa import screen
+    page = screen(client, '/api/settings/profile')
+    assert (page['values']['letterhead_style'], page['values']['letterhead_color']) == ('left', '#2b3138')
+    assert page['checks']['logo_has_name'] and page['images']['logo_small'].startswith('data:image/png;base64,')
 
     customer = _customer(org_id, 'Bolt Works Pvt Ltd', 'Tamil Nadu', 'India')
     quote_id, _ = _create(client, org_id, 'quote', 'Quotation', customer, [{'description': 'Ring gauge', 'price': 1500, 'qty': 2}],

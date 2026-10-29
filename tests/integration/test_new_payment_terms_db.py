@@ -23,11 +23,13 @@ def test_terms_make_an_invoice_overdue_everywhere(client, gst_org):
     # Terms are whole days, 0 to 365
     refused = client.post('/customers/create', data={'name': name, 'payment_days': '400'})
     assert refused.status_code == 200 and 'Payment terms are a number of days, 0 to 365.' in refused.get_data(as_text=True)
+    from tests.spa import boot_of, screen
+    assert boot_of(refused.get_data(as_text=True))['posted']['values'] == {'name': name, 'payment_days': '400'}   # as typed
     company = _created_id(client.post('/customers/create', data={'name': name, 'city': 'Coimbatore', 'country': 'India',
                                                                  'payment_days': '30'}))
     site = _created_id(client.post('/customers/create', data={'name': name, 'parent_id': company, 'site_name': 'Hosur plant',
                                                               'city': 'Hosur', 'country': 'India', 'payment_days': ''}))
-    assert 'value="30"' in client.get(f'/customers/{company}/edit').get_data(as_text=True)
+    assert screen(client, f'/api/customers/{company}/form')['values']['payment_days'] == '30'
     assert client.get(f'/api/customers/{company}').get_json()['customer']['payment_terms'] == '30 days'
     assert client.get(f'/api/customers/{site}').get_json()['customer']['payment_terms'] == f'30 days, as {name}'
 
@@ -56,6 +58,6 @@ def test_terms_make_an_invoice_overdue_everywhere(client, gst_org):
     try:
         save_org_profile(org_id, {**profile, 'payment_days': 0})
         assert client.get(f'/api/customers/{loner}').get_json()['customer']['payment_terms'] == 'On receipt (your usual terms)'
-        assert f'your usual terms (On receipt)' in client.get(f'/customers/{loner}/edit').get_data(as_text=True)
+        assert 'Empty: your usual terms (On receipt).' in screen(client, f'/api/customers/{loner}/form')['payment_help']
     finally:
         save_org_profile(org_id, profile)

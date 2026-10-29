@@ -26,8 +26,9 @@ def test_customer_sites(client, gst_org):
         'email_domains': f'fgw{tag}.com', 'parent_id': ''}))
 
     # "Add site" starts from the parent's details
-    page = client.get(f'/customers/create?parent_id={parent}').get_data(as_text=True)
-    assert f'value="{name}"' in page and f'<option value="{parent}" selected>' in page
+    from tests.spa import screen
+    page = screen(client, f'/api/customers/new?parent_id={parent}')
+    assert (page['values']['name'], page['values']['parent_id']) == (name, parent)
     gears = _created_id(client.post('/customers/create', data={
         'name': name, 'parent_id': parent, 'site_name': 'Gears Division', 'city': 'Pudupakkam', 'country': 'India'}))
     madurai = _created_id(client.post('/customers/create', data={
@@ -44,15 +45,12 @@ def test_customer_sites(client, gst_org):
             db.execute_proc('sp_set_customer_parent', (customer_id, org_id, parent_id, None), fetch=False)
     with pytest.raises(DatabaseError, match='has sites'):
         db.execute_proc('sp_delete_customer', (parent, org_id), fetch=False)
-    edit = client.get(f'/customers/{parent}/edit').get_data(as_text=True)
-    assert '2 sites belong to this customer' in edit and 'name="parent_id"' not in edit
+    assert screen(client, f'/api/customers/{parent}/form')['site_count'] == 2          # so it can't be a site itself
 
     # Pickers group the sites under their customer; lists say which site
-    picker = client.get('/projects/new').get_data(as_text=True)
-    group = picker[picker.index(f'<optgroup label="{name}">'):]
-    group = group[:group.index('</optgroup>')]
-    assert [parent, gears, madurai] == re.findall(r'value="([0-9a-f-]{36})"', group)
-    assert '>Gears Division<' in group and '>Madurai<' in group
+    [group] = [g for g in screen(client, '/api/new-project')['customers'] if g['label'] == name]
+    assert [o['id'] for o in group['options']] == [parent, gears, madurai]
+    assert [o['label'] for o in group['options']] == [f'{name} — Chennai', 'Gears Division', 'Madurai']
     response = client.post('/projects/new', data={'customer_id': gears, 'title': 'Spline gauges'})
     project_id = re.search(r'/projects/([0-9a-f-]{36})', response.headers['Location']).group(1)
     shown = client.get(f'/api/projects/{project_id}').get_json()['project']['customer']
@@ -64,8 +62,8 @@ def test_customer_sites(client, gst_org):
     assert 'Spline gauges' in [p['title'] for p in page['projects']]
     assert client.get(f'/api/customers/{madurai}').get_json()['customer']['parent'] == {
         'id': parent, 'name': name, 'url': f'/customers/{parent}'}
-    listing = client.get(f'/customers/?q=madurai').get_data(as_text=True)
-    assert name in listing and 'Madurai' in listing and 'row-site' in listing and 'Gears Division' not in listing
+    [found] = [g for g in screen(client, '/api/customers?q=madurai')['groups'] if g['customer']['id'] == parent]
+    assert [(s['name'], s['site']) for s in found['sites']] == [('Madurai', True)]    # the matching site, under its customer
 
     # Mail from the shared domain goes to the parent (which site isn't known until it's put in a project)
     m = {'from_address': f'buyer@fgw{tag}.com', 'direction': 'in', 'to': [], 'cc': []}
@@ -132,7 +130,8 @@ def test_thread_files_join_the_project(client, gst_org):
     response = client.post(f'/emails/{thread_id}/project', data={'project_id': ''}, follow_redirects=True)
     assert 'with the 4 files it had added' in response.get_data(as_text=True)
     assert projects.list_attachments(org_id, project_id=other) == []
-    assert 'Drawing B rev1.dwg' in client.get(f'/emails/{thread_id}').get_data(as_text=True)
+    from tests.spa import screen
+    assert 'Drawing B rev1.dwg' in [f['name'] for m in screen(client, f'/api/emails/{thread_id}')['messages'] for f in m['files']]
 
 
 
@@ -147,15 +146,18 @@ def test_every_list_page_is_paged(client, gst_org):
     for i in range(30):                                           # more than a page of threads
         linker.store(account['account_id'], emailsync.parse_message(
             _mail(f'Paging check {tag} #{i:02d}', [], f'<p{i}.{tag}@acme-tools.com>'), org_domains={'techflow.com'}))
-    first = client.get('/emails/?show=all').get_data(as_text=True)
-    assert 'class="pager"' in first and '?show=all&amp;page=2' in first
+    from tests.spa import screen
+    first = screen(client, '/api/emails?show=all')['page']
     total = db.execute_proc_single('sp_count_email_threads', (org_id, None, None, False))['n']
-    assert f'1–25 of {total} threads' in first
-    last = client.get('/emails/?show=all&page=999').get_data(as_text=True)
-    assert f'of {total} threads' in last and 'aria-current="page"' in last
+    assert (first['first'], first['last'], first['total'], first['noun']) == (1, 25, total, 'threads') and first['pages'] > 1
+    last = screen(client, '/api/emails?show=all&page=999')['page']
+    assert last['page'] == last['pages'] and last['last'] == total                     # past the end: the last page
 
     for path in ['/quotes/', '/proformas/', '/invoices/', '/projects/?status=all', '/customers/', '/templates/',
                  '/notifications/?show=all', '/settings/audit-log']:
         for page in (1, 2, 999, 'x'):
             response = client.get(f"{path}{'&' if '?' in path else '?'}page={page}")
             assert response.status_code == 200, (path, page, response.status_code)
+    for path in ['/api/customers', '/api/emails?show=all', '/api/notifications?show=all', '/api/settings/audit-log']:
+        for page in (1, 2, 999, 'x'):
+            assert screen(client, f"{path}{'&' if '?' in path else '?'}page={page}")['page']['page'] >= 1

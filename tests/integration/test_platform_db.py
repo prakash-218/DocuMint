@@ -8,7 +8,6 @@ PostgreSQL (see conftest.py), a GreenMail IMAP/SMTP server and an S3-compatible 
 
 import imaplib
 import io
-import re
 import smtplib
 import socket
 import uuid
@@ -85,11 +84,14 @@ def test_email_sync_links_threads_to_projects(client, gst_org, monkeypatch):
     # Pages: project shows the thread; the inbox shows the unsorted one; the thread shows the mail
     timeline = client.get(f'/api/projects/{project_id}').get_json()['timeline']
     assert any('RFQ for fixtures' in t['title'] for t in timeline if t['type'] == 'email')
-    assert 'Hello there' in client.get('/emails/').get_data(as_text=True)
-    page = client.get(f"/emails/{linked[0]['thread_id']}").get_data(as_text=True)
-    assert 'Please quote 2 sets.' in page and 'Also add a spare.' in page and 'Drawing A.pdf' in page
-    file_id = re.search(r'/emails/files/([0-9a-f-]{36})', page).group(1)
-    download = client.get(f'/emails/files/{file_id}')
+    from tests.spa import boot_of, screen
+    assert 'Hello there' in [t['subject'] for t in screen(client, '/api/emails')['threads']]
+    assert boot_of(client.get(f"/emails/{linked[0]['thread_id']}").get_data(as_text=True))       # the app's page
+    thread = screen(client, f"/api/emails/{linked[0]['thread_id']}")
+    bodies = ' '.join(m['body'] for m in thread['messages'])
+    assert 'Please quote 2 sets.' in bodies and 'Also add a spare.' in bodies
+    [drawing] = [f for m in thread['messages'] for f in m['files'] if f['name'] == 'Drawing A.pdf']
+    download = client.get(drawing['url'])
     assert download.data == PDF and download.headers['X-Content-Type-Options'] == 'nosniff'
 
     # Linking by hand
@@ -97,12 +99,12 @@ def test_email_sync_links_threads_to_projects(client, gst_org, monkeypatch):
     assert len(db.execute_proc('sp_list_email_threads', (org_id, project_id, None, False, 10))) == 2
 
     # The owner hears about the customer's email (it came in, nobody in the team did it)
-    notes = client.get('/notifications/').get_data(as_text=True)
-    assert f'Email from Ravi: RFQ for fixtures {label}' in notes
+    notes = screen(client, '/api/notifications')['items']
+    assert f'Email from Ravi: RFQ for fixtures {label}' in [n['title'] for n in notes]
 
     # Viewers don't read mail
     login(client, VIEWER)
-    assert client.get('/emails/').status_code == 403
+    assert client.get('/emails/').status_code == 403 and client.get('/api/emails').status_code == 403
     login(client, OWNER)
 
 
@@ -170,11 +172,12 @@ def _admin_checks(client, org_id, viewer, owner):
 
     # As the admin: sees the badge, can open settings pages, can't make or change owners
     login(client, VIEWER)
-    from tests.spa import badge, boot_of
+    from tests.spa import badge, boot_of, screen
     assert badge(boot_of(client.get('/dashboard/').get_data(as_text=True)), 'notifications') > 0
-    assert 'nav-badge' in client.get('/customers/').get_data(as_text=True)          # and on the server pages
-    assert client.get('/settings/audit-log').status_code == 200
+    assert 'nav-badge' in client.get('/templates/').get_data(as_text=True)          # and on the server pages
+    assert client.get('/settings/audit-log').status_code == 200 and screen(client, '/api/settings/audit-log')['entries']
     assert client.get('/settings/profile').status_code == 200
+    assert screen(client, '/api/settings/profile')['action'] == '/settings/profile'
     client.post('/settings/members/approve', data={'user_id': owner['user_id'], 'action': 'change_role', 'role': 'member'})
     assert {m['email']: m for m in db.execute_proc('sp_get_org_members', (org_id,))}[OWNER]['role'] == 'owner'
     # opening a notification marks it read

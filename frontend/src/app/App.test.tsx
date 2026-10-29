@@ -64,8 +64,15 @@ describe('which addresses are the app\'s', () => {
     expect(appRoute('/quotes/create')?.label).toBe('New quotation');
     expect(appRoute(`/quotes/${PROJECT}/edit`)?.label).toBe('Editor');
     expect(appRoute(`/invoices/${PROJECT}/packing`)?.label).toBe('Packing');
-    for (const server of ['/projects/new', '/projects/options', '/quotes/import', '/customers/', '/customers/create', '/emails/',
-                          '/invoices/x/packing', `/invoices/${PROJECT}/pdf`, `/projects/${PROJECT}/edit`, '/settings/']) {
+    expect(appRoute('/projects/new')?.label).toBe('New project');
+    expect(appRoute('/customers/')?.label).toBe('Customers');
+    expect(appRoute('/customers/create')?.label).toBe('New customer');
+    expect(appRoute(`/customers/${CUSTOMER}/edit`)?.label).toBe('Edit customer');
+    expect(appRoute(`/emails/${PROJECT}`)?.label).toBe('Email');
+    expect(appRoute('/settings/audit-log')?.label).toBe('Audit log');
+    for (const server of ['/projects/options', '/quotes/import', '/invoices/x/packing', `/invoices/${PROJECT}/pdf`,
+                          `/projects/${PROJECT}/edit`, `/emails/files/${PROJECT}`, `/notifications/${PROJECT}/open`,
+                          '/settings/select-org', '/settings/organizations/join', '/templates/', '/costings/rates']) {
       expect(appRoute(server), server).toBeNull();
     }
   });
@@ -116,7 +123,7 @@ describe('the app', () => {
     serve();
     app('/projects/');
     await screen.findByRole('navigation', { name: 'Breadcrumb' });
-    for (const [href, extra] of [['/projects/new', {}], [`/projects/${PROJECT}`, { target: '_blank' }], [`/projects/${PROJECT}`, { download: '' }]] as const) {
+    for (const [href, extra] of [['/templates/', {}], [`/projects/${PROJECT}`, { target: '_blank' }], [`/projects/${PROJECT}`, { download: '' }]] as const) {
       const link = document.createElement('a');
       link.href = href;
       Object.entries(extra).forEach(([k, v]) => link.setAttribute(k, v));

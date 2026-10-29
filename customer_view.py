@@ -173,3 +173,82 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
                                 'send': url('api_bp.send_statement', customer_id=customer_id)} if can['edit'] else None,
         },
     })
+
+
+# ---------------------------------------------------------------- The list and the form
+
+def _row(c: Dict, parent: Optional[Dict], url: Callable, site_count: int = 0) -> Dict:
+    import customers
+    if parent:
+        name = c.get('site') or c.get('name') or ''
+        place = ', '.join(x for x in (c.get('city'), c.get('country')) if x) or '—'
+        sub = (f"{c['name']} · " if c.get('site') and c.get('name') != parent.get('name') else '') + place
+    else:
+        name = customers.label(c)
+        sub = ', '.join(x for x in (c.get('city'), c.get('country')) if x) or '—'
+        if site_count:
+            sub += f" · {site_count} site{'' if site_count == 1 else 's'}"
+    if c.get('is_archived'):
+        sub += ' · Archived'
+    return {'id': str(c['customer_id']), 'url': url('customers_bp.view_customer', customer_id=c['customer_id']),
+            'name': name, 'sub': sub, 'tax_id': c.get('tax_id') or '', 'documents': c.get('invoice_count') or 0,
+            'archived': bool(c.get('is_archived')), 'site': bool(parent)}
+
+
+def listing(org_id, query: str, archived: bool, role: str, url: Callable) -> Dict:
+    """The customers list (frontend/src/islands/customers/): a page of whole groups, so a site stays with its customer;
+    the search (customers.search) keeps a matching site's parent and a matching parent's sites."""
+    import customers
+    from auth import CUSTOMER_EDITORS
+    from db import db
+    from pagination import paginate
+    rows = customers.search(db.execute_proc('sp_list_customers', (org_id, archived)) or [], query)
+    page = paginate(customers.group(rows))
+    q = query or None
+    return {
+        'title': 'Customers', 'query': query, 'archived': archived, 'any': bool(rows),
+        'new': url('customers_bp.create_customer') if role in CUSTOMER_EDITORS else None,
+        'filters': [{'label': 'Active', 'href': url('customers_bp.list_customers', q=q), 'active': not archived},
+                    {'label': 'All', 'href': url('customers_bp.list_customers', include_archived='true', q=q), 'active': archived}],
+        'groups': [{'customer': _row(g['customer'], None, url, len(g['sites'])),
+                    'sites': [_row(s, g['customer'], url) for s in g['sites']]} for g in page.items],
+        'page': page.json(),
+    }
+
+
+FORM_FIELDS = ('name', 'parent_id', 'site_name', 'tax_id', 'email_domains', 'payment_days', 'street_address', 'city',
+               'state', 'zip_code', 'country')
+
+
+def form(org_id, customer: Optional[Dict], defaults: Dict, url: Callable) -> Dict:
+    """A customer's form, new (defaults: an "Add site" starts from its parent's details) or to edit. It posts the
+    server page's fields to customers_bp.create_customer or edit_customer, which save them."""
+    from blueprints.customers_bp import _form_context
+    from documents import load_json
+    ctx = _form_context(org_id, customer, defaults)
+    c = customer or defaults or {}
+    values = {k: '' if c.get(k) is None else str(c.get(k)) for k in FORM_FIELDS}
+    values['country'] = values['country'] or 'India'
+    if c.get('parent_id') and c.get('parent_payment_days') is not None:
+        empty = f"Empty: {c.get('parent_name')}'s {c['parent_payment_days']} days."
+    elif ctx['usual_terms']:
+        empty = f"Empty: your usual terms ({ctx['usual_terms']})."
+    else:
+        empty = 'Empty: no due date unless the invoice has one.'
+    custom = load_json(customer.get('custom')) if customer else {}
+    customer_id = str(customer['customer_id']) if customer else None
+    return {
+        'title': 'Edit customer' if customer else 'New customer',
+        'name': customer.get('name') if customer else None,
+        'action': url('customers_bp.edit_customer', customer_id=customer_id) if customer else url('customers_bp.create_customer'),
+        'cancel': url('customers_bp.view_customer', customer_id=customer_id) if customer else url('customers_bp.list_customers'),
+        'submit': 'Save' if customer else 'Create customer',
+        'values': values,
+        'site_count': ctx['site_count'],
+        'parents': [{'id': str(p['customer_id']), 'name': p['name']} for p in ctx['parents']],
+        'domains_help': (f"{c.get('parent_name')} has {c['parent_email_domains']}; add only this site's own domains."
+                         if c.get('parent_email_domains') else ''),
+        'payment_help': ("How many days after the invoice date they pay; 0 is on receipt. It sets when their invoices "
+                         f"count as overdue, and isn't printed. {empty}"),
+        'custom': [{'key': f['key'], 'label': f['label'], 'value': custom.get(f['key'], '')} for f in ctx['custom_defs']],
+    }
