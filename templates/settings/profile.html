@@ -52,6 +52,12 @@
                 {{ text('email', 'Email') }}
                 {{ text('website', 'Website') }}
             </div>
+            <div class="form-group">
+                <label for="team_addresses" class="form-label">Your team's other email addresses</label>
+                <textarea id="team_addresses" name="team_addresses" class="form-textarea" rows="2"
+                          placeholder="ravi.home@gmail.com, office.desk@yahoo.com">{{ (profile.team_addresses or []) | join(', ') }}</textarea>
+                <p class="form-text">Personal addresses your people also write from. They count as yours: never suggested as a customer's contact.</p>
+            </div>
         </div>
     </section>
 
