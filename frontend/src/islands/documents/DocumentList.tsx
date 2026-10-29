@@ -40,7 +40,6 @@ export interface DocList {
   rows: DocRow[];
   new_url: string | null;
   new_label: string;
-  classic_url: string;
 }
 
 const words = (text: string) => text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9/]+/g, ' ').split(' ').filter(Boolean);

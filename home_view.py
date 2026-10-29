@@ -195,5 +195,5 @@ def build(org_id, role: str, url: Callable, today: Optional[date] = None, email:
                     'who': (e.get('actor_email') or '').split('@')[0] or None, 'project': e.get('project_title'),
                     'project_url': url('projects_bp.view_project', project_id=e['project_id']) if e.get('project_id') else None}
                    for e in events],
-        'links': {'projects': url('projects_bp.list_projects'), 'classic': url('dashboard_bp.index_classic')},
+        'links': {'projects': url('projects_bp.list_projects')},
     })

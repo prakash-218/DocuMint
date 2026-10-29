@@ -1,7 +1,7 @@
 """
-What the classic project and customer pages could do, from the new ones, against real PostgreSQL (same opt-in as
-test_app_db.py): adding a customer's document to a project and taking it out, deleting a project, files dropped for
-a customer and moved into a project, the portal login, archiving, editing; each form coming back to the new page.
+What the project and customer pages do, against real PostgreSQL (same opt-in as test_app_db.py): adding a customer's
+document to a project and taking it out, deleting a project, files dropped for a customer and moved into a project, the
+portal login, archiving, editing; each form coming back to the page.
 """
 
 import io
@@ -41,10 +41,10 @@ def test_documents_go_in_and_out_of_a_project_and_a_project_goes(client, gst_org
     assert projects.project_of(quote_id, org_id) == second
     assert client.get(f'/api/projects/{second}').get_json()['addable'] == []
 
-    # Deleting the first, from its new page, goes to the new list; from the classic page, to the classic list
+    # Deleting a project goes to the projects list
     assert _post(client, f'/projects/{first}/delete', {}, f'/projects/{first}').endswith('/projects/')
     assert projects.get_project(first, org_id) is None
-    assert _post(client, f'/projects/{second}/delete', {}, f'/projects/{second}/classic').endswith('/projects/classic')
+    assert _post(client, f'/projects/{second}/delete', {}, f'/projects/{second}').endswith('/projects/')
     assert projects.project_of(quote_id, org_id) is None                                  # the document is kept
 
     try:                                                                                   # viewers: nothing to change

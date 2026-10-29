@@ -73,11 +73,13 @@ def test_quote_to_invoice_builds_a_project_with_the_po(client, gst_org):
         'target': 'invoice', 'template_id': _template(org_id, 'Tax Invoice')['template_id']}))
     assert projects.project_of(invoice_id, org_id) == project_id
     assert load_json(fetch_invoice(invoice_id)[0].get('details'))['buyer_order_no'] == '4500012345'
-    project_page = client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
-    assert all(n in project_page for n in ('Drill jig for bracket', 'PO 4500012345', 'Quotations', 'Proforma invoices'))
+    page = client.get(f'/api/projects/{project_id}').get_json()
+    assert page['project']['title'] == 'Drill jig for bracket' and page['project']['po']['number'] == '4500012345'
+    assert [d['doc_type'] for d in page['documents']] == ['quote', 'proforma', 'invoice']
     assert len(projects.project_documents(project_id, org_id)) == 3
-    assert 'Drill jig for bracket' in client.get('/projects/classic').get_data(as_text=True)
-    assert 'PO 4500012345.pdf' in client.get(f'/customers/{customer}/classic').get_data(as_text=True)
+    assert 'Drill jig for bracket' in [p['title'] for p in client.get('/api/projects').get_json()['projects']]
+    groups = client.get(f'/api/customers/{customer}').get_json()['files']
+    assert 'PO 4500012345.pdf' in [f['name'] for g in groups for f in g['files']]
 
     # A new document made from the project page belongs to it and starts with the PO number
     template_id = _template(org_id, 'Tax Invoice')['template_id']
@@ -93,12 +95,6 @@ def test_quote_to_invoice_builds_a_project_with_the_po(client, gst_org):
     assert client.post(f'/projects/{project_id}/delete').status_code == 302
     assert projects.get_project(project_id, org_id) is None and projects.project_of(invoice_id, org_id) is None
     assert projects.list_attachments(org_id, customer_id=customer)[0]['project_id'] is None
-
-    # "Group them into projects" puts the linked documents back together
-    assert projects.ungrouped_families(org_id) >= 1
-    client.post('/projects/group-linked')
-    regrouped = projects.project_of(quote_id, org_id)
-    assert regrouped and projects.project_of(proforma_id, org_id) == regrouped == projects.project_of(invoice_id, org_id)
 
 
 def test_files_are_checked_and_scoped(client, gst_org):
@@ -139,9 +135,9 @@ def test_ongoing_project_with_earlier_documents(client, gst_org):
                                                     'file': (io.BytesIO(PDF), f'{number}.pdf')},
                                content_type='multipart/form-data', headers={'Referer': f'http://localhost/projects/{project_id}'})
         assert response.status_code == 302
-    page = client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
-    assert 'TF/Q/011/26-27' in page and 'PI 004(26-27)' in page and 'Uploaded' in page
-    assert '₹85,000.00' in page                                   # the earlier quote counts as quoted
+    page = client.get(f'/api/projects/{project_id}').get_json()
+    assert {f['reference_no'] for f in page['files']} == {'TF/Q/011/26-27', 'PI 004(26-27)'}
+    assert page['money'][0]['quoted'] == 85000                    # the earlier quote counts as quoted
     stages = projects.project_stages([], projects.list_attachments(org_id, project_id=project_id))
     assert [len(s['uploads']) for s in stages] == [1, 1, 0]
 
@@ -158,7 +154,7 @@ def test_ongoing_project_with_earlier_documents(client, gst_org):
 
 def test_project_year_the_picker_and_finding_projects(client, gst_org):
     """A project has a financial year (this one when started, or its earliest document's); the picker gets a
-    customer's projects as JSON; the projects page searches loosely and filters by year."""
+    customer's projects as JSON."""
     import projects
     org_id = gst_org
     customer = _customer(org_id, 'Wheels India Limited', 'Tamil Nadu', 'India')
@@ -178,7 +174,7 @@ def test_project_year_the_picker_and_finding_projects(client, gst_org):
     assert projects.get_project(spindle, org_id)['fiscal_year'] == '26-27'
     client.post(f'/projects/{spindle}/edit', data={**edit, 'fiscal_year': 'next year'})
     assert projects.get_project(spindle, org_id)['fiscal_year'] == '26-27'
-    assert 'FY 26-27' in client.get(f'/projects/{spindle}/classic').get_data(as_text=True)
+    assert client.get(f'/api/projects/{spindle}').get_json()['project']['fiscal_year'] == '26-27'
 
     # The picker's list: the customer's own projects, with their years
     data = client.get(f'/projects/options?customer_id={customer}&exact=1').get_json()
@@ -187,12 +183,6 @@ def test_project_year_the_picker_and_finding_projects(client, gst_org):
     assert data['this_year'] == this_year and all(p['no'].startswith('PRJ-') for p in data['projects'])
     everyone = client.get('/projects/options').get_json()['projects']
     assert 'Drop set for a press' in {p['title'] for p in everyone}
-
-    # The projects page: a loose search, and a year
-    page = client.get('/projects/classic?status=all&q=drop+st+srb').get_data(as_text=True)
-    assert 'Drop set for SRB 65 dia tool' in page and 'Drop set for a press' not in page
-    page = client.get(f'/projects/classic?status=all&customer_id={customer}&fy=24-25').get_data(as_text=True)
-    assert 'Gauge set' in page and 'Spindle repair' not in page and '<option value="24-25" selected>' in page
 
     # A document's page offers the picker, fed by its customer's projects
     invoice_id, _ = _create(client, org_id, 'invoice', 'Tax Invoice', customer,

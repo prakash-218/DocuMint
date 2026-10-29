@@ -1,6 +1,6 @@
 /* The new pages' look, from the prototypes (scratchpad ux/app-prototype.html): every React screen's root has
    class "ui". Colours come from static/css/variables.css (mint, amber, serious, red, info and their -soft
-   pairs, for done, to do, 45-90 days late, late and waiting). Scoped to .ui so the classic pages don't change.
+   pairs, for done, to do, 45-90 days late, late and waiting). Scoped to .ui so the server-rendered pages don't change.
    The root is a size container: layouts follow the screen's width, not the window's. */
 
 .ui {

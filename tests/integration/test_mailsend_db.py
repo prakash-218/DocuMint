@@ -77,8 +77,10 @@ def test_a_quotation_emailed_from_its_project(client, gst_org, monkeypatch):
     # It's on the project: a thread of ours, and the activity says who got what
     [thread] = db.execute_proc('sp_list_email_threads', (org_id, project_id, None, False, 10))
     assert thread['thread_id'] == sent['thread_id'] and thread['message_count'] == 1
-    page = client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
-    assert f'Emailed Quotation {quote_no} to Ravi Kumar' in page
+    events = db.execute_proc('sp_list_project_events', (project_id, org_id, 30))
+    assert f'Emailed Quotation {quote_no} to Ravi Kumar' in [e['title'] for e in events]
+    [mail] = [t for t in client.get(f'/api/projects/{project_id}').get_json()['timeline'] if t['type'] == 'email']
+    assert mail['direction'] == 'out' and ravi in mail['who']
 
     # Ravi answers; the sync files it in the same thread, and doesn't store our copy in Sent a second time
     _send(f'Ravi Kumar <{ravi}>', mailbox, f"Re: {form['subject']}", 'Thanks, PO follows.', in_reply_to=got['Message-ID'])

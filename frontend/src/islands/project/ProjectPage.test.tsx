@@ -8,7 +8,7 @@ const PAGE: Page = {
   project: {
     id: 'P-1', label: 'PRJ-041', title: 'Hob arbor set', reference: '', notes: '', fiscal_year: '26-27', status: 'open',
     created_at: '2026-10-08T09:00:00', customer: { id: 'C-1', name: 'Gear Cutters Ltd', site: 'Hosur plant', url: '/customers/C-1' },
-    po: null, classic_url: '/projects/P-1',
+    po: null,
   },
   can: { edit: true, manage: true, read_mail: true, sales: false },
   stage: {

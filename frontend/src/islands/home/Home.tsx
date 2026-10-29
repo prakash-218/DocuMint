@@ -40,7 +40,7 @@ export interface HomeData {
   month: { label: string; invoiced: Totals; received: Totals };
   recent: { id: string; kind: string; title: string; when: string; link: string | null; who: string | null;
             project: string | null; project_url: string | null }[];
-  links: { projects: string; classic: string };
+  links: { projects: string };
 }
 
 // Each kind of thing to do: its icon and tone, as in the prototype

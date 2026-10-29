@@ -28,7 +28,7 @@ const DATA: Projects = {
           { key: 'invoiced', label: 'To invoice' }, { key: 'paid', label: 'Waiting for payment' }],
   years: ['26-27', '25-26'],
   customers: [{ id: 'C-2', name: 'Axle Works' }, { id: 'C-1', name: 'Gear Cutters Ltd' }],
-  new_project: '/projects/new', classic_url: '/projects/',
+  new_project: '/projects/new',
 };
 
 function serve(data: Projects = DATA) {

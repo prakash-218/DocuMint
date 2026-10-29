@@ -25,7 +25,7 @@ const DATA: HomeData = {
   month: { label: 'October', invoiced: { INR: 477994 }, received: {} },
   recent: [{ id: 'E-1', kind: 'payment', title: 'Payment of ₹1,50,000.00 on 058', when: '2026-10-20T10:00:00', link: '/invoices/I-58',
              who: 'ravi', project: 'Hob arbor set', project_url: '/projects/P-41/new' }],
-  links: { projects: '/projects/board', classic: '/dashboard/' },
+  links: { projects: '/projects/board' },
 };
 
 function serve(data: HomeData | null = DATA, status = 200) {

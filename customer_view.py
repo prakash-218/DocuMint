@@ -140,7 +140,6 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
                                     ', '.join(filter(None, [customer.get('city'), customer.get('state'), customer.get('zip_code')])),
                                     customer.get('country')] if x],
             'archived': bool(customer.get('is_archived')), 'custom': custom, 'tax_note': tax_note, 'payment_terms': terms,
-            'classic_url': url('customers_bp.view_customer_classic', customer_id=customer_id),
         },
         'can': can,
         'money': money,

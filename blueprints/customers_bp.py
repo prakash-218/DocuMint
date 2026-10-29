@@ -6,8 +6,8 @@ import re
 
 from flask import Blueprint, request, render_template, redirect, url_for, flash, g
 from db import db, DatabaseError
-from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, require_org, get_current_org_role, quotations_only
-from access import back_to_page, get_org_customer
+from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, require_org, get_current_org_role
+from access import get_org_customer
 from documents import load_json
 from payment_terms import parse_days
 import contacts
@@ -156,66 +156,6 @@ def statement_pdf(customer_id):
     return response
 
 
-@customers_bp.route('/<customer_id>/classic')
-@require_org
-def view_customer_classic(customer_id):
-    """View customer details"""
-    current_role = get_current_org_role()
-    try:
-        customer, _ = get_org_customer(customer_id, g.current_org_id)
-
-        if not customer:
-            flash('Customer not found', 'error')
-            return redirect(url_for('customers_bp.list_customers'))
-
-
-        customer_user = None
-        try:
-
-
-            customer_users = db.execute_proc('sp_get_customer_users', (customer_id,))
-            if customer_users and len(customer_users) > 0:
-                customer_user = customer_users[0]
-        except DatabaseError:
-
-            pass
-        except Exception:
-            pass
-
-        import projects
-        from documents import balance_of, sum_by_currency
-        # A customer with sites shows theirs too: documents, what's outstanding, projects
-        sites = db.execute_proc('sp_list_customer_sites', (g.current_org_id, customer_id)) or []
-        family = {customer_id} | {s['customer_id'] for s in sites}
-        docs = [d for d in db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
-                if d.get('customer_id') in family]
-        files = projects.list_attachments(g.current_org_id, customer_id=customer_id)
-        if quotations_only():       # Sales: their quotations only, and nothing they owe
-            docs = [d for d in docs if d.get('doc_type') == 'quote']
-            files = [f for f in files if f.get('kind') not in projects.NOT_QUOTATIONS]
-        unpaid = [d for d in docs if d.get('doc_type') in ('invoice', 'export_invoice') and d.get('status') == 'pending']
-        family_projects = projects.list_projects(g.current_org_id, customer_id)
-        import revisions
-        return render_template('customers/view.html',
-                             docs=revisions.collapse(docs),
-                             outstanding=sum_by_currency(unpaid, balance_of),
-                             projects=family_projects,
-                             own_projects=[j for j in family_projects if j['customer_id'] == customer_id],
-                             sites=sites,
-                             files=files,
-                             file_kinds=projects.DOCUMENT_KINDS,
-                             custom_defs=_custom_defs(g.current_org_id),
-                             custom_values=load_json(customer.get('custom')),
-                             customer=customer,
-                             contacts=contacts.for_customer(g.current_org_id, customer),
-                             usually=contacts.USUALLY,
-                             customer_user=customer_user,
-                             current_org_role=current_role)
-    except DatabaseError as e:
-        flash('Error loading customer', 'error')
-        return redirect(url_for('customers_bp.list_customers'))
-
-
 @customers_bp.route('/<customer_id>/new')
 @require_org
 def view_customer_new(customer_id):
@@ -238,8 +178,8 @@ def view_customer(customer_id):
 
 
 def _customer_page(customer_id):
-    """The customer's page to go back to: the classic one when that's where the form was sent from, else the page."""
-    return back_to_page('customers_bp.view_customer', customer_id=customer_id)
+    """The customer's page to go back to."""
+    return url_for('customers_bp.view_customer', customer_id=customer_id)
 
 
 def _contact_back(customer_id):
@@ -248,7 +188,7 @@ def _contact_back(customer_id):
     if project_id:
         import projects
         if projects.get_project(project_id, g.current_org_id):
-            return back_to_page('projects_bp.view_project', project_id=project_id) + '#people'
+            return url_for('projects_bp.view_project', project_id=project_id) + '#people'
     return _customer_page(customer_id) + '#contacts'
 
 

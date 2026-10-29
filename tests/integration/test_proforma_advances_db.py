@@ -1,5 +1,7 @@
 """Advances: received on a proforma, carried to its invoice on conversion, or applied to another invoice."""
 
+import html
+import json
 import re
 import uuid
 
@@ -29,14 +31,16 @@ def test_advance_on_a_proforma_follows_it_to_the_invoice(client, gst_org):
     assert float(_doc(org_id, pi1)['paid_amount']) == 0
     for pi in (pi1, pi2):
         assert client.post(f'/invoices/{pi}/finalize').status_code == 302
-    page = client.get(f'/proformas/{pi1}/classic').get_data(as_text=True)
+    page = client.get(f'/proformas/{pi1}').get_data(as_text=True)
     assert 'Record an advance' in page and 'value="20000.00"' in page          # the advance asked for
     client.post(f'/invoices/{pi1}/payment', data={'amount': '20000', 'method': 'NEFT / RTGS', 'reference_number': 'UTR1',
                                                   'payment_date': '2026-04-23'})
     client.post(f'/invoices/{pi2}/payment', data={'amount': '20000', 'reference_number': 'UTR2'})
     assert _doc(org_id, pi1)['status'] == 'sent' and float(_doc(org_id, pi1)['paid_amount']) == 20000
-    page = client.get(f'/proformas/{pi1}/classic').get_data(as_text=True)
-    assert 'Advances received' in page and 'Advance received' in page and 'Advance still to come' not in page
+    page = client.get(f'/proformas/{pi1}').get_data(as_text=True)
+    props = json.loads(html.unescape(re.search(r'data-island="document-next" data-props="([^"]*)"', page).group(1)))
+    strip = {m['label']: m['value'] for m in props['money']}
+    assert strip['Advance received'] == 20000 and strip['Still to come'] == 0
     money = projects.project_money(projects.project_documents(project_id, org_id))
     assert money['advances'] == {'INR': 40000} and money['received'] == {}
 
@@ -44,18 +48,18 @@ def test_advance_on_a_proforma_follows_it_to_the_invoice(client, gst_org):
     response = client.post(f'/invoices/{pi1}/convert', data={'target': 'invoice'}, follow_redirects=False)
     invoice_id = re.search(r'/(?:quotes|proformas|invoices)/([0-9a-f-]{36})', response.headers['Location']).group(1)
     assert float(_doc(org_id, invoice_id)['paid_amount']) == 20000 and float(_doc(org_id, pi1)['paid_amount']) == 0
-    page = client.get(f'/proformas/{pi1}/classic').get_data(as_text=True)
+    page = client.get(f'/proformas/{pi1}').get_data(as_text=True)
     assert 'Applied to' in page
     assert client.post(f'/invoices/{invoice_id}/finalize').status_code == 302
     assert _doc(org_id, invoice_id)['status'] == 'pending'                     # 20,000 of 1,00,000
 
     # PI 2's advance is offered to the invoice (same customer and project), and applied
-    page = client.get(f'/invoices/{invoice_id}/classic').get_data(as_text=True)
-    assert 'Apply an advance' in page and 'Advance on PI' in page
     advance2 = next(a for a in db.execute_proc('sp_list_advances', (pi2,)))
+    page = client.get(f'/invoices/{invoice_id}').get_data(as_text=True)
+    assert 'Apply an advance' in page and f'value="{advance2["payment_id"]}"' in page
     client.post(f'/invoices/{invoice_id}/advances', data={'payment_id': advance2['payment_id']})
     assert float(_doc(org_id, invoice_id)['paid_amount']) == 40000
-    page = client.get(f'/invoices/{invoice_id}/classic').get_data(as_text=True)
+    page = client.get(f'/invoices/{invoice_id}').get_data(as_text=True)
     assert page.count('Take off this invoice') == 2 and 'Apply an advance' not in page
     money = projects.project_money(projects.project_documents(project_id, org_id))
     assert money['advances'] == {} and money['received'] == {'INR': 40000} and money['due'] == {'INR': 60000}

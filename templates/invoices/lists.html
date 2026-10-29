@@ -6,11 +6,7 @@
 {% block title %}{{ title }}{% endblock %}
 {% block header_title %}<nav class="crumbs" aria-label="Breadcrumb"><b>{{ title }}</b></nav>{% endblock %}
 
-{% block header_actions %}
-<a href="{{ url_for('invoices_bp.list_invoices_classic', doc_path=group) }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic list</span></a>
-{% endblock %}
-
 {% block content %}
 {{ island('document-list', {'group': group, 'tab': tab, 'query': query}, label=title, skeleton='list') }}
-<noscript><p>This page needs JavaScript. The <a href="{{ url_for('invoices_bp.list_invoices_classic', doc_path=group) }}">classic list</a> works without it.</p></noscript>
+<noscript><p>This page needs JavaScript.</p></noscript>
 {% endblock %}

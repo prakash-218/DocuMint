@@ -39,7 +39,6 @@ export interface Projects {
   years: string[];
   customers: { id: string; name: string }[];
   new_project: string | null;
-  classic_url: string;
 }
 
 type Tab = 'open' | 'completed' | 'cancelled' | 'all';
