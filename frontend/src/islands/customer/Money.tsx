@@ -1,11 +1,15 @@
 import { useId, useMemo, useState } from 'react';
 import { day, money } from '../../format';
-import type { Account } from './types';
+import { Icon } from '../../icons';
+import { Composer } from '../EmailComposer';
+import type { Account, CustomerData } from './types';
 
 /** Their account, as a ledger: each invoice they owe (debit) and each payment they made (credit), oldest first,
-    with the balance after it; one financial year at a time, with what was brought forward. */
-export function Statement({ accounts }: { accounts: Account[] }) {
+    with the balance after it; one financial year at a time, with what was brought forward. The one shown prints as
+    a PDF and goes by email (links: the customer page's). */
+export function Statement({ accounts, links = {} }: { accounts: Account[]; links?: Pick<CustomerData['links'], 'statement_pdf' | 'statement_email'> }) {
   const id = useId();
+  const [emailing, setEmailing] = useState(false);
   const [currency, setCurrency] = useState(accounts[0]?.currency ?? 'INR');
   const account = accounts.find((a) => a.currency === currency) ?? accounts[0];
   const years = useMemo(() => [...new Set((account?.lines ?? []).map((l) => l.fy).filter(Boolean))].reverse() as string[], [account]);
@@ -20,6 +24,8 @@ export function Statement({ accounts }: { accounts: Account[] }) {
   const opening = fy && first > 0 ? account.lines[first - 1].balance : 0;
   const closing = lines.length ? lines[lines.length - 1].balance : opening;
   const cur = account.currency;
+  const which = new URLSearchParams({ fy: fy || 'all', currency: cur }).toString();
+  const mail = links.statement_email;
 
   return (
     <>
@@ -39,7 +45,22 @@ export function Statement({ accounts }: { accounts: Account[] }) {
           {years.map((y) => <option key={y} value={y}>FY {y}</option>)}
           <option value="">Every year</option>
         </select>
+        {links.statement_pdf && (
+          <a className="btn btn-secondary btn-sm" href={`${links.statement_pdf}?${which}`} target="_blank" rel="noopener">
+            <Icon name="download" size={14} />PDF
+          </a>
+        )}
+        {mail && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEmailing(true)}>
+            <Icon name="mail" size={14} />Email
+          </button>
+        )}
       </div>
+      {emailing && mail && (
+        <Composer endpoints={{ compose: `${mail.compose}?${which}`, send: mail.send, extra: { fy: fy || 'all', currency: cur },
+                               replies: 'Replies come to the Emails inbox, with this customer.' }}
+                  onClose={() => setEmailing(false)} />
+      )}
       <div className="xscroll ctable" style={{ marginTop: 12 }}>
         <table className="ledger">
           <thead><tr><th>Date</th><th>Entry</th><th className="r">Debit</th><th className="r">Credit</th><th className="r">Balance</th></tr></thead>

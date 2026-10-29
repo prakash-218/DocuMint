@@ -60,10 +60,20 @@ interface Props {
   label?: string;
 }
 
+/** An email that isn't a project's (a customer's statement): where the form loads from and sends to, what else
+    the send takes, and where replies go. */
+export interface Endpoints {
+  compose: string;
+  send: string;
+  extra?: Record<string, unknown>;
+  replies?: string;
+}
+
 export interface ComposerProps {
-  projectId: string;
+  projectId?: string;
   invoiceId?: string | null;
   threadId?: string | null;
+  endpoints?: Endpoints;
   /** The form closed; sent says whether an email went out. */
   onClose: (sent: boolean) => void;
 }
@@ -89,7 +99,7 @@ export default function EmailComposer({ projectId, invoiceId, threadId, label = 
 }
 
 /** The email form, open as soon as it's shown. */
-export function Composer({ projectId, invoiceId, threadId, onClose }: ComposerProps) {
+export function Composer({ projectId, invoiceId, threadId, endpoints, onClose }: ComposerProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
   const [context, setContext] = useState<Compose | null>(null);
@@ -115,7 +125,7 @@ export function Composer({ projectId, invoiceId, threadId, onClose }: ComposerPr
     if (invoiceId) query.set('invoice_id', invoiceId);
     if (threadId) query.set('thread_id', threadId);
     try {
-      const c = await api.get<Compose>(`/api/projects/${projectId}/compose?${query}`);
+      const c = await api.get<Compose>(endpoints?.compose ?? `/api/projects/${projectId}/compose?${query}`);
       setContext(c);
       setTo(c.to);
       setCc(c.cc);
@@ -143,8 +153,8 @@ export function Composer({ projectId, invoiceId, threadId, onClose }: ComposerPr
     setSending(true);
     setError('');
     try {
-      setSent(await api.post<Sent>(`/api/projects/${projectId}/emails`,
-                                   { to, cc, subject, body, thread_id: thread || null, invoice_ids: attach }));
+      setSent(await api.post<Sent>(endpoints?.send ?? `/api/projects/${projectId}/emails`,
+                                   { to, cc, subject, body, thread_id: thread || null, invoice_ids: attach, ...endpoints?.extra }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't send. Check your connection and try again.");
     } finally {
@@ -153,6 +163,7 @@ export function Composer({ projectId, invoiceId, threadId, onClose }: ComposerPr
   }
 
   const known = context ? [...context.people, ...context.found.map((p) => ({ ...p, role: 'found in emails' }))] : [];
+  const replies = endpoints?.replies ?? 'Replies come back to this project.';
   const nameOf = (email: string) => known.find((p) => p.email === email)?.name ?? email;
 
   return (
@@ -179,7 +190,7 @@ export function Composer({ projectId, invoiceId, threadId, onClose }: ComposerPr
                   {sent.cc.length > 0 && <p>Copied: {sent.cc.map(nameOf).join(', ')}</p>}
                   {sent.attached.length > 0 && <p>Attached: {sent.attached.join(', ')}</p>}
                   <p className="text-tertiary">
-                    {sent.saved_to ? `A copy is in the mailbox's ${sent.saved_to} folder. ` : ''}Replies come back to this project.
+                    {sent.saved_to ? `A copy is in the mailbox's ${sent.saved_to} folder. ` : ''}{replies}
                   </p>
                 </div>
               </div>
@@ -240,7 +251,7 @@ export function Composer({ projectId, invoiceId, threadId, onClose }: ComposerPr
               <button type="button" className="btn btn-primary" onClick={() => dialog.current?.close()}>Done</button>
             ) : (
               <>
-                <span className="dm-foot-note">{context?.from ? 'Replies come back to this project.' : ''}</span>
+                <span className="dm-foot-note">{context?.from ? replies : ''}</span>
                 <button type="button" className="btn btn-ghost" onClick={() => dialog.current?.close()}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={!context?.can_send || sending}>
                   <Icon name="send" />

@@ -52,7 +52,8 @@ const DATA: CustomerData = {
   usually: { all: 'Everything', billing: 'Invoices and payments', none: 'Nothing' },
   sites: [{ id: 'C-2', name: 'Hosur plant', tax_id: null, archived: false, documents: 3, url: '/customers/C-2/new' }],
   links: { new_project: '/projects/new?customer_id=C-1', new_quote: '/quotes/create?customer_id=C-1', edit: '/customers/C-1/edit',
-           add_site: '/customers/create?parent_id=C-1', archive: '/customers/C-1/archive' },
+           add_site: '/customers/create?parent_id=C-1', archive: '/customers/C-1/archive', statement_pdf: '/customers/C-1/statement.pdf',
+           statement_email: { compose: '/api/customers/C-1/statement/compose', send: '/api/customers/C-1/statement/emails' } },
   upload: { action: '/projects/files', kinds: { drawing: 'Drawing', po: 'Purchase order', other: 'Other' } },
   portal: { email: null, login_url: 'https://portal.example/customer/login', create: '/customers/C-1/create-portal-account' },
 };
@@ -105,9 +106,12 @@ describe('CustomerPage', () => {
     expect(table.getByText('Opening balance').closest('tr')).toHaveTextContent('-₹20,000');          // FY 26-27 first
     expect(table.queryByText('Advance on PI 007, applied to 058')).not.toBeInTheDocument();
     expect(table.getByText('Balance due').closest('tr')).toHaveTextContent('₹70,000');
+    expect(table.getByRole('link', { name: /PDF/ })).toHaveAttribute('href', '/customers/C-1/statement.pdf?fy=26-27&currency=INR');
     fireEvent.change(table.getByLabelText('Financial year'), { target: { value: '' } });
     expect(table.getByText('Advance on PI 007, applied to 058')).toBeInTheDocument();
     expect(table.queryByText('Opening balance')).not.toBeInTheDocument();
+    expect(table.getByRole('link', { name: /PDF/ })).toHaveAttribute('href', '/customers/C-1/statement.pdf?fy=all&currency=INR');
+    expect(table.getByRole('button', { name: /Email/ })).toBeInTheDocument();      // opens the email form for this statement
   });
 
   it('keeps Sales to the customer and their quotations: no money, no statement', async () => {

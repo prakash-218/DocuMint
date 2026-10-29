@@ -168,5 +168,9 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
             if can['manage'] and not customer.get('parent_id') and not customer.get('is_archived') else None,
             'archive': url('customers_bp.unarchive_customer' if customer.get('is_archived') else 'customers_bp.archive_customer',
                            customer_id=customer_id) if can['manage'] else None,
+            # The statement as a PDF (?fy=, ?currency=), and emailing it (the email form's own addresses)
+            'statement_pdf': url('customers_bp.statement_pdf', customer_id=customer_id) if not sales else None,
+            'statement_email': {'compose': url('api_bp.statement_compose', customer_id=customer_id),
+                                'send': url('api_bp.send_statement', customer_id=customer_id)} if can['edit'] else None,
         },
     })

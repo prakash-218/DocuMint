@@ -290,12 +290,8 @@ def _pdf(org_id, invoice_id) -> Tuple[str, bytes]:
     return (name.group(1) if name else 'document.pdf'), response.get_data()
 
 
-def send_for_project(org_id, org_name: str, project: Dict, role: str, data: Dict) -> Dict:
-    """Send what the email form posted. Raises SendError with what to fix (or what went wrong on the server)."""
-    import activity
-    import contacts
-    from auth import MAIL_READERS, SALES
-    from flask import url_for
+def _checked(org_id, data: Dict) -> Tuple[Dict, List[str], List[str], str, str]:
+    """(sender config, to, cc, subject, body) from what the email form posted, or SendError with what to fix."""
     cfg = sender_for(org_id)
     if not cfg:
         raise SendError(NOT_SET_UP)
@@ -311,6 +307,16 @@ def send_for_project(org_id, org_name: str, project: Dict, role: str, data: Dict
         raise SendError('Give the email a subject.')
     if not body:
         raise SendError('Write a message.')
+    return cfg, to, cc, subject, body
+
+
+def send_for_project(org_id, org_name: str, project: Dict, role: str, data: Dict) -> Dict:
+    """Send what the email form posted. Raises SendError with what to fix (or what went wrong on the server)."""
+    import activity
+    import contacts
+    from auth import MAIL_READERS, SALES
+    from flask import url_for
+    cfg, to, cc, subject, body = _checked(org_id, data)
 
     reply_to = None
     if data.get('thread_id'):
@@ -350,3 +356,85 @@ def send_for_project(org_id, org_name: str, project: Dict, role: str, data: Dict
                     project_id=project['project_id'], notify=False,
                     link=url_for('emails_bp.thread', thread_id=thread_id) if thread_id else None)
     return {'thread_id': thread_id, 'to': to, 'cc': cc, 'attached': [d['label'] for d in attach], 'saved_to': saved_to}
+
+
+# ---------------------------------------------------------------- A customer's statement
+
+STATEMENT = 'statement'          # what the email form calls the statement among the attachments
+
+
+def statement_message(people: List[Dict], to: List[str], data: Dict, org_name: str) -> str:
+    """The email that goes with a statement: what it covers, the balance, and what's past its due date."""
+    from money import format_money
+    account = data.get('account')
+    lines = [greeting(people, to), '']
+    if not account:
+        return '\n'.join(lines + ['Regards,', org_name])
+    cur = account['currency']
+    money = lambda v: format_money(v, cur, decimals=False)  # noqa: E731
+    period = f"FY {account['fy']}" if account['fy'] else 'every year to date'
+    balance = (f"The balance due is {money(account['closing'])}." if account['closing'] > 0.005 else
+               f"You have paid {money(-account['closing'])} ahead." if account['closing'] < -0.005 else 'Nothing is due.')
+    on = lambda d, year=True: f"{d.day} {d:%b %Y}" if year else f"{d.day} {d:%b}"  # noqa: E731
+    lines += [f"Please find attached our statement of account for {period}, as of {on(data['today'])}. {balance}", '']
+    late = [x for x in data.get('unpaid') or [] if x['late'] > 0]
+    if late:
+        lines.append(f"Of this, {money(data['overdue'])} is past its due date:")
+        lines += [f"- {x['text']} of {on(x['date'])}: {money(x['balance'])}, due {on(x['due'], False)} "
+                  f"({x['late']} day{'' if x['late'] == 1 else 's'} late)" for x in late]
+        lines.append('')
+    lines += ['Please let us know if anything differs from your records.', '', 'Regards,', org_name]
+    return '\n'.join(lines)
+
+
+def statement_compose(org_id, org_name: str, customer: Dict, fy: Optional[str] = None, currency: Optional[str] = None) -> Dict:
+    """What the email form starts with for a customer's statement: their billing contacts, and the PDF attached."""
+    import contacts
+    import statement
+    from flask import url_for
+    data = statement.gather(org_id, customer, url_for, fy, currency)
+    people = [p for p in contacts.for_customer(org_id, customer) if p.get('email')]
+    billing = [p['email'] for p in people if p.get('gets') == 'billing'] or [p['email'] for p in people if p.get('gets') == 'all']
+    subject = f"{statement.title(data)} · {customer['name']}"
+    cfg = sender_for(org_id)
+    return {'from': cfg['from_address'] if cfg else None, 'from_name': org_name, 'can_send': bool(cfg),
+            'why_not': None if cfg else NOT_SET_UP,
+            'people': [{'name': p['name'], 'email': p['email'], 'role': p.get('role'), 'gets': p.get('gets')} for p in people],
+            'found': [], 'to': billing[:1], 'cc': billing[1:], 'threads': [], 'thread_id': None,
+            'subject': subject, 'new_subject': subject, 'body': statement_message(people, billing[:1], data, org_name),
+            'documents': [{'invoice_id': STATEMENT, 'doc_type': STATEMENT, 'label': f'{statement.title(data)} (PDF)',
+                           'why_not': None if data['account'] else 'No invoices or payments yet'}],
+            'attach': [STATEMENT] if data['account'] else [],
+            'fy': (data['account'] or {}).get('fy') or 'all', 'currency': (data['account'] or {}).get('currency')}
+
+
+def send_statement(org_id, org_name: str, customer: Dict, data: Dict) -> Dict:
+    """Send the statement email the form posted (its fy and currency say which statement). Raises SendError."""
+    import activity
+    import contacts
+    import statement
+    from flask import url_for
+    cfg, to, cc, subject, body = _checked(org_id, data)
+    files = []
+    if STATEMENT in (data.get('invoice_ids') or []):
+        made = statement.gather(org_id, customer, url_for, data.get('fy'), data.get('currency'))
+        if not made['account']:
+            raise SendError('There is nothing on the statement yet.')
+        try:
+            files = [(statement.filename(made), statement.render_pdf(made))]
+        except Exception as e:
+            logger.exception('Could not make the statement to attach')
+            raise SendError("Couldn't make the statement PDF to attach. Nothing was sent.", 502) from e
+    message = build_message(org_name, cfg['from_address'], to, cc, subject, body, files)
+    send(cfg, message, to + cc)
+    thread_id = None
+    try:
+        thread_id = record(org_id, cfg, message, None, None, str(customer['customer_id']))
+    except DatabaseError:
+        logger.exception('Sent, but could not store the email %s', message['Message-ID'])
+    saved_to = save_to_sent(cfg, message)
+    names = {p['email']: p['name'] for p in contacts.for_customer(org_id, customer) if p.get('email')}
+    what = f"the statement ({made['account']['fy'] and 'FY ' + made['account']['fy'] or 'to date'})" if files else f'"{subject}"'
+    activity.record('email_sent', f"Emailed {what} to {', '.join(names.get(a, a) for a in to)}", body=customer.get('name'),
+                    notify=False, link=url_for('emails_bp.thread', thread_id=thread_id) if thread_id else None)
+    return {'thread_id': thread_id, 'to': to, 'cc': cc, 'attached': [name for name, _ in files], 'saved_to': saved_to}
