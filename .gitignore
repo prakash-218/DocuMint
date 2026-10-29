@@ -30,7 +30,7 @@ Thumbs.db
 *.sqlite
 
 # Railway
-.railway/
+.railway/node_modules/
 
 # Replication script checkpoint
 railway_replication_checkpoint.json

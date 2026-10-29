@@ -24,6 +24,6 @@ COPY --from=frontend /build/static/app ./static/app
 RUN useradd --create-home app && chown -R app /app
 USER app
 
-# Railway sets PORT. Migrations run as the pre-deploy step (railway.json).
+# Railway sets PORT. Migrations run as the pre-deploy step (.railway/railway.ts).
 # (Requests are logged by the app as JSON, so gunicorn's own access log stays off.)
 CMD gunicorn wsgi:app --bind 0.0.0.0:${PORT:-5000} --workers ${WEB_CONCURRENCY:-2} --threads 4 --timeout 120
