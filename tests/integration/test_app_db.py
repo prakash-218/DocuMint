@@ -75,7 +75,8 @@ def test_create_edit_finalize_and_pay(client):
 
     import projects
     # Without a project, "New invoice" asks for one first
-    assert 'Choose a project' in client.get(f"/invoices/create?template_id={template['template_id']}").get_data(as_text=True)
+    from tests.spa import editor
+    assert editor(client, f"/invoices/create?template_id={template['template_id']}")['step'] == 'project'
     form = {'customer_id': customer['customer_id'], 'template_id': template['template_id'],
             'issue_date': '2026-10-01', 'due_date': '2026-10-31',
             'project_id': projects.create_project(org_id, customer['customer_id'], 'Widgets')}

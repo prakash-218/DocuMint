@@ -23,14 +23,23 @@ export function Crumbs({ crumbs }: { crumbs: Crumb[] }) {
   );
 }
 
-export function PageHeader({ title, crumbs, actions }: { title: string; crumbs?: Crumb[]; actions?: ReactNode }) {
+/** heading: the title as the header's heading (a form's page), rather than breadcrumbs; description goes under it. */
+export function PageHeader({ title, crumbs, actions, heading, description }: {
+  title: string; crumbs?: Crumb[]; actions?: ReactNode; heading?: boolean; description?: ReactNode;
+}) {
   const slots = useContext(HeaderSlots);
   useEffect(() => {
     document.title = `${title} · DocuMint`;
   }, [title]);
+  const top = (
+    <>
+      {heading ? <h1 className="header-title">{title}</h1> : <Crumbs crumbs={crumbs ?? [{ label: title }]} />}
+      {description && <p className="header-description">{description}</p>}
+    </>
+  );
   return (
     <>
-      {slots?.crumbs && createPortal(<Crumbs crumbs={crumbs ?? [{ label: title }]} />, slots.crumbs)}
+      {slots?.crumbs && createPortal(top, slots.crumbs)}
       {slots?.actions && actions ? createPortal(actions, slots.actions) : null}
     </>
   );

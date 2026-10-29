@@ -177,8 +177,9 @@ SALES_PAGES = {
     'customers_bp': {'list_customers', 'view_customer', 'view_customer_new', 'create_customer',
                      'edit_customer', 'save_contact', 'delete_contact'},
     'search_bp': None,
-    'api_bp': {'me', 'documents', 'document_page', 'compose', 'send_email', 'list_projects', 'project', 'update_project', 'add_note',
-               'set_person', 'save_person', 'customer', 'save_customer_contact', 'delete_customer_contact', 'update_file'},
+    'api_bp': {'me', 'documents', 'document_page', 'new_document', 'edit_document', 'compose', 'send_email', 'list_projects',
+               'project', 'update_project', 'add_note', 'set_person', 'save_person', 'customer', 'save_customer_contact',
+               'delete_customer_contact', 'update_file'},
     'settings_bp': {'index', 'select_org'},
 }
 

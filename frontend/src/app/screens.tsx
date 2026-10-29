@@ -9,6 +9,7 @@ const ProjectPage = lazy(() => import('../islands/project/ProjectPage'));
 const DocumentList = lazy(() => import('../islands/documents/DocumentList'));
 const CustomerPage = lazy(() => import('../islands/customer/CustomerPage'));
 const DocumentPage = lazy(() => import('../islands/document/DocumentPage'));
+const EditorPage = lazy(() => import('../islands/editor/EditorPage'));
 
 export function HomeScreen() {
   return <Home />;
@@ -40,4 +41,22 @@ export function CustomerScreen() {
 export function DocumentScreen() {
   const { invoiceId = '' } = useParams();
   return <DocumentPage key={invoiceId} invoiceId={invoiceId} />;
+}
+
+const KINDS: Record<string, string> = { quotes: 'quotation', proformas: 'proforma invoice', invoices: 'invoice' };
+
+/** /quotes/create and the like: a new document's steps (?project_id=, ?template_id=), then its editor */
+export function NewDocumentScreen() {
+  const location = useLocation();
+  const group = location.pathname.split('/')[1];
+  return <EditorPage key={location.pathname + location.search} source={`/api/editor/new/${group}${location.search}`}
+                     title={`New ${KINDS[group] ?? 'document'}`} />;
+}
+
+/** /quotes/<id>/edit (?correct=1 for a sent one) */
+export function EditDocumentScreen() {
+  const { invoiceId = '' } = useParams();
+  const location = useLocation();
+  return <EditorPage key={location.pathname + location.search} source={`/api/editor/${invoiceId}${location.search}`}
+                     title={new URLSearchParams(location.search).get('correct') ? 'Correct' : 'Edit'} />;
 }
