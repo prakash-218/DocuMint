@@ -188,7 +188,8 @@ def test_quote_to_proforma_to_invoice(client, app, gst_org):
 
     # Lists are split by type
     assert client.get('/invoices/?type=quote').headers['Location'].endswith('/quotes/')   # old links
-    assert 'data-island="document-list"' in client.get('/quotes/').get_data(as_text=True)
+    from tests.spa import boot_of
+    assert boot_of(client.get('/quotes/').get_data(as_text=True))                   # the React app's page
     listed = [r['number'] for r in client.get('/api/documents/quotes').get_json()['rows']]
     assert number in listed and p_header['doc_number'] not in listed
     assert client.get('/dashboard/').status_code == 200

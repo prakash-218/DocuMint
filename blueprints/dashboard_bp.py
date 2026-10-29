@@ -2,8 +2,9 @@
 Dashboard blueprint - Home
 """
 
-from flask import Blueprint, render_template, redirect, url_for
+from flask import Blueprint, redirect, url_for
 
+import nav
 from auth import require_org
 
 dashboard_bp = Blueprint('dashboard_bp', __name__)
@@ -19,5 +20,5 @@ def index_new():
 @dashboard_bp.route('/')
 @require_org
 def index():
-    """Home (React, frontend/src/islands/home/): what needs doing first, and the money to come in."""
-    return render_template('dashboard_new.html')
+    """Home, in the React app (frontend/src/islands/home/): what needs doing first, and the money to come in."""
+    return nav.spa('Home', 'home')

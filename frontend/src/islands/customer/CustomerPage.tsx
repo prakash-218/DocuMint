@@ -3,6 +3,7 @@ import { api, ApiError } from '../../api';
 import { day, money, totals } from '../../format';
 import { Icon } from '../../icons';
 import { Skeleton } from '../../Skeleton';
+import { PageHeader, type Crumb } from '../../app/PageHeader';
 import { status } from '../project/Documents';
 import type { ContactFields } from '../project/People';
 import { ACCEPT, FileForm } from '../project/Side';
@@ -65,7 +66,12 @@ export default function CustomerPage({ customerId }: { customerId: string }) {
   }
 
   if (!data) {
-    return error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="page" label="Loading the customer…" />;
+    return (
+      <>
+        <PageHeader title="Customer" crumbs={[{ label: 'Customers', href: '/customers/' }, { label: '…' }]} />
+        {error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="page" label="Loading the customer…" />}
+      </>
+    );
   }
 
   const { customer, can } = data;
@@ -78,12 +84,17 @@ export default function CustomerPage({ customerId }: { customerId: string }) {
   const shown = tabs.includes(tab) ? tab : 'overview';
   const pick = (t: Tab) => {
     setTab(t);
-    window.history.replaceState(null, '', `#${t}`);
+    window.history.replaceState(window.history.state, '', `#${t}`);      // the router's state stays
   };
   const balance = Object.fromEntries((m?.statement ?? []).map((a) => [a.currency, a.balance]));
+  const crumbs: Crumb[] = [{ label: 'Customers', href: '/customers/' },
+                           ...(customer.parent ? [{ label: customer.parent.name, href: customer.parent.url }] : []),
+                           { label: customer.site || customer.name }];
 
   return (
     <div className="ui">
+      <PageHeader title={customer.site ? `${customer.name} · ${customer.site}` : customer.name} crumbs={crumbs}
+                  actions={data.links.edit && <a href={data.links.edit} className="btn btn-secondary"><Icon name="pencil" /><span className="btn-label">Edit</span></a>} />
       {error && (
         <div className="error" role="alert">
           <span>{error}</span>

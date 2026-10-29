@@ -55,13 +55,19 @@ def test_screens_show_their_shapes_until_the_script_replaces_them(app, client, l
     assert 'Home: loading…' in page and 'class="stats"' in page and 'aria-hidden="true"' in page
     assert 'skeleton' not in bare and bare.strip().endswith('></div>')
     login_as('U-A', ORG_A, 'alice@a.com')
-    html = client.get('/projects/').get_data(as_text=True)
-    assert 'data-island="projects-board"' in html and 'Projects: loading…' in html and '<style>.skeleton { display: none; }</style>' in html
+    html = client.get('/projects/').get_data(as_text=True)                  # the React app's page: the frame and the list's shapes
+    assert '<div id="app">' in html and 'Projects: loading…' in html and '<style>.skeleton { display: none; }</style>' in html
+    from tests.spa import boot_of
+    boot = boot_of(html)
+    assert boot['me']['email'] == 'alice@a.com' and boot['links']['logout'] == '/auth/logout'
+    assert [i['key'] for i in boot['sidebar'][0]['items']][:3] == ['home', 'notifications', 'projects']
 
 
 def test_logo_and_tab_icons(client, login_as):
     login_as('U-A', ORG_A, 'alice@a.com')
-    html = client.get('/dashboard/').get_data(as_text=True)
+    app_page = client.get('/dashboard/').get_data(as_text=True)              # the app draws its own sidebar and logo
+    assert 'img/favicon.svg' in app_page and 'img/apple-touch-icon.png' in app_page
+    html = client.get('/customers/').get_data(as_text=True)                  # a server page
     assert 'img/documint-icon.svg' in html and 'img/favicon.svg' in html and 'img/apple-touch-icon.png' in html
     assert '>DM</span>' not in html
     for name in ('documint-icon.svg', 'documint-mark.svg', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'):

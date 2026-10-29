@@ -31,11 +31,20 @@ production). After changing `store/schema.py`, create a migration with
 
 ### The React screens
 
-New screens are React (TypeScript, built with Vite) in `frontend/`, placed inside the server-rendered
-pages as islands: `{{ island('name', props) }}` (`templates/_macros.html`) renders a `<div data-island>`
-that `frontend/src/main.tsx` mounts, using the component registered under that name in
-`frontend/src/islands.ts`. They read and write through the JSON endpoints in `blueprints/api_bp.py`, with
-the same login, organization and roles as the pages. You need Node 22 for this part.
+DocuMint is moving to a single-page app: React (TypeScript, built with Vite, React Router) in `frontend/`.
+The app (`frontend/src/app/`) draws the whole page (sidebar, header and screen) and moves between its
+screens without loading a page. `frontend/src/app/routes.tsx` lists them: Home, the projects list and a
+project, the quotation, proforma and invoice lists, and a customer. Flask still checks access for each of
+those addresses, then sends one page (`templates/spa.html`, `nav.spa()`) with what the app starts with
+(`nav.boot()`: who's signed in, the sidebar for their role, the page's messages). Everything else is still a
+server page, which the app opens with an ordinary page load. Both draw the same sidebar from `nav.sidebar()`.
+
+A server page can still hold a React part as an island: `{{ island('name', props) }}`
+(`templates/_macros.html`) renders a `<div data-island>` that `frontend/src/main.tsx` mounts, using the
+component registered under that name in `frontend/src/islands.ts`.
+
+The screens read and write through the JSON endpoints in `blueprints/api_bp.py`, with the same login,
+organization and roles as the pages. You need Node 22 for this part.
 
 ```bash
 cd frontend
@@ -171,10 +180,11 @@ documents.py, document_service.py, invoice_service.py, calculations.py, money.py
 projects.py               projects, files, grouping
 emailsync.py, worker.py   IMAP sync and the background worker
 activity.py               project events and notifications
+nav.py                    the sidebar, the New menu and the React app's page (spa) and boot data
 observability.py          JSON logs, request logging, /healthz
 blueprints/               routes (api_bp: JSON for the React screens)
 templates/, static/       pages, CSS, JS
-frontend/                 React screens (TypeScript), built into static/app; frontend_assets.py loads them
+frontend/                 the React app and screens (TypeScript), built into static/app; frontend_assets.py loads them
 scripts/dbtool.py         migrate / reset / demo
 tests/                    unit tests; tests/integration against real services
 ```

@@ -276,6 +276,10 @@ def create_app(config_name=None):
     app.add_template_global(invoice_is_overdue, 'is_overdue')
     app.add_template_global(DOC_TYPES, 'DOC_TYPES')
     app.add_template_global(get_type, 'doc_type_info')
+    import nav
+    app.add_template_global(nav.sidebar, 'nav_sidebar')
+    app.add_template_global(nav.active, 'nav_active')
+    app.add_template_global(nav.boot, 'spa_boot')
     app.add_template_global(can_delete_invoice, 'can_delete_invoice')
     app.add_template_global(frontend_assets, 'frontend_assets')
     from layout import printed_customer_fields, printed_org_fields
