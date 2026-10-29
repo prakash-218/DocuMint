@@ -10,6 +10,7 @@ from documents import load_json
 from tests.integration.test_app_db import OWNER, VIEWER, login, pytestmark  # noqa: F401
 from tests.integration.test_documents_db import _create, _customer, app, client, gst_org  # noqa: F401
 from tests.integration.test_sales_role_db import _set_role
+from tests.spa import document
 
 PDF = b'%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n'
 
@@ -46,7 +47,7 @@ def test_dropped_files_then_say_what_they_are(client, gst_org):
     assert client.patch(f'/api/files/{scan}', json={'kind': 'nonsense'}).status_code == 400
     assert client.patch(f'/api/files/{uuid.uuid4()}', json={'kind': 'po'}).status_code == 404
     assert client.patch(f'/api/files/{scan}', data={'kind': 'po'}).status_code == 415             # JSON only
-    assert 'data-dropzone' in client.get(f'/proformas/{proforma_id}').get_data(as_text=True)
+    assert document(client, f'/proformas/{proforma_id}')['upload']           # files can be dropped on its page
 
     # Nothing chosen: said so, nothing stored
     client.post('/projects/files', data={'project_id': project_id}, content_type='multipart/form-data', headers={'Referer': page})

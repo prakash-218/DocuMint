@@ -59,8 +59,10 @@ describe('which addresses are the app\'s', () => {
     expect(appRoute(`/projects/${PROJECT}`)?.label).toBe('Project');
     expect(appRoute('/quotes/')?.label).toBe('Quotations');
     expect(appRoute(`/customers/${CUSTOMER}`)?.label).toBe('Customer');
+    expect(appRoute(`/quotes/${PROJECT}`)?.label).toBe('Quotation');
+    expect(appRoute(`/invoices/${PROJECT}`)?.label).toBe('Invoice');
     for (const server of ['/projects/new', '/projects/options', '/quotes/create', '/customers/', '/customers/create', '/emails/',
-                          `/quotes/${PROJECT}`, `/projects/${PROJECT}/edit`, '/settings/']) {
+                          `/quotes/${PROJECT}/edit`, `/invoices/${PROJECT}/pdf`, `/projects/${PROJECT}/edit`, '/settings/']) {
       expect(appRoute(server), server).toBeNull();
     }
   });

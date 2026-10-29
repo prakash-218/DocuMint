@@ -1,5 +1,5 @@
 """
-The new document page (templates/invoices/new_view.html): what to do next with a quotation, proforma or tax
+A document's page (document_page.py, drawn by the React app): what to do next with a quotation, proforma or tax
 invoice, from its type and status, with every action that fits; the one that moves it on is marked primary.
 Actions are links, forms to the existing routes (invoices_bp), the change dialog, or the email form.
 """

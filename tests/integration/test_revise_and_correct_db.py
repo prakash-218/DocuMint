@@ -9,6 +9,7 @@ import re
 from tests.integration.test_documents_db import (_create, _customer, _summary, _template, app, client,  # noqa: F401
                                                     gst_org)
 from tests.integration.test_app_db import login, pytestmark  # noqa: F401
+from tests.spa import document, document_text
 
 
 def _new_id(response):
@@ -57,9 +58,9 @@ def test_correcting_a_sent_invoice_and_taking_sent_back(client, gst_org):
     response = client.get(f'/invoices/{invoice_id}/edit')
     assert response.status_code == 302 and 'Change' in ' '.join(_flashes(client))
     # ...its page offers Change: correct, or back to draft (no revisions for tax invoices)
-    page = client.get(f'/invoices/{invoice_id}').get_data(as_text=True)
-    assert 'id="change-dialog"' in page and 'Correct this invoice' in page and 'Make a revision' not in page
-    assert f'/invoices/{invoice_id}/reopen' in page
+    change = document(client, f'/invoices/{invoice_id}')['change']
+    assert change['short'] == 'invoice' and change['correct'] and change['revise'] is None
+    assert change['reopen'] == {'blocker': None, 'action': f'/invoices/{invoice_id}/reopen'}
 
     # Paid in full, then corrected to a bigger amount: it's pending again, same number, and the audit log says so
     total = float(_summary(invoice_id)[0]['total_amount'])
@@ -99,12 +100,13 @@ def test_revising_a_quotation_into_another_template(client, gst_org):
     quote_id, number = _create(client, org_id, 'quote', 'Quotation', customer,
                                [{'description': 'Assembly fixture', 'price': 250000, 'qty': 1}], tax_mode='none')
     client.post(f'/invoices/{quote_id}/finalize')
-    page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
+    revise = document(client, f'/quotes/{quote_id}')['change']['revise']
     head, tail = number.rsplit('/', 1)
-    assert f'Make {head}R1/{tail}' in page                       # the old way: Q/600/26-27 -> Q/600R1/26-27
+    assert revise['possible'] and revise['number'] == f'{head}R1/{tail}'   # the old way: Q/600/26-27 -> Q/600R1/26-27
     breakup = _template(org_id, 'Quotation with cost break-up')
-    assert f'value="{breakup["template_id"]}"' in page            # another quotation template to revise into
-    assert f'value="{_template(org_id, "Tax Invoice")["template_id"]}"' not in page.split('id="revise_template"')[1].split('</select>')[0]
+    ids = [t['id'] for t in revise['templates']]
+    assert str(breakup['template_id']) in ids                            # another quotation template to revise into
+    assert str(_template(org_id, 'Tax Invoice')['template_id']) not in ids
 
     response = client.post(f'/invoices/{quote_id}/revise', data={'template_id': breakup['template_id']})
     revision = _new_id(response)
@@ -113,8 +115,9 @@ def test_revising_a_quotation_into_another_template(client, gst_org):
     assert header['status'] == 'draft' and summary['total'] == 250000          # the items came across
     assert _summary(quote_id)[0]['status'] == 'revised'
     # The old version: no revising it again, no going back to draft
-    page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
-    assert 'A newer revision replaced this one' in page and 'Not possible: a newer revision replaced it' in page
+    change = document(client, f'/quotes/{quote_id}')['change']
+    assert change['revise']['note'] == 'A newer revision replaced this one; revise the latest.'
+    assert change['reopen']['blocker'].lower().startswith('a newer revision replaced it')
     # Revising the revision: R2
     client.post(f'/invoices/{revision}/finalize')
     second = _new_id(client.post(f'/invoices/{revision}/revise'))
@@ -132,9 +135,9 @@ def test_revising_a_proforma_moves_its_advances(client, gst_org):
     client.post(f'/invoices/{pi_id}/finalize')
     client.post(f'/invoices/{pi_id}/payment', data={'amount': '50000', 'method': 'NEFT / RTGS'})
     assert len(advances.on_proforma(pi_id)) == 1
-    page = client.get(f'/proformas/{pi_id}').get_data(as_text=True)
-    assert 'Make a revision' in page and 'advances received move to the revision' in page
-    assert 'Not possible: payments are recorded on this proforma' in page        # so no "back to draft"
+    change = document(client, f'/proformas/{pi_id}')['change']
+    assert change['revise']['possible'] and change['proforma']                 # advances received move to the revision
+    assert change['reopen']['blocker'].lower().startswith('payments are recorded on this proforma')   # no "back to draft"
 
     revision = _new_id(client.post(f'/invoices/{pi_id}/revise'))
     header, _ = _summary(revision)
@@ -145,7 +148,7 @@ def test_revising_a_proforma_moves_its_advances(client, gst_org):
     # The list shows the proforma once; its page shows both versions
     found = [r for r in client.get('/api/documents/proformas').get_json()['rows'] if number in (r['number'], *r['search'])]
     assert len(found) == 1 and len(found[0]['versions']) == 1
-    assert 'class="version-bar"' in client.get(f'/proformas/{revision}').get_data(as_text=True)
+    assert 'class="version-bar"' in document_text(client, f'/proformas/{revision}')
 
 
 def test_templates_say_what_they_are_for(client, gst_org):
