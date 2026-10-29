@@ -3,7 +3,8 @@
 import type { ComponentType } from 'react';
 import { matchRoutes } from 'react-router';
 import type { SkeletonKind } from '../Skeleton';
-import { CustomerScreen, DocumentScreen, HomeScreen, ListScreen, ProjectScreen, ProjectsScreen } from './screens';
+import { CustomerScreen, DocumentScreen, EditDocumentScreen, HomeScreen, ListScreen, NewDocumentScreen, ProjectScreen,
+         ProjectsScreen } from './screens';
 
 export interface AppRoute {
   path: string;
@@ -24,6 +25,12 @@ export const ROUTES: AppRoute[] = [
   { path: '/quotes/:invoiceId', screen: DocumentScreen, skeleton: 'doc', label: 'Quotation', ids: ['invoiceId'] },
   { path: '/proformas/:invoiceId', screen: DocumentScreen, skeleton: 'doc', label: 'Proforma', ids: ['invoiceId'] },
   { path: '/invoices/:invoiceId', screen: DocumentScreen, skeleton: 'doc', label: 'Invoice', ids: ['invoiceId'] },
+  { path: '/quotes/create', screen: NewDocumentScreen, skeleton: 'page', label: 'New quotation' },
+  { path: '/proformas/create', screen: NewDocumentScreen, skeleton: 'page', label: 'New proforma' },
+  { path: '/invoices/create', screen: NewDocumentScreen, skeleton: 'page', label: 'New invoice' },
+  { path: '/quotes/:invoiceId/edit', screen: EditDocumentScreen, skeleton: 'page', label: 'Editor', ids: ['invoiceId'] },
+  { path: '/proformas/:invoiceId/edit', screen: EditDocumentScreen, skeleton: 'page', label: 'Editor', ids: ['invoiceId'] },
+  { path: '/invoices/:invoiceId/edit', screen: EditDocumentScreen, skeleton: 'page', label: 'Editor', ids: ['invoiceId'] },
 ];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

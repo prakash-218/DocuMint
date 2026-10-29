@@ -7,7 +7,7 @@ from flask import Blueprint, request, render_template, redirect, url_for, flash,
 from db import db, DatabaseError
 from auth import require_org, get_current_org_role, can_create_invoice, can_edit_invoice, can_delete_invoice, can_finalize_invoice
 from access import get_org_invoice, get_org_template
-from documents import CHOOSABLE, DOC_TYPES, TAX_MODES, get_type, invoice_kind, load_json
+from documents import DOC_TYPES, TAX_MODES, get_type, invoice_kind, load_json
 from document_service import (REVISABLE, DocumentError, apply_document_form, convert_document, customer_tax_hints,
                               form_defaults, get_org_profile, next_revision_number, preview_number, revise_document)
 import uuid
@@ -221,12 +221,10 @@ def create_invoice():
             return redirect(url_for('invoices_bp.create_invoice', doc_type=doc_type))
 
 
-    try:
-        return _create_form(org_id, doc_type)
-    except DatabaseError:
-        logger.exception("Failed to load the create form")
-        flash('Could not load the form', 'error')
-        return redirect(url_for('invoices_bp.list_invoices'))
+    # The steps (project, template) and the editor are the React app's (frontend/src/islands/editor/), fed by
+    # GET /api/editor/new/<doc_path>; it posts back here
+    import nav
+    return nav.spa(f'New {get_type(doc_type).label.lower()}', 'page')
 
 
 # Template names that suit each document type, for the "Suggested" badge and ordering
@@ -255,43 +253,6 @@ def _editor_sections(fields):
             'fields': [],
         })['fields'].append(f)
     return sections
-
-
-def _create_form(org_id, doc_type):
-    """GET /<type>/create: choose a project (quotes), then a template, then fill in the document."""
-    project = projects.get_project(request.args.get('project_id'), org_id)
-    customers = db.execute_proc('sp_list_customers', (org_id, False)) or []
-    if not project:
-        return render_template('invoices/create.html', step='project', doc_type=get_type(doc_type), project=None,
-                               has_open_projects=bool(projects.list_projects(org_id, None, 'open')), customers=customers)
-
-    templates = sorted(_latest_templates(org_id), key=lambda t: (t.get('name') or '').lower())
-    template_id = request.args.get('template_id')
-    selected = next((t for t in templates if t['template_id'] == template_id), None)
-    if not selected:
-        if template_id:
-            flash('Template not found', 'error')
-        mine, others = _templates_for(org_id, templates, doc_type)
-        return render_template('invoices/create.html', step='template', doc_type=get_type(doc_type),
-                               doc_types={k: DOC_TYPES[k] for k in CHOOSABLE}, templates=mine, other_templates=others,
-                               project=project)
-
-    org, profile = get_org_profile(org_id)
-    doc_type = invoice_kind(doc_type, template_is_export(template_id, org_id))
-    doc = _document_form_context(doc_type, org, profile, customers, org_id=org_id,
-                                 currency=selected.get('currency_code'))
-    if project:
-        details = doc['values'].get('details') or {}
-        if doc_type == 'quote' and not details.get('subject'):
-            details['subject'] = project['title']
-        doc['values']['details'] = {**projects.po_details(projects.latest_purchase_order(org_id, project['project_id'])), **details}
-        hint = doc['customer_hints'].get(project['customer_id'])
-        if hint:
-            doc['values']['tax_mode'] = hint
-    return render_template('invoices/editor.html', doc=doc, project=project, customers=customers,
-                           sections_data=_editor_sections(get_template_fields(template_id)),
-                           selected_template_id=template_id, template_name=selected.get('name') or '',
-                           today=date.today().isoformat())
 
 
 @invoices_bp.route('/<invoice_id>/new')
@@ -903,145 +864,10 @@ def edit_invoice(invoice_id):
             return redirect(_editor(invoice_id, invoice_id))
 
 
-    try:
-        logger.debug(f"DEBUG EDIT -- GET request: Loading edit form for invoice {invoice_id}")
-
-        result = db.execute_proc('sp_get_invoice_details', (invoice_id,))
-        invoice_values = []
-        if result and isinstance(result, list):
-            if len(result) >= 2:
-                if isinstance(result[1], list):
-                    invoice_values = result[1]
-                else:
-                    invoice_values = result[1:]
-
-        logger.debug(f"DEBUG EDIT -- GET: Loaded {len(invoice_values)} invoice values from database")
-
-        ordinals_found = {}
-        for value in invoice_values:
-            section_title = value.get('section_title', '')
-            ordinal = value.get('value_ordinal', 0) or 0
-            if section_title not in ordinals_found:
-                ordinals_found[section_title] = set()
-            ordinals_found[section_title].add(ordinal)
-        for section_title, ords in ordinals_found.items():
-            logger.debug(f"DEBUG EDIT -- GET: Section '{section_title}' has ordinals: {sorted(ords)}")
-
-
-        template_id = invoice_header.get('template_id')
-        fields = []
-        sections_data = {}
-
-        if template_id:
-            fields = get_template_fields(template_id, invoice_header.get('template_version'))
-            if fields:
-
-
-                for field in fields:
-                    # Map field_display_name to label for template compatibility
-                    if 'field_display_name' in field and 'label' not in field:
-                        field['label'] = field['field_display_name']
-                    # Map section_display_name to title for line item headers
-                    if 'section_display_name' in field and 'section_title' not in field:
-                        field['section_title'] = field['section_display_name']
-                    section_id = field.get('section_id')
-                    if section_id:
-                        if section_id not in sections_data:
-                            sections_data[section_id] = {
-                                'title': field.get('section_title', '') or field.get('section_display_name', '') or 'Untitled Section',
-                                'type': field.get('section_type', 'normal') or 'normal',
-                                'fields': []
-                            }
-                        sections_data[section_id]['fields'].append(field)
-
-
-                value_map = {}
-                logger.debug(f"DEBUG EDIT -- Total invoice_values received: {len(invoice_values)}")
-                for value in invoice_values:
-                    field_id = value.get('field_id')
-                    ordinal = value.get('value_ordinal', 0) or 0
-                    key = (field_id, ordinal)
-                    value_map[key] = value
-                    logger.debug(f"DEBUG EDIT -- Mapped value: field_id={field_id}, ordinal={ordinal}, section_title={value.get('section_title')}")
-
-                logger.debug(f"DEBUG EDIT -- Total values in value_map: {len(value_map)}")
-
-
-                for section_id, section_info in sections_data.items():
-                    logger.debug(f"DEBUG EDIT -- Processing section: {section_id}, type={section_info.get('type')}, title={section_info.get('title')}")
-                    if section_info['type'] == 'line_item':
-
-
-                        section_ordinals = set()
-                        section_title = section_info.get('title', '')
-
-
-                        section_field_ids = {field['field_id'] for field in section_info['fields']}
-                        logger.debug(f"DEBUG EDIT -- Section {section_id} has {len(section_field_ids)} fields: {list(section_field_ids)}")
-
-
-                        for value in invoice_values:
-                            value_field_id = value.get('field_id')
-                            value_section_title = value.get('section_title', '')
-
-                            if value_field_id in section_field_ids:
-                                ordinal = value.get('value_ordinal', 0) or 0
-                                section_ordinals.add(ordinal)
-                                logger.debug(f"DEBUG EDIT -- Found value for section {section_id}: field_id={value_field_id}, ordinal={ordinal}, section_title={value_section_title}")
-
-
-                        for field_id in section_field_ids:
-                            for key, value in value_map.items():
-                                if key[0] == field_id:
-                                    section_ordinals.add(key[1])
-
-                        logger.debug(f"DEBUG EDIT -- Section {section_id} collected ordinals: {sorted(section_ordinals)}")
-
-
-                        for field in section_info['fields']:
-                            field_id = field['field_id']
-                            field['values'] = {}
-
-                            for ordinal in sorted(section_ordinals):
-                                key = (field_id, ordinal)
-                                if key in value_map:
-                                    field['values'][ordinal] = value_map[key]
-                                    logger.debug(f"DEBUG EDIT -- Field {field_id} ({field.get('label')}) has value for ordinal {ordinal}")
-                                else:
-
-
-                                    field['values'][ordinal] = {
-                                        'field_id': field_id,
-                                        'val_string': None,
-                                        'val_number': None,
-                                        'val_date': None,
-                                        'val_boolean': None,
-                                        'value_ordinal': ordinal,
-                                        'field_label': field.get('label', ''),
-                                        'data_type': field.get('data_type', 'string')
-                                    }
-                                    logger.debug(f"DEBUG EDIT -- Field {field_id} ({field.get('label')}) created empty value for ordinal {ordinal}")
-
-                            logger.debug(f"DEBUG EDIT -- Field {field_id} ({field.get('label')}) now has {len(field.get('values', {}))} value entries")
-                    else:
-
-                        for field in section_info['fields']:
-                            field_id = field['field_id']
-                            key = (field_id, 0)
-                            if key in value_map:
-                                field['value'] = value_map[key]
-
-        org, profile = get_org_profile(org_id)
-        return render_template('invoices/editor.html',
-                             invoice=invoice_header, correcting=correcting,
-                             sections_data=sections_data,
-                             template_name=invoice_header.get('template_name') or '',
-                             project=projects.get_project(projects.project_of(invoice_id, org_id), org_id),
-                             doc=_document_form_context(invoice_header.get('doc_type') or 'invoice', org, profile,
-                                                        [], header=invoice_header))
-    except DatabaseError as e:
-        flash('Error loading form data', 'error')
-    return redirect(_back(invoice_id))
+    # The editor is the React app's (frontend/src/islands/editor/), fed by GET /api/editor/<id>; it posts back here
+    import nav
+    from documents import display_number
+    return nav.spa(f"{'Correct' if correcting else 'Edit'} {display_number(invoice_header)}", 'page')
 
 
 def _corrected(header, total_before):

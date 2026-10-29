@@ -110,6 +110,43 @@ def document_page(invoice_id):
     return jsonify(page.build(context, get_current_org_role(), url_for))
 
 
+@api_bp.route('/editor/new/<any(quotes, proformas, invoices):group>')
+@require_org
+def new_document(group):
+    """A new document's step (editor_page.new_page): the project it's for, its template, then the editor.
+    ?doc_type= (else the address's), ?project_id=, ?template_id=."""
+    import doc_urls
+    import editor_page
+    from documents import DOC_TYPES
+    role = get_current_org_role()
+    doc_type = request.args.get('doc_type')
+    if doc_type == 'export_invoice':
+        doc_type = 'invoice'
+    if doc_type not in DOC_TYPES:
+        doc_type = doc_urls.PATH_TYPES[group]
+    if role not in EDITORS or (role == SALES and doc_type != 'quote'):
+        return jsonify(error=f"Your role is {role or 'unknown'}: you can't make this document"), 403
+    return jsonify(project_view._plain(editor_page.new_page(g.current_org_id, doc_type, request.args.get('project_id'),
+                                                            request.args.get('template_id'), url_for)))
+
+
+@api_bp.route('/editor/<invoice_id>')
+@require_org
+def edit_document(invoice_id):
+    """A document in the editor (editor_page.edit_page): a draft, or with ?correct=1 a sent one being corrected."""
+    from access import get_org_invoice
+    import editor_page
+    if get_current_org_role() not in EDITORS:
+        return jsonify(error='You need to be a Member or Owner to change documents'), 403
+    header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    if not header:
+        return jsonify(error='That document is not in this organization'), 404
+    correcting = (header.get('status') or 'draft') != 'draft' and request.args.get('correct') == '1'
+    if (header.get('status') or 'draft') != 'draft' and not correcting:
+        return jsonify(error='This document has been sent. Use "Change" on its page to correct it or make a revision.'), 409
+    return jsonify(project_view._plain(editor_page.edit_page(g.current_org_id, header, correcting, url_for)))
+
+
 @api_bp.route('/documents/<any(quotes, proformas, invoices):group>')
 @require_org
 def documents(group):

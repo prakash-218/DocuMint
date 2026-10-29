@@ -26,12 +26,13 @@ def test_quote_to_invoice_builds_a_project_with_the_po(client, gst_org):
     set_next_number(org_id, 'quote', get_org_profile(org_id)[1], 900)
     customer = _customer(org_id, 'Sundram Fasteners Ltd', 'Tamil Nadu', 'India')
     # A quotation starts from a project: "New quotation" asks for one first
-    assert 'Choose a project' in client.get('/quotes/create').get_data(as_text=True)
+    from tests.spa import editor
+    assert editor(client, '/quotes/create')['step'] == 'project'
     response = client.post('/projects/new', data={'customer_id': customer, 'title': 'Drill jig for bracket', 'next': 'quote'})
     new_project = re.search(r'project_id=([0-9a-f-]{36})', response.headers['Location']).group(1)
     assert '/quotes/create' in response.headers['Location']
-    form = client.get(f'/quotes/create?project_id={new_project}&template_id={_template(org_id, "Quotation")["template_id"]}')
-    assert 'value="Drill jig for bracket"' in form.get_data(as_text=True)          # subject from the project
+    form = editor(client, f'/quotes/create?project_id={new_project}&template_id={_template(org_id, "Quotation")["template_id"]}')
+    assert form['details']['values']['subject'] == 'Drill jig for bracket'           # subject from the project
     quote_id, _ = _create(client, org_id, 'quote', 'Quotation', customer,
                           [{'description': 'Drill jig', 'price': 40000, 'qty': 1}],
                           tax_mode='none', detail_subject='Drill jig for bracket', project_id=new_project)
@@ -84,8 +85,10 @@ def test_quote_to_invoice_builds_a_project_with_the_po(client, gst_org):
 
     # A new document made from the project page belongs to it and starts with the PO number
     template_id = _template(org_id, 'Tax Invoice')['template_id']
-    create = client.get(f'/invoices/create?doc_type=invoice&template_id={template_id}&project_id={project_id}').get_data(as_text=True)
-    assert 'value="4500012345"' in create and 'Sundram Fasteners' in create and 'Select a customer' not in create
+    from tests.spa import editor
+    create = editor(client, f'/invoices/create?doc_type=invoice&template_id={template_id}&project_id={project_id}')
+    assert create['details']['values']['buyer_order_no'] == '4500012345'
+    assert create['customer']['fixed']['name'] == 'Sundram Fasteners Ltd'                 # no customer to choose
     extra_id, _ = _create(client, org_id, 'invoice', 'Tax Invoice', customer,
                           [{'description': 'Spare bush', 'rate': 500, 'qty': 2}], project_id=project_id)
     assert projects.project_of(extra_id, org_id) == project_id

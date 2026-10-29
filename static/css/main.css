@@ -647,7 +647,7 @@ input[type="date"].form-input { padding-right: 8px; }
 .pager-links [data-lucide] { width: 16px; height: 16px; }
 
 .search-input { position: relative; }
-.search-input [data-lucide] { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--ink-3); width: 16px; height: 16px; pointer-events: none; }
+.search-input [data-lucide], .search-input > svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--ink-3); width: 16px; height: 16px; pointer-events: none; }
 .search-input .form-input { padding-left: 34px; width: 240px; }
 
 /* ---------------------------------------------------------------- Empty states */

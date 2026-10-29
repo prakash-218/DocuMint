@@ -72,9 +72,9 @@ def _create(client, org_id, doc_type, template_name, customer_id, rows, **extra)
     if 'project_id' not in extra:                                   # every document belongs to a project
         import projects
         extra['project_id'] = projects.create_project(org_id, customer_id, 'Test project')
-    create_page = client.get(f'/invoices/create?doc_type={doc_type}&template_id={template["template_id"]}'
-                             f'&project_id={extra.get("project_id", "")}')
-    suggested = re.search(r'name="suggested_number" value="([^"]*)"', create_page.get_data(as_text=True)).group(1)
+    from tests.spa import editor
+    suggested = editor(client, f'/invoices/create?doc_type={doc_type}&template_id={template["template_id"]}'
+                               f'&project_id={extra.get("project_id", "")}')['hidden']['suggested_number']
     form = {'doc_type': doc_type, 'template_id': template['template_id'], 'customer_id': customer_id,
             'issue_date': date.today().isoformat(), 'doc_number': suggested, 'suggested_number': suggested, **extra}
     for i, row in enumerate(rows, start=1):
@@ -223,12 +223,12 @@ def test_export_invoice_suggests_lut(client, gst_org):
     # There's no "export invoice" to pick: an invoice made with the export template is one
     import projects
     project_id = projects.create_project(org_id, customer, 'Export test')
-    assert 'Export Invoice</a>' not in client.get(f'/invoices/create?project_id={project_id}').get_data(as_text=True)
-    page = client.get(f'/invoices/create?doc_type=invoice&project_id={project_id}&template_id={_template(org_id, "Export Invoice")["template_id"]}')
-    html = page.get_data(as_text=True)
-    assert f'"{customer}": "lut"' in html and 'Packing list no.' in html
-    tax_form = client.get(f'/invoices/create?doc_type=invoice&project_id={project_id}&template_id={_template(org_id, "Tax Invoice")["template_id"]}')
-    assert 'Packing list no.' not in tax_form.get_data(as_text=True)
+    from tests.spa import editor
+    assert 'export_invoice' not in [k['key'] for k in editor(client, f'/invoices/create?project_id={project_id}')['kinds']]
+    page = editor(client, f'/invoices/create?doc_type=invoice&project_id={project_id}&template_id={_template(org_id, "Export Invoice")["template_id"]}')
+    assert page['tax_hints'][customer] == 'lut' and 'Packing list no.' in [f['label'] for f in page['details']['fields']]
+    tax_form = editor(client, f'/invoices/create?doc_type=invoice&project_id={project_id}&template_id={_template(org_id, "Tax Invoice")["template_id"]}')
+    assert 'Packing list no.' not in [f['label'] for f in tax_form['details']['fields']]
     export_id, _ = _create(client, org_id, 'invoice', 'Export Invoice', customer,
                            [{'description': 'Toggle clamp', 'rate': 13, 'qty': 10},
                             {'description': 'Transport', 'rate': 579, 'qty': 1}],
@@ -353,8 +353,8 @@ def test_quote_cost_breakup(client, gst_org):
     items_sid, breakup_sid = by[('items', 'description')]['section_id'], by[('breakup', 'description')]['section_id']
     import projects
     project_id = projects.create_project(org_id, customer, 'Press reconditioning')
-    page = client.get(f'/quotes/create?template_id={template["template_id"]}&project_id={project_id}').get_data(as_text=True)
-    suggested = re.search(r'name="suggested_number" value="([^"]*)"', page).group(1)
+    from tests.spa import editor
+    suggested = editor(client, f'/quotes/create?template_id={template["template_id"]}&project_id={project_id}')['hidden']['suggested_number']
     form = {'doc_type': 'quote', 'template_id': template['template_id'], 'customer_id': customer, 'project_id': project_id,
             'issue_date': date.today().isoformat(), 'doc_number': suggested, 'suggested_number': suggested,
             'tax_mode': 'none'}
@@ -514,9 +514,10 @@ def test_export_quotation(client, gst_org):
     customer = _customer(org_id, 'Delta Tooling USA', 'Washington', 'United States')
     import projects
     project_id = projects.create_project(org_id, customer, 'Fixture for line 4')
-    form_page = client.get(f"/quotes/create?project_id={project_id}&template_id={_template(org_id, 'Export Quotation')['template_id']}")
-    page = form_page.get_data(as_text=True)
-    assert 'Export terms' in page and 'Payment: 100% advance by wire transfer' in page   # export defaults for USD
+    from tests.spa import editor
+    form_page = editor(client, f"/quotes/create?project_id={project_id}&template_id={_template(org_id, 'Export Quotation')['template_id']}")
+    assert 'Export terms' in [g['label'] for g in form_page['details']['groups']]                # export defaults for USD
+    assert any('Payment: 100% advance by wire transfer' in v for v in form_page['details']['values'].values())
     quote_id, _ = _create(client, org_id, 'quote', 'Export Quotation', customer,
                           [{'description': 'Welding fixture', 'hsn_sac': '84669390', 'qty': 2, 'unit': 'set', 'price': 1500}],
                           project_id=project_id, tax_mode='none', currency='USD', detail_incoterms='FOB Chennai',

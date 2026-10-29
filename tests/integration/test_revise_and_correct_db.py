@@ -27,22 +27,10 @@ def _audit(org_id, record_id):
 
 
 def _edit_form(client, invoice_id, **changes):
-    """The editor's form as it is (every field it posts), with changes; correct=1 when the page asks for it."""
-    page = client.get(f'/invoices/{invoice_id}/edit?correct=1').get_data(as_text=True)
-    form = {}
-    for tag in re.findall(r'<(?:input|select|textarea)[^>]*>', page):
-        name = re.search(r'name="([^"]+)"', tag)
-        if not name or 'type="submit"' in tag or ('type="checkbox"' in tag and 'checked' not in tag):
-            continue
-        value = re.search(r'value="([^"]*)"', tag)
-        form[name.group(1)] = value.group(1) if value else ''
-    for block in re.findall(r'<select[^>]*name="([^"]+)"[^>]*>(.*?)</select>', page, re.S):
-        chosen = re.search(r'<option[^>]*value="([^"]*)"[^>]*selected', block[1])
-        form[block[0]] = chosen.group(1) if chosen else ''
-    for name, text in re.findall(r'<textarea[^>]*name="([^"]+)"[^>]*>(.*?)</textarea>', page, re.S):
-        form[name] = text
-    form.update(changes)
-    return page, form
+    """The editor as the app gets it for correcting, and the form it posts as it stands, with changes."""
+    from tests.spa import editor, editor_form
+    page = editor(client, f'/invoices/{invoice_id}/edit?correct=1')
+    return page, editor_form(page, **changes)
 
 
 def test_correcting_a_sent_invoice_and_taking_sent_back(client, gst_org):
@@ -67,7 +55,7 @@ def test_correcting_a_sent_invoice_and_taking_sent_back(client, gst_org):
     client.post(f'/invoices/{invoice_id}/payment', data={'amount': f'{total:.2f}', 'method': 'NEFT / RTGS'})
     assert _summary(invoice_id)[0]['status'] == 'paid'
     page, form = _edit_form(client, invoice_id)
-    assert "You're correcting a tax invoice" in page and form.get('correct') == '1'
+    assert page['correcting'] and page['type']['label'] == 'Tax Invoice' and form.get('correct') == '1'
     qty = next(k for k, v in form.items() if k.startswith('line_item_') and v == '1')
     form[qty] = '2'
     response = client.post(f'/invoices/{invoice_id}/edit', data=form)
@@ -159,8 +147,9 @@ def test_templates_say_what_they_are_for(client, gst_org):
     assert load_layout(quotation['template_id'], org_id)['used_for'] == ['quote']        # set with the starter templates
     customer = _customer(org_id, 'Wheels India Limited', 'Tamil Nadu', 'India')
     project_id = projects.create_project(org_id, customer, 'Drop set')
-    page = client.get(f'/quotes/create?project_id={project_id}').get_data(as_text=True)
-    mine, others = page.split('Other templates')
+    from tests.spa import editor
+    step = editor(client, f'/quotes/create?project_id={project_id}')
+    mine, others = [t['name'] for t in step['templates']], [t['name'] for t in step['others']]
     assert 'Quotation with cost break-up' in mine and 'Tax Invoice' not in mine and 'Tax Invoice' in others
 
     # Changing it: the Tax Invoice template is offered for quotations too
@@ -169,7 +158,6 @@ def test_templates_say_what_they_are_for(client, gst_org):
     form = {'page_count': '0', 'export': 'auto', 'used_for': ['invoice', 'quote']}
     assert client.post(f'/templates/{invoice["template_id"]}/layout', data=form).status_code == 302
     assert load_layout(invoice['template_id'], org_id)['used_for'] == ['invoice', 'quote']
-    mine = client.get(f'/quotes/create?project_id={project_id}').get_data(as_text=True).split('Other templates')[0]
-    assert 'Tax Invoice' in mine
+    assert 'Tax Invoice' in [t['name'] for t in editor(client, f'/quotes/create?project_id={project_id}')['templates']]
     client.post(f'/templates/{invoice["template_id"]}/layout', data={**form, 'used_for': ['invoice']})
     assert 'For invoices' in client.get('/templates/').get_data(as_text=True)

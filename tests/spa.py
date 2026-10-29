@@ -1,6 +1,8 @@
-"""Reading the React app's pages in tests: its page (templates/spa.html) and a document's page (GET /api/document/<id>)."""
+"""Reading the React app's pages in tests: its page (templates/spa.html), a document's page (GET /api/document/<id>)
+and the editor (GET /api/editor/...)."""
 import json
 import re
+from urllib.parse import urlsplit
 
 
 def boot_of(page: str):
@@ -27,3 +29,42 @@ def document_text(client, path: str) -> str:
     rest, for checks that the page says something."""
     data = document(client, path)
     return '\n'.join([data.get('document_html') or '', data.get('versions_html') or '', json.dumps(data, ensure_ascii=False)])
+
+
+def editor(client, path: str) -> dict:
+    """A new document's step or the editor, as the app gets it (editor_page.py), for /quotes/create?... and
+    /quotes/<id>/edit?correct=1 and the like."""
+    url = urlsplit(path)
+    parts = url.path.strip('/').split('/')
+    api = f'/api/editor/new/{parts[0]}' if parts[-1] == 'create' else f'/api/editor/{parts[1]}'
+    response = client.get(api + (f'?{url.query}' if url.query else ''))
+    assert response.status_code == 200, response.get_data(as_text=True)[:300]
+    return response.get_json()
+
+
+def editor_form(data: dict, **changes) -> dict:
+    """The form the editor posts, as it stands (frontend/src/islands/editor/Editor.tsx), with changes."""
+    form = dict(data['hidden'])
+    if data['customer']['fixed'] and data['customer']['fixed']['id']:
+        form['customer_id'] = data['customer']['fixed']['id']
+    form.update(doc_number=data['number']['value'], issue_date=data['issue_date'], due_date=data['due_date'])
+    for s in data['sections']:
+        for row in s.get('rows') or []:
+            for f in s['fields']:
+                value = '' if f['formula'] else row['values'].get(f['id'], '')
+                if value is True:
+                    value = 'true'
+                if value is not False:
+                    form[f"line_item_{s['id']}_{row['row']}_field_{f['id']}"] = value
+        for f in s['fields'] if s['type'] != 'line_item' else []:
+            value = '' if f['formula'] else (s.get('values') or {}).get(f['id'], '')
+            if value is not False:
+                form[f"field_{f['id']}"] = 'true' if value is True else value
+    for f in data['details']['fields']:
+        form[f"detail_{f['key']}"] = data['details']['values'].get(f['key'], '')
+    settings = data['settings']
+    form.update(currency=settings['currency'], tax_mode=settings['tax_mode'], tax_rate=settings['tax_rate'])
+    if data['type']['proforma']:
+        form.update(advance_percent=settings['advance_percent'], advance_basis=settings['advance_basis'])
+    form.update(changes)
+    return form
