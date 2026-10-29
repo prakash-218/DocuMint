@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { api, ApiError } from '../api';
 import { Icon } from '../icons';
 import './EmailComposer.css';
@@ -60,10 +60,36 @@ interface Props {
   label?: string;
 }
 
+export interface ComposerProps {
+  projectId: string;
+  invoiceId?: string | null;
+  threadId?: string | null;
+  /** The form closed; sent says whether an email went out. */
+  onClose: (sent: boolean) => void;
+}
+
 const EMAIL = /^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$/;
 const replySubject = (subject: string) => (/^\s*re\s*:/i.test(subject) ? subject : `Re: ${subject}`);
 
+/** The island on today's pages: an Email button; after sending, the page reloads to show it. */
 export default function EmailComposer({ projectId, invoiceId, threadId, label = 'Email' }: Props) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="btn btn-secondary" onClick={() => setOpen(true)}>
+        <Icon name="mail" />
+        <span className="btn-label">{label}</span>
+      </button>
+      {open && (
+        <Composer projectId={projectId} invoiceId={invoiceId} threadId={threadId}
+                  onClose={(sent) => { setOpen(false); if (sent) window.location.reload(); }} />
+      )}
+    </>
+  );
+}
+
+/** The email form, open as soon as it's shown. */
+export function Composer({ projectId, invoiceId, threadId, onClose }: ComposerProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
   const [context, setContext] = useState<Compose | null>(null);
@@ -78,12 +104,13 @@ export default function EmailComposer({ projectId, invoiceId, threadId, label = 
   const [error, setError] = useState('');
   const [sent, setSent] = useState<Sent | null>(null);
 
+  useEffect(() => {
+    void open();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function open() {
-    setContext(null);
-    setLoadError('');
-    setError('');
-    setSent(null);
-    dialog.current?.showModal();
+    if (dialog.current && !dialog.current.open) dialog.current.showModal();
     const query = new URLSearchParams();
     if (invoiceId) query.set('invoice_id', invoiceId);
     if (threadId) query.set('thread_id', threadId);
@@ -130,12 +157,8 @@ export default function EmailComposer({ projectId, invoiceId, threadId, label = 
 
   return (
     <>
-      <button type="button" className="btn btn-secondary" onClick={open}>
-        <Icon name="mail" />
-        <span className="btn-label">{label}</span>
-      </button>
       <dialog ref={dialog} className="k-dialog dm-composer" aria-labelledby={`${id}-title`}
-              onClose={() => { if (sent) window.location.reload(); }}>
+              onClose={() => onClose(!!sent)}>
         <form onSubmit={submit} noValidate>
           <div className="k-dialog-head">
             <h2 id={`${id}-title`}>{sent ? 'Sent' : 'Email'}</h2>

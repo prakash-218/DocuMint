@@ -193,18 +193,6 @@ def _contact_back(customer_id):
     return url_for('customers_bp.view_customer', customer_id=customer_id) + '#contacts'
 
 
-def _contact_fields(form):
-    """(name, email, phone, role, gets) from the contact form, or (None, what's wrong)."""
-    name = (form.get('name') or '').strip()[:150]
-    email = (form.get('email') or '').strip().lower()[:320]
-    if email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
-        return None, f'"{email}" doesn\'t look like an email address.'
-    if not name and not email:
-        return None, 'Give the contact a name or an email address.'
-    return (name or contacts.name_from_address(email), email or None, (form.get('phone') or '').strip()[:40] or None,
-            (form.get('role') or '').strip()[:100] or None, contacts.valid_gets(form.get('gets'))), None
-
-
 @customers_bp.route('/<customer_id>/contacts', methods=['POST'])
 @customers_bp.route('/<customer_id>/contacts/<contact_id>', methods=['POST'])
 @require_org
@@ -214,7 +202,7 @@ def save_contact(customer_id, contact_id=None):
     if get_current_org_role() not in EDITORS:
         flash('Viewers can look at contacts but not change them.', 'error')
         return redirect(back)
-    fields, problem = _contact_fields(request.form)
+    fields, problem = contacts.fields_from(request.form)
     if problem:
         flash(problem, 'error')
         return redirect(back)

@@ -6,23 +6,39 @@ Anything that changes data must be sent as JSON: a form on another site can't se
 cookie (SameSite=Lax keeps it off cross-site POSTs anyway, and a JSON body needs a CORS preflight we never allow).
 """
 
-from flask import Blueprint, g, jsonify, request, session
+import logging
+import re
+
+from flask import Blueprint, g, jsonify, request, session, url_for
 
 from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, MANAGERS, SALES, get_current_org_role, require_org
+from db import DatabaseError, db
+import activity
+import contacts
 import mailsend
+import project_view
 import projects
 
+logger = logging.getLogger(__name__)
 api_bp = Blueprint('api_bp', __name__)
 
 
-def _editable_project(project_id):
-    """(project, None), or (None, a JSON refusal) when it isn't this organization's or the role can't send."""
-    if get_current_org_role() not in EDITORS:
-        return None, (jsonify(error='Viewers can read but not send email'), 403)
+def _project(project_id, editing=True, refusal='Viewers can look but not change things'):
+    """(project, None), or (None, a JSON refusal) when it isn't this organization's or the role can't change it."""
+    if editing and get_current_org_role() not in EDITORS:
+        return None, (jsonify(error=refusal), 403)
     project = projects.get_project(project_id, g.current_org_id)
     if not project:
         return None, (jsonify(error='Not found'), 404)
     return project, None
+
+
+def _editable_project(project_id):
+    return _project(project_id, refusal='Viewers can read but not send email')
+
+
+def _body() -> dict:
+    return request.get_json(silent=True) or {}
 
 
 @api_bp.before_request
@@ -67,3 +83,118 @@ def send_email(project_id):
     except mailsend.SendError as e:
         return jsonify(error=str(e)), e.status
     return jsonify(sent), 201
+
+
+# ---------------------------------------------------------------- The project page
+
+@api_bp.route('/projects/<project_id>')
+@require_org
+def project(project_id):
+    """Everything the project page shows (project_view.build), for this role."""
+    found, refused = _project(project_id, editing=False)
+    if refused:
+        return refused
+    return jsonify(project_view.build(g.current_org_id, found, get_current_org_role(), url_for))
+
+
+@api_bp.route('/projects/<project_id>', methods=['PATCH'])
+@require_org
+def update_project(project_id):
+    """Change the project's name, reference, notes, financial year or status (only what's sent)."""
+    found, refused = _project(project_id)
+    if refused:
+        return refused
+    data = _body()
+    title = (data.get('title', found['title']) or '').strip()[:200]
+    status = data.get('status', found['status'])
+    year = str(data.get('fiscal_year') or found['fiscal_year']).strip()
+    if not title:
+        return jsonify(error='Give the project a name.'), 400
+    if status not in projects.PROJECT_STATUSES:
+        return jsonify(error="That isn't a project status."), 400
+    if not re.fullmatch(r'\d{2}-\d{2}|\d{4}', year):
+        return jsonify(error='A financial year looks like 26-27.'), 400
+    try:
+        db.execute_proc('sp_update_project', (project_id, g.current_org_id, title,
+                                              (data.get('reference', found.get('reference')) or '').strip()[:100],
+                                              status, (data.get('notes', found.get('notes')) or '').strip(), year), fetch=False)
+    except DatabaseError:
+        logger.exception('Could not update project %s', project_id)
+        return jsonify(error='Could not save the project.'), 500
+    if status != found['status']:
+        activity.record('project_status', f"Project {projects.project_label(found)} marked "
+                        f"{projects.PROJECT_STATUSES[status].lower()}", project_id=project_id,
+                        link=url_for('projects_bp.view_project', project_id=project_id))
+    return jsonify(ok=True)
+
+
+@api_bp.route('/projects/<project_id>/notes', methods=['POST'])
+@require_org
+def add_note(project_id):
+    """A note on the project's timeline: a call, what was agreed, what's next."""
+    found, refused = _project(project_id)
+    if refused:
+        return refused
+    text = (_body().get('text') or '').strip()[:4000]
+    if not text:
+        return jsonify(error='Write the note first.'), 400
+    first_line = text.splitlines()[0][:120]
+    activity.record('note', f'Note: {first_line}', project_id=project_id, body=text, notify=False)
+    return jsonify(ok=True), 201
+
+
+@api_bp.route('/projects/<project_id>/people', methods=['POST'])
+@require_org
+def set_person(project_id):
+    """What one of the customer's contacts gets on this project: {contact_id, gets}."""
+    found, refused = _project(project_id)
+    if refused:
+        return refused
+    data = _body()
+    if data.get('gets') not in contacts.GETS:
+        return jsonify(error='Pick what they get.'), 400
+    try:
+        db.execute_proc('sp_set_project_contact', (project_id, g.current_org_id, data.get('contact_id'), data['gets']),
+                        fetch=False)
+    except DatabaseError:
+        return jsonify(error="That contact isn't one of this customer's."), 400
+    return jsonify(ok=True)
+
+
+@api_bp.route('/projects/<project_id>/contacts', methods=['POST'])
+@require_org
+def save_person(project_id):
+    """Add a contact to the project's customer, or change one of theirs: {contact_id?, customer_id?, name, email,
+    phone, role, gets}. customer_id may be the parent company's, for a site's project."""
+    found, refused = _project(project_id)
+    if refused:
+        return refused
+    data = _body()
+    customer_id = data.get('customer_id') or found['customer_id']
+    if customer_id not in (found['customer_id'], found.get('customer_parent_id')):
+        return jsonify(error="That isn't this project's customer."), 400
+    fields, problem = contacts.fields_from(data)
+    if problem:
+        return jsonify(error=problem), 400
+    try:
+        row = db.execute_proc_single('sp_save_contact', (g.current_org_id, data.get('contact_id') or None, customer_id, *fields))
+    except DatabaseError as e:
+        return jsonify(error=f'{fields[1]} is already a contact here.' if 'uq_contact_customer_email' in str(e)
+                       else 'Could not save the contact.'), 400
+    return jsonify(contact_id=(row or {}).get('contact_id')), 201
+
+
+@api_bp.route('/projects/<project_id>/ignore', methods=['POST'])
+@require_org
+def ignore_person(project_id):
+    """Stop suggesting an address (or 'tel:<digits>') found in the project's emails."""
+    found, refused = _project(project_id)
+    if refused:
+        return refused
+    if get_current_org_role() not in MAIL_READERS:
+        return jsonify(error="Your role doesn't see what's in the mailbox."), 403
+    value = (_body().get('value') or '').strip().lower()
+    if not value:
+        return jsonify(error='Nothing to ignore.'), 400
+    db.execute_proc('sp_ignore_contact_suggestion', (g.current_org_id, found['customer_id'], value), fetch=False)
+    return jsonify(ok=True)

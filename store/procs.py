@@ -1315,6 +1315,17 @@ def list_project_email_people(conn, project_id, org_id, limit=200):
                            ORDER BY m.sent_at DESC NULLS LAST LIMIT :l""", p=project_id, o=org_id, l=limit)]
 
 
+@proc('sp_list_project_messages')
+def list_project_messages(conn, project_id, org_id, limit=100):
+    """The project's emails, newest first, for its timeline: who, which thread, and the start of the text."""
+    return [_rows(conn, """SELECT m.message_id, m.thread_id, t.subject AS thread_subject, m.subject, m.from_name,
+                                  m.from_address, m.to_addresses, m.sent_at, m.direction, left(m.body_text, 400) AS snippet,
+                                  (SELECT COUNT(*) FROM email_file f WHERE f.message_id = m.message_id) AS file_count
+                           FROM email_message m JOIN email_thread t ON t.thread_id = m.thread_id
+                           WHERE t.project_id = :p AND t.org_id = :o
+                           ORDER BY m.sent_at DESC NULLS LAST LIMIT :l""", p=project_id, o=org_id, l=limit)]
+
+
 @proc('sp_ignore_contact_suggestion')
 def ignore_contact_suggestion(conn, org_id, customer_id, value):
     _require(conn, "SELECT 1 FROM customer WHERE customer_id = :c AND org_id = :o", 'Customer not found',

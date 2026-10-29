@@ -34,6 +34,18 @@ def valid_gets(value: Optional[str], default: str = 'all') -> str:
     return value if value in GETS else default
 
 
+def fields_from(form) -> tuple:
+    """(name, email, phone, role, gets) from a contact form (or JSON), or (None, what's wrong)."""
+    name = (form.get('name') or '').strip()[:150]
+    email = (form.get('email') or '').strip().lower()[:320]
+    if email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+        return None, f'"{email}" doesn\'t look like an email address.'
+    if not name and not email:
+        return None, 'Give the contact a name or an email address.'
+    return (name or name_from_address(email), email or None, (form.get('phone') or '').strip()[:40] or None,
+            (form.get('role') or '').strip()[:100] or None, valid_gets(form.get('gets'))), None
+
+
 def family_ids(customer: Dict) -> List[str]:
     """The customer, and its parent when it's a site: whose contacts it uses."""
     return [str(i) for i in (customer.get('customer_id'), customer.get('parent_id')) if i]

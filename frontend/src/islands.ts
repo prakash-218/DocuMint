@@ -8,4 +8,5 @@ export type Islands = Record<string, () => Promise<{ default: Island }>>;
 
 export const islands: Islands = {
   'email-composer': () => import('./islands/EmailComposer'),
+  'project-page': () => import('./islands/project/ProjectPage'),
 };
