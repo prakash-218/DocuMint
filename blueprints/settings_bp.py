@@ -570,6 +570,15 @@ def business_profile():
         except ValueError:
             flash('GST rate and financial-year month must be numbers', 'error')
             return redirect(url_for('settings_bp.business_profile'))
+        from contacts import team_addresses
+        team, not_addresses = team_addresses(request.form.get('team_addresses') or '')
+        if not_addresses:
+            flash(f"Not an email address: {', '.join(not_addresses[:3])}", 'error')
+            return redirect(url_for('settings_bp.business_profile'))
+        if team:
+            profile['team_addresses'] = team
+        else:
+            profile.pop('team_addresses', None)
         from payment_terms import parse_days
         days, problem = parse_days(request.form.get('payment_days'))
         if problem:

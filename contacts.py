@@ -9,7 +9,7 @@ contact gets is set on the contact, as what they usually get, and can be changed
 import os
 import re
 from datetime import datetime
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from db import db, DatabaseError
 
@@ -193,9 +193,21 @@ def seen_text(p: Dict) -> str:
 
 # ---------------------------------------------------------------- Found in emails (with the database)
 
+EMAIL = re.compile(r'^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$')
+
+
+def team_addresses(value) -> Tuple[List[str], List[str]]:
+    """(addresses, what isn't one) from the business profile's "your team's other addresses": a personal Gmail
+    someone also writes from. Each lowercased, once."""
+    words = [w.strip().lower() for w in (re.split(r'[\s,;]+', value) if isinstance(value, str) else value or []) if w.strip()]
+    return list(dict.fromkeys(w for w in words if EMAIL.match(w))), [w for w in words if not EMAIL.match(w)]
+
+
 def own_domains(org_id) -> List[str]:
     """Our side of the conversation: the organization's domain, EMAIL_ORG_DOMAIN and its mailboxes' domains,
-    except free mail (gmail.com...), where only the mailbox's own address is ours."""
+    except free mail (gmail.com...), where only the mailbox's own address is ours; and the team's other
+    addresses from the business profile."""
+    from documents import load_json
     found = {d.strip().lower() for d in (os.getenv('EMAIL_ORG_DOMAIN') or '').split(',') if d.strip()}
     try:
         org = db.execute_proc_single('sp_get_organization_details', (org_id,)) or {}
@@ -205,6 +217,8 @@ def own_domains(org_id) -> List[str]:
             address = (account.get('address') or '').lower()
             if '@' in address:
                 found.add(address if address.split('@')[1] in FREE_MAIL else address.split('@')[1])
+        profile = load_json((db.execute_proc_single('sp_get_organization_profile', (org_id,)) or {}).get('profile'))
+        found.update(team_addresses(profile.get('team_addresses'))[0])
     except DatabaseError:
         pass
     return sorted(d for d in found if d not in FREE_MAIL)

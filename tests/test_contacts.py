@@ -40,6 +40,22 @@ def test_a_mailbox_on_free_mail_leaves_out_only_itself(fake_db, monkeypatch):
     assert [p['email'] for p in contacts.suggestions(messages, [], [], own)['people']] == ['buyer.one@gmail.com']
 
 
+def test_the_teams_other_addresses_count_as_ours(fake_db, monkeypatch):
+    from db import db
+    assert contacts.team_addresses('Ravi.Home@Gmail.com, desk@yahoo.example;\nravi.home@gmail.com') == (
+        ['ravi.home@gmail.com', 'desk@yahoo.example'], [])
+    assert contacts.team_addresses('ravi.home@gmail.com, not-an-address') == (['ravi.home@gmail.com'], ['not-an-address'])
+    assert contacts.team_addresses(['a@b.example']) == (['a@b.example'], []) and contacts.team_addresses(None) == ([], [])
+    monkeypatch.setenv('EMAIL_ORG_DOMAIN', 'ourworks.example')
+    profile = {'profile': {'team_addresses': ['ravi.home@gmail.com']}}
+    single = db.execute_proc_single
+    monkeypatch.setattr(db, 'execute_proc_single', lambda p, a=None: profile if p == 'sp_get_organization_profile' else single(p, a))
+    own = contacts.own_domains(ORG_A)
+    assert 'ravi.home@gmail.com' in own and 'gmail.com' not in own
+    messages = [_mail('buyer@gearco.example', 'Buyer', cc='ravi.home@gmail.com')]
+    assert [p['email'] for p in contacts.suggestions(messages, [], [], own)['people']] == ['buyer@gearco.example']
+
+
 def test_contacts_ignored_and_own_addresses_are_not_suggested():
     messages = [_mail('ravi.k@gearco.example', 'Ravi Kumar', cc='arun.s@gearco.example, MD@OurWorks.example')]
     known = [{'contact_id': 'K1', 'name': 'Ravi Kumar', 'email': 'ravi.k@gearco.example', 'phone': None}]
