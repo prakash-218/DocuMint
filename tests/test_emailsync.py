@@ -7,7 +7,7 @@ from emailsync import (external_addresses, folder_name, html_to_text, involves, 
 def _raw(**kw):
     m = EmailMessage()
     m['From'] = kw.get('sender', 'Ravi Kumar <ravi@acme-tools.com>')
-    m['To'] = kw.get('to', 'info@kkrengineering.com')
+    m['To'] = kw.get('to', 'info@techflow.com')
     if kw.get('cc'):
         m['Cc'] = kw['cc']
     m['Subject'] = kw.get('subject', 'RFQ for fixtures')
@@ -36,21 +36,21 @@ def test_subjects_and_project_numbers():
 
 def test_parse_message_with_attachment():
     raw = _raw(files=[('PO 4500.pdf', b'%PDF-1.4 po', 'application/pdf')], cc='Buyer <buyer@acme-tools.com>')
-    m = parse_message(raw, uid=7, org_domains={'kkrengineering.com'})
+    m = parse_message(raw, uid=7, org_domains={'techflow.com'})
     assert m['message_id'] == '<abc123@acme-tools.com>' and m['uid'] == 7
     assert m['from_address'] == 'ravi@acme-tools.com' and m['from_name'] == 'Ravi Kumar'
-    assert m['to'] == ['info@kkrengineering.com'] and m['cc'] == ['buyer@acme-tools.com']
+    assert m['to'] == ['info@techflow.com'] and m['cc'] == ['buyer@acme-tools.com']
     assert m['direction'] == 'in' and 'Please quote' in m['body_text']
     assert m['sent_at'].isoformat() == '2026-10-20T10:15:00+05:30'
     assert [(f['name'], f['type'], f['data']) for f in m['files']] == [('PO 4500.pdf', 'application/pdf', b'%PDF-1.4 po')]
-    assert external_addresses(m, {'kkrengineering.com'}) == ['ravi@acme-tools.com']
+    assert external_addresses(m, {'techflow.com'}) == ['ravi@acme-tools.com']
 
 
 def test_html_only_mail_becomes_text_and_outgoing_is_detected():
-    m = parse_message(_raw(html=True, sender='Ramesh <ramesh@kkrengineering.com>', to='ravi@acme-tools.com'),
-                      org_domains={'kkrengineering.com'})
+    m = parse_message(_raw(html=True, sender='Mohan <mohan@techflow.com>', to='ravi@acme-tools.com'),
+                      org_domains={'techflow.com'})
     assert m['body_text'] == 'Dear Sir,\nPlease quote.'
-    assert m['direction'] == 'out' and external_addresses(m, {'kkrengineering.com'}) == ['ravi@acme-tools.com']
+    assert m['direction'] == 'out' and external_addresses(m, {'techflow.com'}) == ['ravi@acme-tools.com']
     assert html_to_text('a &amp; b<style>x{}</style>') == 'a & b'
 
 
@@ -61,12 +61,12 @@ def test_message_without_id_gets_a_stable_one():
 
 
 def test_address_matching_and_folder_names():
-    headers = b'From: Mom <mom@family.example>\r\nTo: me@gmail.com,\r\n  Sales <Sales@KKRengineering.com>\r\n'
-    assert involves(headers, ['kkrengineering.com'])
-    assert involves(headers, ['sales@kkrengineering.com']) and not involves(headers, ['info@kkrengineering.com'])
-    assert involves(b'Cc: a@mail.kkrengineering.com\r\n', ['kkrengineering.com'])          # subdomain
-    assert not involves(b'From: x@notkkrengineering.com\r\n', ['kkrengineering.com'])
-    assert not involves(headers, []) and not involves(b'', ['kkrengineering.com'])
+    headers = b'From: Mom <mom@family.example>\r\nTo: me@gmail.com,\r\n  Sales <Sales@TechFlow.com>\r\n'
+    assert involves(headers, ['techflow.com'])
+    assert involves(headers, ['sales@techflow.com']) and not involves(headers, ['info@techflow.com'])
+    assert involves(b'Cc: a@mail.techflow.com\r\n', ['techflow.com'])          # subdomain
+    assert not involves(b'From: x@nottechflow.com\r\n', ['techflow.com'])
+    assert not involves(headers, []) and not involves(b'', ['techflow.com'])
     assert folder_name(r'(\HasNoChildren \Sent) "/" "[Gmail]/Sent Mail"') == '[Gmail]/Sent Mail'
     assert folder_name(r'(\HasNoChildren \Sent) "." INBOX.Sent') == 'INBOX.Sent'
     assert folder_name(r'(\Sent) "/" "Say \"hi\""') == 'Say "hi"'

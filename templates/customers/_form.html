@@ -35,7 +35,7 @@
                 </div>
                 <div class="form-group">
                     <label for="email_domains" class="form-label">Email domains</label>
-                    <input type="text" id="email_domains" name="email_domains" class="form-input" value="{{ c.email_domains or '' }}" placeholder="wipro.com, givon.com">
+                    <input type="text" id="email_domains" name="email_domains" class="form-input" value="{{ c.email_domains or '' }}" placeholder="hydroparts.com, hydroparts.us">
                     {% if c.parent_email_domains %}<p class="form-text">{{ c.parent_name }} has {{ c.parent_email_domains }}; add only this site's own domains.</p>{% endif %}
                 </div>
             </div>

@@ -58,7 +58,7 @@ Demo logins (password `demo12345`): `michael.chen@techflow.com` (owner), `sarah.
 | `SECRET_KEY` | Signs sessions. Required in production (the app refuses to start without it) |
 | `FLASK_ENV` | `production` on Railway (secure cookies, https links) |
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Bucket for uploaded and emailed files. Railway: reference the Bucket's `BUCKET`, `ENDPOINT`, `REGION`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`. Without them, files go to `STORAGE_DIR` (default `var/storage`) |
-| `EMAIL_ACCOUNTS` | Mailboxes to sync, as prefixes, e.g. `INFO,RAMESH` |
+| `EMAIL_ACCOUNTS` | Mailboxes to sync, as prefixes, e.g. `INFO,SALES` |
 | `<PREFIX>_IMAP_HOST`, `_PORT` (993), `_SSL` (1), `_USER`, `_PASSWORD`, `_FOLDERS` | One set per mailbox. `_FOLDERS` defaults to INBOX plus the server's Sent folder |
 | `EMAIL_ORG_DOMAIN` | Which organization the mail belongs to (default: the mailbox's domain) |
 | `EMAIL_SYNC_DAYS` | How far back the first sync reaches (default 90) |
@@ -78,7 +78,7 @@ DocuMint (uploaded as files), email threads and an activity feed. A PO uploaded 
 
 | Type | Statuses | Typical number |
 |---|---|---|
-| Quotation | draft → sent → accepted / declined (or revised) → converted | `KKR/Q/027/26-27` |
+| Quotation | draft → sent → accepted / declined (or revised) → converted | `TF/Q/027/26-27` |
 | Proforma invoice | draft → sent → converted | `PI 009(26-27)` |
 | Invoice | draft → pending → paid | `037` |
 
@@ -95,7 +95,7 @@ the next version.
 
 The worker copies mail from each mailbox over IMAP (read-only: nothing is marked as read) and groups it
 into threads by its reply headers, then by subject. A thread joins a project when its subject has the
-project number (`PRJ-012`) or a document number (`KKR/Q/027/26-27`), or when it's a reply in a linked
+project number (`PRJ-012`) or a document number (`TF/Q/027/26-27`), or when it's a reply in a linked
 thread. The sender's domain (a customer's **Email domains**) picks the customer. Everything else waits
 under **Emails → Not in a project**, where it can be linked by hand. Attachments are kept with the
 message. Owners and admins are notified of customer mail on projects.
@@ -146,8 +146,9 @@ One project in one region (Singapore, `asia-southeast1`), with:
 1. **Postgres** (Railway template).
 2. **Bucket** for files.
 3. **Web**: this repo, set up by `.railway/railway.ts` (Dockerfile build, migrations as the pre-deploy step,
-   health check on `/healthz`), applied with `railway config apply` (see `.railway/README.md`). Variables: `DATABASE_URL`, `SECRET_KEY`, `FLASK_ENV=production`, the five `S3_*`
-   references. Custom domain `app.kkrengineering.com`: add the CNAME record Railway shows at your DNS host.
+   health check on `/healthz`), applied with `railway config apply` (see `.railway/README.md`). Variables:
+   `DATABASE_URL`, `SECRET_KEY`, `FLASK_ENV=production`, the five `S3_*` references. Custom domain (e.g.
+   `app.example.com`): add the CNAME record Railway shows at your DNS host.
 4. **Worker**: same repo, set in its Railway settings (cron every 5 minutes, start command `python worker.py --once`).
    Variables: `DATABASE_URL`, the `S3_*` references, `EMAIL_ACCOUNTS` and each mailbox's `*_IMAP_*`.
 

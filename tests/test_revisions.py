@@ -3,7 +3,7 @@ import revisions
 
 def _q(i, source=None, number=None, date='2026-10-01', status='sent', total=100, doc_type='quote'):
     return {'invoice_id': i, 'doc_type': doc_type, 'source_invoice_id': source, 'doc_number': number or i,
-            'issue_date': date, 'status': status, 'total_amount': total, 'customer_name': 'TAFE'}
+            'issue_date': date, 'status': status, 'total_amount': total, 'customer_name': 'Farm Gear Works'}
 
 
 def test_a_revised_quotation_is_one_row_as_its_latest_version():

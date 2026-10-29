@@ -18,9 +18,9 @@ def test_pages_and_numbers():
 
 def test_page_links_keep_the_other_arguments():
     app = Flask(__name__)
-    with app.test_request_context('/quotes/?status=sent&q=wipro&page=4'):
-        assert page_url(5) == '/quotes/?status=sent&q=wipro&page=5'
-        assert page_url(1) == '/quotes/?status=sent&q=wipro'
+    with app.test_request_context('/quotes/?status=sent&q=hydro&page=4'):
+        assert page_url(5) == '/quotes/?status=sent&q=hydro&page=5'
+        assert page_url(1) == '/quotes/?status=sent&q=hydro'
     with app.test_request_context('/emails/?page=2'):
         assert page_url(1) == '/emails/'
     with app.test_request_context('/emails/?page=abc'):

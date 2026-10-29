@@ -16,7 +16,7 @@ def test_advance_on_a_proforma_follows_it_to_the_invoice(client, gst_org):
     import projects
     from db import db
     org_id = gst_org
-    customer = _customer(org_id, 'Wipro Enterprises Pvt Ltd', 'Tamil Nadu', 'India')
+    customer = _customer(org_id, 'Hydro Parts Pvt Ltd', 'Tamil Nadu', 'India')
     project_id = projects.create_project(org_id, customer, f'HEC torquing station {uuid.uuid4().hex[:5]}')
     rows = [{'description': 'HEC torquing station', 'qty': 1, 'rate': 100000}]
     pi1, _ = _create(client, org_id, 'proforma', 'Proforma Invoice', customer, rows, tax_mode='none',

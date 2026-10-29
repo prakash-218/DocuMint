@@ -325,13 +325,13 @@ def convert_document(source: Dict, source_values: List[Dict], target_type: str, 
 # What can be revised, from which statuses: a quotation the customer has seen, a proforma not yet invoiced
 REVISABLE = {'quote': ('sent', 'accepted', 'declined'), 'proforma': ('sent',)}
 
-# 'KKR/Q/029/26-27', 'KKR/Q/029R1/26-27', 'KKR/Q/023AR1/26-27', 'PI 007(26-27)': the serial (with an
+# 'TF/Q/029/26-27', 'TF/Q/029R1/26-27', 'TF/Q/023AR1/26-27', 'PI 007(26-27)': the serial (with an
 # optional letter), an optional R-number revision, then the financial year
 _REVISION = re.compile(r'^(?P<head>.*?\d+[A-Z]?)(?:R(?P<rev>\d+))?(?P<tail>\W*\d{2}-\d{2}\W*)$')
 
 
 def revision_info(doc: Dict) -> Tuple[str, int]:
-    """(base number, revision) of a document revised the ' Rev.N' way: ('KKR/Q/027/26-27', 2) for '... Rev.2'."""
+    """(base number, revision) of a document revised the ' Rev.N' way: ('TF/Q/027/26-27', 2) for '... Rev.2'."""
     details = load_json(doc.get('details'))
     base = details.get('base_number') or doc.get('doc_number') or ''
     return base, int(details.get('revision') or 0)
@@ -340,7 +340,7 @@ def revision_info(doc: Dict) -> Tuple[str, int]:
 def next_revision_number(doc: Dict) -> Tuple[str, Dict]:
     """The next revision's number, and what to keep in its details to number the one after.
 
-    'KKR/Q/029/26-27' -> 'KKR/Q/029R1/26-27' -> 'KKR/Q/029R2/26-27', the way revisions were numbered before
+    'TF/Q/029/26-27' -> 'TF/Q/029R1/26-27' -> 'TF/Q/029R2/26-27', the way revisions were numbered before
     DocuMint; a number with no financial year at its end gets ' Rev.1', ' Rev.2' (as do the ones that
     already have them)."""
     match = _REVISION.match(doc.get('doc_number') or '')

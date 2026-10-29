@@ -2,8 +2,8 @@
 Customers and their sites.
 
 A customer can have sites - plants, branches, divisions or sister companies - one level
-deep: TAFE with its Gears Division, Madurai and Dindigul plants; Wipro with Wipro
-Enterprises (Chennai), Wipro Enterprises Inc (US) and Wipro Givon. Each site is a customer
+deep: a maker with its Gears Division, Madurai and Dindigul plants; a group with its Chennai
+company, its US company and a sister firm. Each site is a customer
 of its own for billing (name, GSTIN, address on the documents); the parent groups them,
 and its email domains cover them all.
 """
@@ -12,7 +12,7 @@ from typing import Dict, List
 
 
 def label(row: Dict) -> str:
-    """'TAFE · Madurai' for a site, the name otherwise. Takes a customer row or any row with
+    """'Farm Gear Works · Madurai' for a site, the name otherwise. Takes a customer row or any row with
     customer_name / customer_site (projects, documents)."""
     if 'customer_name' in row:
         name, site = row.get('customer_name'), row.get('customer_site')

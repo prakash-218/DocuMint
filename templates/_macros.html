@@ -52,7 +52,7 @@
 </div>
 {% endmacro %}
 
-{# <option>s for a customer picker: customers with sites become a group ("Wipro": main, Chennai, US ...) #}
+{# <option>s for a customer picker: customers with sites become a group ("Hydro Parts": main, Chennai, US ...) #}
 {% macro customer_options(customers, selected=None) %}
 {% for g in customers | customer_groups %}
 {% set c = g.customer %}

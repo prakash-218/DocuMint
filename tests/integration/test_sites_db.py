@@ -20,10 +20,10 @@ def test_customer_sites(client, gst_org):
     import emailsync
     from db import DatabaseError, db
     org_id, tag = gst_org, uuid.uuid4().hex[:5]
-    name = f'TAFE {tag}'
+    name = f'Farm Gear {tag}'
     parent = _created_id(client.post('/customers/create', data={
         'name': name, 'tax_id': '33AAACT2761Q1Z1', 'city': 'Chennai', 'country': 'India',
-        'email_domains': f'tafe{tag}.com', 'parent_id': ''}))
+        'email_domains': f'fgw{tag}.com', 'parent_id': ''}))
 
     # "Add site" starts from the parent's details
     page = client.get(f'/customers/create?parent_id={parent}').get_data(as_text=True)
@@ -32,7 +32,7 @@ def test_customer_sites(client, gst_org):
         'name': name, 'parent_id': parent, 'site_name': 'Gears Division', 'city': 'Pudupakkam', 'country': 'India'}))
     madurai = _created_id(client.post('/customers/create', data={
         'name': name, 'parent_id': parent, 'site_name': '', 'city': 'Madurai', 'country': 'India',
-        'email_domains': f'tafe{tag}.com'}))          # the same domain as its parent
+        'email_domains': f'fgw{tag}.com'}))          # the same domain as its parent
     sites = db.execute_proc('sp_list_customer_sites', (org_id, parent))
     assert [s['site'] for s in sites] == ['Gears Division', 'Madurai']                  # site name, else city
 
@@ -65,7 +65,7 @@ def test_customer_sites(client, gst_org):
     assert name in listing and 'Madurai' in listing and 'row-site' in listing and 'Gears Division' not in listing
 
     # Mail from the shared domain goes to the parent (which site isn't known until it's put in a project)
-    m = {'from_address': f'buyer@tafe{tag}.com', 'direction': 'in', 'to': [], 'cc': []}
+    m = {'from_address': f'buyer@fgw{tag}.com', 'direction': 'in', 'to': [], 'cc': []}
     assert emailsync.Linker(org_id, {'techflow.com'}).customer_for(m) == parent
 
 

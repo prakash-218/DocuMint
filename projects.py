@@ -329,7 +329,7 @@ def _word_score(token: str, words: List[str]) -> int:
 
 
 def match_score(project: Dict, query: str) -> Optional[int]:
-    """How well a project matches a search such as 'piston torqe', 'prj 47' or 'wipro a22'; None when it
+    """How well a project matches a search such as 'piston torqe', 'prj 47' or 'hydro a22'; None when it
     doesn't. Each word of the search has to match a word of the project's name, number, customer, site or
     reference: exactly, as its start, inside it, with one typo, or as an abbreviation ('trq' for torque).
     The project's own number ('47', 'PRJ-047') counts most, then matches in the name."""
@@ -475,7 +475,7 @@ OUR_KIND_PATTERNS = [
 
 
 def guess_kind(file_name: str, outgoing: bool = False) -> str:
-    """The document kind a file name suggests ("PO 4500123.pdf" -> po, "KKR Q020(26-27).pdf" we sent -> our_quote)."""
+    """The document kind a file name suggests ("PO 4500123.pdf" -> po, "TF Q020(26-27).pdf" we sent -> our_quote)."""
     name = (file_name or '').lower()
     if name.rsplit('.', 1)[-1] in CAD_EXTS:
         return 'drawing'
