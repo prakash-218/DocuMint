@@ -6,11 +6,12 @@ it says the same as the projects list and the project pages.
 Until customers have payment terms, money owed is aged by the invoice's date (as Tally can), not a due date.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Callable, Dict, List, Optional
 
 from app_helpers import to_date
-from documents import balance_of, display_number, get_type
+from document_service import get_org_profile
+from documents import balance_of, display_number, fiscal_year, fy_start_month, get_type
 
 AGES = ((30, '0–30 days'), (60, '31–60 days'), (90, '61–90 days'), (None, 'Over 90 days'))
 SHOWN = 5
@@ -25,6 +26,18 @@ ATTENTION = (
     ('drafts', 'Drafts not sent'),
     ('paid_open', 'Paid in full, still open'),
 )
+
+
+# How many, in words, for the row on Home: "3 projects ready to invoice"
+COUNTED = {
+    'follow_up': ('quotation with no answer after 14 days', 'quotations with no answer after 14 days'),
+    'accepted': ('quotation accepted, advance not asked for', 'quotations accepted, advance not asked for'),
+    'advance': ('advance requested, not received', 'advances requested, not received'),
+    'invoice': ('project ready to invoice', 'projects ready to invoice'),
+    'payment': ('project waiting for payment', 'projects waiting for payment'),
+    'drafts': ('draft not sent', 'drafts not sent'),
+    'paid_open': ('project paid in full, still open', 'projects paid in full, still open'),
+}
 
 
 def _group_of(row: Dict) -> Optional[str]:
@@ -75,8 +88,11 @@ def attention(rows: List[Dict], drafts: List[Dict]) -> List[Dict]:
                       'amount': amount(r), 'currency': r['currency'], 'url': r['url'], 'action': r['action']} for r in members]
             total = _totals(members, amount)
         if items:
-            out.append({'key': key, 'title': title, 'count': len(items), 'total': total, 'items': items[:SHOWN],
-                        'more': max(0, len(items) - SHOWN)})
+            one, many = COUNTED[key]
+            names = [i['title'] for i in items]
+            out.append({'key': key, 'title': title, 'label': f'{len(items)} {one if len(items) == 1 else many}',
+                        'names': ' · '.join(names[:4]) + (f' and {len(names) - 4} more' if len(names) > 4 else ''),
+                        'count': len(items), 'total': total, 'items': items[:SHOWN], 'more': max(0, len(items) - SHOWN)})
     return out
 
 
@@ -105,7 +121,13 @@ def to_receive(invoices: List[Dict], waiting_for_advance: List[Dict], today: dat
             'advances': {'count': len(waiting_for_advance), 'total': _totals(waiting_for_advance, lambda r: r['advance'])}}
 
 
-def build(org_id, role: str, url: Callable, today: Optional[date] = None) -> Dict:
+def first_name(email: Optional[str]) -> str:
+    """'ravi@...' -> 'Ravi', for the greeting; nothing when the address isn't a name ('info@', 'demo-1@')."""
+    local = (email or '').split('@')[0]
+    return '' if not local.isalpha() or local.lower() in ('info', 'admin', 'office', 'accounts', 'sales', 'contact') else local.capitalize()
+
+
+def build(org_id, role: str, url: Callable, today: Optional[date] = None, email: Optional[str] = None) -> Dict:
     import project_view
     import revisions
     from auth import MAIL_READERS
@@ -119,6 +141,7 @@ def build(org_id, role: str, url: Callable, today: Optional[date] = None) -> Dic
                'currency': d.get('currency_code') or 'INR', 'url': url('invoices_bp.edit_invoice', invoice_id=d['invoice_id'])}
               for d in live if (d.get('status') or 'draft') == 'draft']
     invoices = [d for d in live if d.get('doc_type') in ('invoice', 'export_invoice')]
+    sent_quotes = [d for d in live if d.get('doc_type') == 'quote' and d.get('status') == 'sent']
     month_start = today.replace(day=1)
     payments = db.execute_proc('sp_list_org_payments', (org_id, month_start.isoformat())) or []
     month_invoiced = [d for d in invoices if d.get('status') != 'draft' and to_date(d.get('issue_date')) and to_date(d['issue_date']) >= month_start]
@@ -133,6 +156,9 @@ def build(org_id, role: str, url: Callable, today: Optional[date] = None) -> Dic
         'attention': attention(rows, drafts),
         'unfiled_emails': {'count': unfiled, 'url': url('emails_bp.inbox')} if unfiled else None,
         'to_receive': receive,
+        'hello': {'name': first_name(email), 'today': today, 'fy': fiscal_year(today, fy_start_month(get_org_profile(org_id)[1])),
+                  'greeting': 'Good morning' if datetime.now().hour < 12 else 'Good afternoon' if datetime.now().hour < 17 else 'Good evening'},
+        'open_quotes': {'count': len(sent_quotes), 'total': _totals(sent_quotes, lambda d: d.get('total_amount'))},
         'month': {'label': f'{today:%B}', 'invoiced': _totals(month_invoiced, lambda d: d.get('total_amount')),
                   'received': _totals([{'currency': p.get('currency_code'), 'amount': p.get('amount')} for p in payments],
                                       lambda p: p['amount'])},

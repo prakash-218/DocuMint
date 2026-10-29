@@ -148,3 +148,41 @@ document.addEventListener('click', function (e) {
     });
     reveal(window.location.hash);
 })();
+
+// A drop zone, as in the prototypes (<form data-dropzone> with a file input): drop files on it, or choose them, and
+// they're uploaded straight away; what each is comes from its name and can be changed in the list
+(function () {
+    function zoneOf(e) { return e.target && e.target.closest ? e.target.closest('[data-dropzone]') : null; }
+    function send(form) {
+        form.classList.add('is-sending');
+        var label = form.querySelector('[data-drop-label]');
+        if (label) label.textContent = 'Uploading…';
+        form.submit();
+    }
+    ['dragenter', 'dragover'].forEach(function (type) {
+        document.addEventListener(type, function (e) {
+            var zone = zoneOf(e);
+            if (!zone) return;
+            e.preventDefault();
+            zone.classList.add('is-over');
+        });
+    });
+    document.addEventListener('dragleave', function (e) {
+        var zone = zoneOf(e);
+        if (zone && !zone.contains(e.relatedTarget)) zone.classList.remove('is-over');
+    });
+    document.addEventListener('drop', function (e) {
+        var zone = zoneOf(e);
+        if (!zone) return;
+        e.preventDefault();
+        zone.classList.remove('is-over');
+        var input = zone.querySelector('input[type=file]');
+        if (!input || !e.dataTransfer || !e.dataTransfer.files.length) return;
+        input.files = e.dataTransfer.files;
+        send(zone);
+    });
+    document.addEventListener('change', function (e) {
+        var input = e.target;
+        if (input.matches && input.matches('[data-dropzone] input[type=file]') && input.files.length) send(input.closest('[data-dropzone]'));
+    });
+})();

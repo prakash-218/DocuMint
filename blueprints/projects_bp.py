@@ -354,24 +354,33 @@ def upload_file():
     if not customer_id or not get_org_customer(customer_id, org_id)[0]:
         flash('Customer not found', 'error')
         return redirect(back)
-    try:
-        result = J.add_attachment(org_id, customer_id, request.form, request.files.get('file'),
-                                         _user_id(), project_id=project_id, invoice_id=invoice_id)
-    except J.UploadError as e:
-        flash(str(e), 'error')
+    uploads = [f for f in request.files.getlist('file') if f and f.filename]    # one, or several dropped at once
+    if not uploads:
+        flash('Choose a file to upload', 'error')
         return redirect(back)
-    except DatabaseError:
-        logger.exception("Upload failed")
-        flash('Could not save the file', 'error')
-        return redirect(back)
-    message = 'File uploaded'
-    kind_label = J.DOCUMENT_KINDS.get(request.form.get('kind'), 'File')
-    activity.record('file_uploaded', f"{kind_label} uploaded: {request.files['file'].filename}"
-                    + (f" (No. {request.form.get('reference_no')})" if request.form.get('reference_no') else ''),
-                    project_id=project_id, link=back if project_id else None)
-    if result['filled']:
-        message += f". PO number filled in on {', '.join(result['filled'])}"
-    flash(message, 'success')
+    filled, saved = [], []
+    for upload in uploads:
+        try:
+            result = J.add_attachment(org_id, customer_id, request.form, upload, _user_id(), project_id=project_id,
+                                      invoice_id=invoice_id)
+        except J.UploadError as e:
+            flash(f'{upload.filename}: {e}' if len(uploads) > 1 else str(e), 'error')
+            continue
+        except DatabaseError:
+            logger.exception("Upload failed")
+            flash(f'Could not save {upload.filename}', 'error')
+            continue
+        saved.append(upload.filename)
+        filled += result['filled']
+        kind = request.form.get('kind') if request.form.get('kind') in J.DOCUMENT_KINDS else J.guess_kind(upload.filename)
+        activity.record('file_uploaded', f"{J.DOCUMENT_KINDS.get(kind, 'File')} uploaded: {upload.filename}"
+                        + (f" (No. {request.form.get('reference_no')})" if request.form.get('reference_no') else ''),
+                        project_id=project_id, link=back if project_id else None)
+    if saved:
+        message = 'File uploaded' if len(saved) == 1 else f'{len(saved)} files uploaded'
+        if filled:
+            message += f". PO number filled in on {', '.join(filled)}"
+        flash(message, 'success')
     return redirect(back)
 
 

@@ -1170,6 +1170,17 @@ def link_attachment(conn, attachment_id, org_id, project_id):
     return []
 
 
+@proc('sp_update_attachment')
+def update_attachment(conn, attachment_id, org_id, kind, title, reference_no):
+    """What a file is, its title and its number (a PO or drawing number), set after it was uploaded."""
+    n = _exec(conn, """UPDATE attachment SET kind = :k, title = :t, reference_no = NULLIF(:r, '')
+                         WHERE attachment_id = CAST(:a AS uuid) AND org_id = :o""",
+              k=kind, t=title, r=reference_no or '', a=_as_uuid(attachment_id), o=org_id)
+    if not n:
+        raise ProcError('File not found')
+    return []
+
+
 @proc('sp_delete_attachment')
 def delete_attachment(conn, attachment_id, org_id):
     import storage

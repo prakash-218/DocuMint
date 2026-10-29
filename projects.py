@@ -409,8 +409,9 @@ def _amount_or_none(value):
 def add_attachment(org_id, customer_id, form, upload, user_id=None, project_id=None, invoice_id=None) -> Dict:
     """Store an uploaded customer document. Returns {'attachment_id', 'filled': [doc numbers given the PO no.]}."""
     name, content_type, data = read_upload(upload)
-    kind = form.get('kind') if form.get('kind') in DOCUMENT_KINDS else 'other'
-    title = (form.get('title') or '').strip()[:200] or (DOCUMENT_KINDS[kind] if kind != 'other' else name)
+    chosen = form.get('kind') in DOCUMENT_KINDS
+    kind = form.get('kind') if chosen else guess_kind(name)        # dropped in: what its name suggests
+    title = (form.get('title') or '').strip()[:200] or (DOCUMENT_KINDS[kind] if chosen and kind != 'other' else name)
     reference = (form.get('reference_no') or '').strip()[:100]
     doc_date = _date_or_none(form.get('doc_date'))
     amount = _amount_or_none(form.get('amount'))
@@ -426,6 +427,21 @@ def add_attachment(org_id, customer_id, form, upload, user_id=None, project_id=N
     if kind == 'po' and reference and project_id and form.get('fill_po', 'on'):
         filled = fill_purchase_order(org_id, project_id, reference, doc_date)
     return {'attachment_id': row['attachment_id'], 'filled': filled}
+
+
+def update_attachment(org_id, attachment: Dict, kind: str, reference_no: str = '') -> List[str]:
+    """Say what a file is and its number after it was dropped in. A PO's number goes onto the project's documents,
+    as when it's uploaded with one; returns those documents' numbers."""
+    if kind not in DOCUMENT_KINDS:
+        raise UploadError("That isn't a kind of document.")
+    reference = (reference_no or '').strip()[:100]
+    title = attachment.get('title') or ''
+    if not title or title == DOCUMENT_KINDS.get(attachment.get('kind')):      # titled by its old type: by its name
+        title = attachment.get('file_name') or ''
+    db.execute_proc('sp_update_attachment', (attachment['attachment_id'], org_id, kind, title, reference), fetch=False)
+    if kind == 'po' and reference and attachment.get('project_id'):
+        return fill_purchase_order(org_id, attachment['project_id'], reference, attachment.get('doc_date'))
+    return []
 
 
 def list_attachments(org_id, customer_id=None, project_id=None, invoice_id=None) -> List[Dict]:

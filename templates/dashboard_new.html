@@ -3,7 +3,7 @@
 {# The new home page: the React screen in frontend/src/islands/home/ draws everything below the header #}
 
 {% block title %}Home{% endblock %}
-{% block page_title %}Home{% endblock %}
+{% block header_title %}<nav class="crumbs" aria-label="Breadcrumb"><b>Home</b></nav>{% endblock %}
 
 {% block header_actions %}
 <a href="{{ url_for('dashboard_bp.index') }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic dashboard</span></a>

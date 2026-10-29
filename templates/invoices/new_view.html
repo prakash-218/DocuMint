@@ -1,12 +1,17 @@
 {% extends "base.html" %}
-{% from "projects/_files.html" import files_card with context %}
 {% from "_macros.html" import island %}
-{# The new document page: where the document is and what to do next (the React screen in
-   frontend/src/islands/document/), then the document, with its money and forms beside it #}
+{# The new document page, as the prototype draws it: its number, state and what to do next with the money under
+   it (the React screen in frontend/src/islands/document/), then the payments and the document, with the project's
+   documents, who gets it and what happened beside them #}
 
 {% block title %}{{ invoice | doc_number }}{% endblock %}
-{% block page_title %}{{ invoice | doc_number }}{% endblock %}
-{% block page_description %}<p class="header-description">{{ doc_type_info(invoice.doc_type).label }} · <a href="{{ url_for('customers_bp.view_customer_new', customer_id=invoice.customer_id) }}">{{ invoice | customer_label }}</a>{% if project %} · <a href="{{ url_for('projects_bp.view_project_new', project_id=project.project_id) }}">{{ project.title }}</a>{% endif %}</p>{% endblock %}
+{% block header_title %}
+{% set t = doc_type_info(invoice.doc_type) %}
+<nav class="crumbs" aria-label="Breadcrumb">
+    <a href="{{ url_for('invoices_bp.list_invoices', doc_path='quotes' if t.key == 'quote' else 'proformas' if t.key == 'proforma' else 'invoices') }}">{{ 'Quotations' if t.key == 'quote' else 'Proformas' if t.key == 'proforma' else 'Invoices' }}</a>
+    <span aria-hidden="true">/</span><b>{{ invoice | doc_number }}</b>
+</nav>
+{% endblock %}
 
 {% block header_actions %}
 {% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in editor_roles %}
@@ -19,50 +24,170 @@
 
 {% block content %}
 {% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in editor_roles %}
+{% set cur = invoice.currency_code %}
 {% if status != 'draft' and can_edit %}{% include "invoices/_change.html" %}{% endif %}
-{{ island('document-next', {'next': doc_next, 'steps': doc_steps, 'invoiceId': invoice.invoice_id,
-                            'projectId': project.project_id if project else none}, label='Where this document is') }}
+<div class="ui doc-page">
+{{ island('document-next', {'next': doc_next, 'invoiceId': invoice.invoice_id, 'projectId': project.project_id if project else none,
+                            'head': {'number': invoice | doc_number, 'kind': t.label, 'pill': doc_pill,
+                                     'customer': {'name': invoice | customer_label, 'url': url_for('customers_bp.view_customer_new', customer_id=invoice.customer_id)},
+                                     'project': {'label': project | project_label, 'title': project.title,
+                                                 'url': url_for('projects_bp.view_project_new', project_id=project.project_id)} if project else none},
+                            'money': doc_money, 'currency': cur}, label='Where this document is') }}
 <noscript><p>What to do next needs JavaScript. The <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}">classic page</a> works without it.</p></noscript>
 
-<div class="invoice-layout doc-new">
-    <div>
+{% set takes_advance = t.takes_advances and status in ('sent', 'converted') %}
+{% set record = can_edit and ((t.takes_payments and status == 'pending') or takes_advance) %}
+<div class="cols">
+    <div class="col-main">
+        {% if (t.takes_payments or t.takes_advances) and status != 'draft' %}
+        <section class="card" aria-labelledby="doc-payments">
+            <div class="card-h">
+                <h2 id="doc-payments">{{ 'Advances' if t.takes_advances else 'Payments' }}</h2>
+                {% if record %}<a href="#payment" class="btn btn-secondary btn-sm"><i data-lucide="indian-rupee"></i>{{ 'Record the advance' if takes_advance else 'Record payment' }}</a>{% endif %}
+            </div>
+            <div class="card-b">
+                {% set rows = advances if t.takes_advances else payments %}
+                {% if rows %}
+                <ul class="pays">
+                    {% for p in rows %}
+                    <li>
+                        <span>{{ p.payment_date | date }} ·
+                            {% if p.advance_number %}Advance, against proforma {{ p.advance_number }}{% elif t.takes_advances %}Advance{% else %}{{ 'Payment' }}{% endif %}{% if p.method %} · {{ p.method }}{% endif %}
+                            {% if p.reference_number %}<br><span class="muted">{{ p.reference_number }}</span>{% endif %}
+                            {% if p.received_amount %}<br><span class="muted">Credited {{ p.received_amount | currency(p.received_currency) }}{% if p.amount %} @ {{ '%.2f' | format(p.received_amount / p.amount) }}{% endif %}</span>{% endif %}
+                            {% if t.takes_advances %}<br><span class="muted">{% if p.applied %}Applied to <a href="{{ url_for('invoices_bp.view_invoice_new', invoice_id=p.applied_to) }}">{{ p.applied_number or 'a draft invoice' }}</a>{% else %}Goes to the invoice when this proforma is converted{% endif %}</span>{% endif %}
+                            {% if p.advance_number and can_edit %}
+                            <form method="POST" action="{{ url_for('invoices_bp.remove_advance', invoice_id=invoice.invoice_id, payment_id=p.payment_id) }}" style="display: inline;"
+                                  data-confirm="Take this advance off {{ invoice | doc_number }}? It goes back to {{ p.advance_number }}.">
+                                · <button type="submit" class="link-button">Take off this invoice</button>
+                            </form>
+                            {% endif %}
+                        </span>
+                        <span class="mono">{{ p.amount | currency(cur, false) }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="muted" style="margin: 0;">{{ 'No advance received yet.' if t.takes_advances else 'No payments recorded yet.' }}</p>
+                {% endif %}
+
+                {% if can_edit and t.takes_payments and open_advances %}
+                <details class="fold-in" id="advances" open>
+                    <summary>Apply an advance</summary>
+                    {% include "invoices/_apply_advances.html" %}
+                </details>
+                {% endif %}
+                {% if record %}
+                {% if takes_advance %}
+                {% set suggested = (summary.advance.amount - advance_received) if summary.advance else (summary.total - advance_received) %}
+                {% else %}
+                {% set suggested = summary.balance %}
+                {% endif %}
+                <details class="fold-in" id="payment">
+                    <summary>{{ 'Record an advance' if takes_advance else 'Record a payment' }}</summary>
+                    {% include "invoices/_payment_form.html" %}
+                </details>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}
+
         {% if versions %}{% include "invoices/_versions.html" %}{% endif %}
         {% include "invoices/_document.html" %}
     </div>
 
-    <aside>
-        {% include "invoices/_summary.html" %}
-
-        {% if can_edit and t.takes_payments and open_advances %}
-        <details class="card fold-card" id="advances" open>
-            <summary class="card-header"><h2 class="card-title">Apply an advance</h2><i data-lucide="chevron-down" class="fold-toggle"></i></summary>
-            <div class="card-body">{% include "invoices/_apply_advances.html" %}</div>
-        </details>
+    <aside class="col-side" aria-label="Its project, people and activity">
+        {% if doc_chain %}
+        <section class="side-sec" aria-labelledby="doc-chain">
+            <h2 id="doc-chain">Documents</h2>
+            <ol class="chain">
+                {% for d in doc_chain %}
+                <li class="node is-doc{{ ' is-paid' if d.paid }}{{ ' is-here' if d.here }}">
+                    <span class="dot" aria-hidden="true"><i data-lucide="{{ 'check' if d.paid and not d.here else 'file-text' }}"></i></span>
+                    <div class="doc-box">
+                        <div class="doc-top"><span class="doc-type">{{ d.kind }}</span><span class="tag tone-{{ d.pill.tone }}">{{ d.pill.text }}</span></div>
+                        <div class="doc-row">
+                            {% if d.here %}<span class="doc-no" style="color: inherit;">{{ d.number }}</span>{% else %}<a class="doc-no" href="{{ d.url }}">{{ d.number }}</a>{% endif %}
+                            <span class="doc-amt">{{ d.total | currency(d.currency, false) }}</span>
+                        </div>
+                    </div>
+                </li>
+                {% endfor %}
+            </ol>
+        </section>
         {% endif %}
 
-        {% set takes_advance = t.takes_advances and status in ('sent', 'converted') %}
-        {% if can_edit and ((t.takes_payments and status == 'pending') or takes_advance) %}
-        {% if takes_advance %}
-        {% set suggested = (summary.advance.amount - advance_received) if summary.advance else (summary.total - advance_received) %}
-        {% else %}
-        {% set suggested = summary.balance %}
+        {% if project %}
+        <section class="side-sec" aria-labelledby="doc-people">
+            <h2 id="doc-people">Who gets it <a class="btn btn-secondary btn-xs" href="{{ url_for('projects_bp.view_project_new', project_id=project.project_id) }}">People</a></h2>
+            {% if doc_people %}
+            <ul class="people">
+                {% for p in doc_people %}
+                <li><span class="avatar" aria-hidden="true">{{ p.initials }}</span>
+                    <div><div class="pn">{{ p.name }}{% if p.role %} <span>· {{ p.role }}</span>{% endif %}</div><div class="pe">{{ p.email }}</div></div></li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="muted" style="margin: 0; font-size: 13px;">Nobody on this project gets {{ 'quotations' if t.key == 'quote' else 'proformas and invoices' }} yet. Set who gets what on the project page.</p>
+            {% endif %}
+        </section>
         {% endif %}
-        <details class="card fold-card" id="payment">
-            <summary class="card-header"><h2 class="card-title">{{ 'Record an advance' if takes_advance else 'Record a payment' }}</h2><i data-lucide="chevron-down" class="fold-toggle"></i></summary>
-            <div class="card-body">{% include "invoices/_payment_form.html" %}</div>
-        </details>
+
+        {% if doc_activity %}
+        <section class="side-sec" aria-labelledby="doc-activity">
+            <h2 id="doc-activity">Activity</h2>
+            <ul class="feed" style="margin: 0;">
+                {% for e in doc_activity[:8] %}
+                <li class="ev {{ e.tone }}">
+                    <span class="ico" aria-hidden="true"><i data-lucide="{{ e.icon }}"></i></span>
+                    <div style="min-width: 0;"><div class="ev-title">{{ e.title }}</div>
+                        {% if e.body %}<div class="ev-body">{{ e.body }}</div>{% endif %}
+                        {% if e.who %}<div class="ev-by">{{ e.who }}</div>{% endif %}</div>
+                    <span class="ev-date">{{ e.when | date }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
         {% endif %}
 
         {% if can_edit and t.converts_to and status not in ('draft', 'declined', 'revised') and not quotations_only %}
-        <details class="card fold-card" id="convert">
-            <summary class="card-header"><h2 class="card-title">{{ 'Convert again' if status == 'converted' else 'Convert, choosing the template' }}</h2><i data-lucide="chevron-down" class="fold-toggle"></i></summary>
-            <div class="card-body">{% include "invoices/_convert_form.html" %}</div>
-        </details>
+        <section class="side-sec">
+            <details class="fold-in" id="convert" style="border: 0; margin: 0; padding: 0;">
+                <summary>{{ 'Convert again' if status == 'converted' else 'Convert, choosing the template' }}</summary>
+                {% include "invoices/_convert_form.html" %}
+            </details>
+        </section>
         {% endif %}
 
-        {% include "projects/_project_card.html" %}
-
-        {{ files_card(files, {'invoice_id': invoice.invoice_id}, file_kinds, can_edit, title='Customer documents', po_hint=project is not none) }}
+        <section class="side-sec">{% include "projects/_project_card.html" %}</section>
+        <section class="side-sec" aria-labelledby="doc-files">
+            <h2 id="doc-files">Files <span class="muted" style="font-weight: 400; font-size: 12.5px;">{{ files | length }} file{{ '' if files | length == 1 else 's' }}</span></h2>
+            {% if files %}
+            <ul class="files">
+                {% for f in files %}
+                <li>
+                    <span class="fi" aria-hidden="true"><i data-lucide="{{ 'file-badge' if f.kind == 'po' else ('drafting-compass' if f.kind == 'drawing' else 'paperclip') }}"></i></span>
+                    <div style="min-width: 0;">
+                        <a href="{{ url_for('projects_bp.download_file', attachment_id=f.attachment_id) }}" class="fn">{{ f.title or f.file_name }}</a>
+                        <div class="fs"><span class="tag tone-draft">{{ file_kinds.get(f.kind, 'Other') }}</span>
+                            {{ [('No. ' ~ f.reference_no) if f.reference_no else '', 'From email' if f.email_thread_id else '', (f.doc_date or f.created_at) | date, f.file_size | filesize] | select | join(' · ') }}</div>
+                    </div>
+                    <a href="{{ url_for('projects_bp.download_file', attachment_id=f.attachment_id, download=1) }}" class="btn btn-ghost btn-xs" aria-label="Download {{ f.file_name }}"><i data-lucide="download"></i></a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if can_edit %}
+            <form class="drop" data-dropzone method="POST" action="{{ url_for('projects_bp.upload_file') }}" enctype="multipart/form-data">
+                <input type="hidden" name="invoice_id" value="{{ invoice.invoice_id }}">
+                <input type="file" id="doc-file" name="file" multiple class="sr-only"
+                       accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt,.dwg,.dxf,.step,.stp,.igs,.iges,.zip,.eml,.msg">
+                <span data-drop-label>Drop files here or <label for="doc-file" class="linkish">choose files</label></span>
+            </form>
+            {% if project %}<p class="muted" style="margin: 0; font-size: 12.5px;">To say what a file is or give its number, open its tag on the <a href="{{ url_for('projects_bp.view_project_new', project_id=project.project_id) }}">project page</a>.</p>{% endif %}
+            {% endif %}
+        </section>
     </aside>
+</div>
 </div>
 {% endblock %}

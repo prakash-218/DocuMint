@@ -43,7 +43,8 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
                                  tax_mode='none', project_id=project_id)
     quote = f'/quotes/{quote_id}/new'
     props, text = _page(client, quote)
-    assert _labels(props) == ['Mark as sent*', 'Edit'] and props['steps'][0]['state'] == 'now'
+    assert _labels(props) == ['Mark as sent*', 'Edit'] and props['head']['pill'] == {'text': 'Draft', 'tone': 'draft'}
+    assert props['head']['number'] == quote_no and props['money'] is None                       # no money strip on a quotation
     assert props['next']['actions'][1]['href'].endswith(f'/quotes/{quote_id}/edit?from=new')
     assert f'href="/quotes/{quote_id}"' in text                                # the classic page is a click away
     # the project page's documents open the new page
@@ -65,12 +66,13 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
     client.post(f'/proformas/{proforma_id}/finalize')
     props, text = _page(client, proforma)
     assert _labels(props)[0] == 'Record the advance*' and props['next']['actions'][0]['href'] == '#payment'
-    assert '<details class="card fold-card" id="payment">' in text
+    assert '<details class="fold-in" id="payment">' in text
     form = {'amount': '6000', 'method': 'Bank transfer', 'payment_date': '2026-10-20'}
     assert _send(client, proforma, f'/proformas/{proforma_id}/payment', form).endswith(proforma)
     props, _ = _page(client, proforma)
     assert _labels(props) == ['Create tax invoice*']
-    assert [(s['key'], s['state']) for s in props['steps']][2:] == [('advance', 'done'), ('forward', 'now')]
+    assert props['head']['pill'] == {'text': 'Advance received', 'tone': 'done'}
+    assert [(m['label'], m['value']) for m in props['money']][2:] == [('Advance received', 6000), ('Still to come', 14000)]
 
     edit = _send(client, proforma, props['next']['actions'][0])               # the tax invoice, advance carried
     invoice_id = re.search(r'/invoices/([0-9a-f-]{36})/edit', edit).group(1)

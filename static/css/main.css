@@ -193,16 +193,28 @@ code, .monospace { font-family: var(--font-mono); font-size: 0.9em; }
 .header-content {
     min-height: var(--header-height);
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--spacing-md);
+    gap: var(--spacing-sm) var(--spacing-md);
+    padding: 10px 0;
 }
 
-.header-title-section { display: flex; align-items: center; gap: var(--spacing-md); min-width: 0; }
-.header-title { margin: 0; font-size: var(--font-size-xl); }
-.header-description { margin: 2px 0 0; color: var(--ink-3); font-size: var(--font-size-sm); }
+/* The title keeps room for itself (a long project name wraps, never a word a line); when the buttons don't fit
+   beside it they go under it, on the right */
+.header-title-section { display: flex; align-items: center; gap: var(--spacing-md); min-width: 0; flex: 1 1 320px; }
+.header-title { margin: 0; font-size: var(--font-size-xl); line-height: var(--line-height-tight); overflow-wrap: anywhere; }
+.header-description { margin: 2px 0 0; color: var(--ink-3); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
 
-.header-actions { display: flex; align-items: center; gap: var(--spacing-sm); flex-shrink: 0; }
+/* The new pages: where you are in the top bar ("Customers / Gear Cutters Ltd"); their title is in the page */
+.crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--ink-3); font-size: 13.5px; white-space: nowrap; }
+.crumbs a { color: var(--ink-2); }
+.crumbs b { color: var(--ink-1); font-weight: var(--font-weight-medium); overflow: hidden; text-overflow: ellipsis; }
+/* A breadcrumb shortens (…) before the buttons beside it wrap */
+.header-title-section:has(.crumbs) { flex-basis: 0; }
+.header-title-section:has(.crumbs) > div { overflow: hidden; }
+.crumbs a { flex: none; }
+.header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--spacing-sm); margin-left: auto; }
 
 .org-switcher select,
 .org-name-display {
@@ -677,17 +689,21 @@ input[type="date"].form-input { padding-right: 8px; }
     border: 1px solid var(--line-1);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-1);
+    min-width: 0;
+    container-type: inline-size;     /* the amount sizes itself to the card: ₹65,69,390.40 fits a narrow one */
 }
 .stat-card .card-menu { position: absolute; top: 12px; right: 12px; }
 .stat-label { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: var(--font-size-sm); }
 .stat-label [data-lucide] { width: 16px; height: 16px; color: var(--ink-3); }
 .stat-value {
     margin-top: 6px;
-    font-size: 1.75rem;
+    font-size: clamp(1.125rem, 12.5cqi, 1.75rem);
     font-weight: var(--font-weight-semibold);
     letter-spacing: -0.02em;
     line-height: 1.15;
     color: var(--ink-1);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
 }
 .stat-change, .stat-meta { margin-top: 6px; font-size: var(--font-size-xs); color: var(--ink-3); }
 .stat-change.positive { color: var(--good-ink); }
@@ -780,6 +796,11 @@ input[type="date"].form-input { padding-right: 8px; }
 .invoice-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--spacing-lg); align-items: start; }
 .invoice-layout > aside { position: sticky; top: calc(var(--header-height) + var(--spacing-lg)); display: grid; gap: var(--spacing-lg); }
 .invoice-layout > aside .card { margin: 0; }
+@media (max-width: 1599px) {
+    .editor-layout { grid-template-columns: minmax(0, 1fr); }
+    .editor-layout > aside { position: static; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important; align-items: start; }
+    .editor-layout > aside > .btn-block { grid-column: 1 / -1; justify-self: end; width: auto; min-width: 220px; }
+}
 
 .invoice-doc { padding: var(--spacing-2xl); }
 .invoice-doc-head { display: flex; justify-content: space-between; gap: var(--spacing-xl); flex-wrap: wrap; margin-bottom: var(--spacing-2xl); }
@@ -954,8 +975,10 @@ input[type="date"].form-input { padding-right: 8px; }
 }
 
 @media (max-width: 768px) {
-    .sidebar { transform: translateX(-100%); box-shadow: var(--shadow-3); }
-    .sidebar.open { transform: translateX(0); }
+    /* Off screen until opened: no shadow showing at the left edge, and out of the tab order */
+    .sidebar { transform: translateX(-100%); visibility: hidden; transition: transform var(--transition-base), visibility 0s linear var(--transition-base); }
+    .sidebar.open { transform: translateX(0); visibility: visible; box-shadow: var(--shadow-3); transition: transform var(--transition-base); }
+    .header-title-section { flex-basis: 160px; }
     .main-content { margin-left: 0; padding: 0 var(--spacing-md) var(--spacing-xl); }
     .header { margin: 0 calc(var(--spacing-md) * -1) var(--spacing-lg); padding: 0 var(--spacing-md); }
     .mobile-menu-btn { display: inline-grid; }
@@ -967,7 +990,7 @@ input[type="date"].form-input { padding-right: 8px; }
     .invoice-parties { grid-template-columns: 1fr; }
     .search-input, .search-input .form-input { width: 100%; }
     .segmented { max-width: 100%; overflow-x: auto; }
-    .segmented a { flex-shrink: 0; }
+    .segmented > *, .segmented a { flex-shrink: 0; white-space: nowrap; }
     .card-body { padding: var(--spacing-md); }
     .table th, .table td { padding: 10px 12px; }
 }
@@ -975,7 +998,7 @@ input[type="date"].form-input { padding-right: 8px; }
 @media (max-width: 560px) {
     .col-chart-labels .hide-narrow { visibility: hidden; }
     .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .stat-value { font-size: 1.375rem; }
+    .stat-card { padding: var(--spacing-md); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1043,6 +1066,8 @@ input[type="date"].form-input { padding-right: 8px; }
 .form-static { padding: 9px 0; font-weight: var(--font-weight-medium); color: var(--ink-1); }
 .items-card .card-header { border-bottom: 0; }
 .items-wrap { overflow-x: auto; }
+/* Hidden labels inside a table that scrolls sideways sit inside it, not past the page's right edge */
+.items-wrap, .table-container { position: relative; }
 .items-editor { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
 .items-editor th { padding: 8px 6px; text-align: left; font-size: var(--font-size-xs); font-weight: var(--font-weight-medium); color: var(--ink-2); background: var(--surface-2); border-top: 1px solid var(--line-1); border-bottom: 1px solid var(--line-1); white-space: nowrap; }
 .items-editor td { padding: 6px; border-bottom: 1px solid var(--line-1); vertical-align: top; }

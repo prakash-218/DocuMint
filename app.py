@@ -132,9 +132,9 @@ def create_app(config_name=None):
         return {'quotes': 'quote', 'proformas': 'proforma'}.get(getattr(g, 'doc_path', None), 'invoices')
 
     @app.template_filter('currency')
-    def currency_filter(value, code=None):
-        """Format as money in the given currency (₹ uses Indian digit grouping)"""
-        return format_money(value, code or 'USD')
+    def currency_filter(value, code=None, decimals=True):
+        """Format as money in the given currency (₹ uses Indian digit grouping); decimals=False rounds to the rupee"""
+        return format_money(value, code or 'USD', decimals=decimals)
 
     @app.template_filter('multiline')
     def multiline_filter(text, blocks=False):

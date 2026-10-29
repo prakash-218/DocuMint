@@ -27,67 +27,62 @@ export function People({ page, onGets, onSave, onIgnore }: Props) {
   const customer = page.project.customer.site || page.project.customer.name;
 
   return (
-    <section className="card pp-card" aria-labelledby="pp-people">
-      <div className="card-header pp-card-head">
-        <h2 className="card-title" id="pp-people">People</h2>
+    <section className="side-sec" aria-labelledby="pp-people">
+      <h2 id="pp-people">People
         {can.edit && !adding && (
-          <button type="button" className="btn btn-ghost btn-xs" onClick={() => setAdding({})}><Icon name="userPlus" size={14} />Add</button>
+          <button type="button" className="btn btn-secondary btn-xs" onClick={() => setAdding({})}><Icon name="userPlus" size={14} />Add</button>
         )}
-      </div>
-      {people.length === 0 && !adding && (
-        <div className="card-body"><p className="text-tertiary pp-empty">No contacts at {customer} yet.</p></div>
-      )}
+      </h2>
+      {people.length === 0 && !adding && <p className="muted" style={{ margin: 0 }}>No contacts at {customer} yet.</p>}
       {people.length > 0 && (
-        <ul className="pp-people">
+        <ul className="people">
           {people.map((p) => <PersonRow key={p.contact_id} person={p} gets={gets} canEdit={can.edit} onGets={onGets} />)}
         </ul>
       )}
       {adding && (
-        <div className="card-body pp-add">
-          <ContactForm initial={adding} usually={usually} submitLabel="Add contact" onCancel={() => setAdding(null)}
-                       onSubmit={async (f) => { const ok = await onSave(f); if (ok) setAdding(null); return ok; }} />
-        </div>
+        <ContactForm initial={adding} usually={usually} submitLabel="Add contact" onCancel={() => setAdding(null)}
+                     onSubmit={async (f) => { const ok = await onSave(f); if (ok) setAdding(null); return ok; }} />
       )}
       {suggestions && (
-        <div className="pp-found">
+        <div className="found">
           <h3><Icon name="sparkles" size={14} />Found in this project's emails</h3>
-          <ul className="pp-people">
+          <ul className="people">
             {found.phones.map((p) => {
               const contact = people.find((x) => x.contact_id === p.contact_id);
               return (
                 <li key={p.value}>
-                  <div className="pp-person-name">Phone for {p.name}</div>
-                  <div className="pp-person-sub">{p.phone} · in their email signature{p.replaces ? `, saved as ${p.replaces}` : ''}</div>
-                  {can.edit && contact && (
-                    <div className="pp-found-actions">
-                      <button type="button" className="btn btn-secondary btn-xs"
-                              onClick={() => void onSave({ contact_id: contact.contact_id, customer_id: contact.customer_id, name: contact.name,
-                                                          email: contact.email ?? '', phone: p.phone, role: contact.role ?? '',
-                                                          gets: contact.usually })}>
-                        Save to {contact.name}
-                      </button>
-                      <button type="button" className="btn btn-ghost btn-xs" onClick={() => onIgnore(p.value)}
-                              aria-label={`Ignore this number for ${p.name}`}><Icon name="x" size={14} /></button>
-                    </div>
-                  )}
+                  <div>
+                    <div className="pn">Phone for {p.name}</div>
+                    <div className="pe">{p.phone} · in their email signature{p.replaces ? `, saved as ${p.replaces}` : ''}</div>
+                    {can.edit && contact && (
+                      <div className="fa">
+                        <button type="button" className="btn btn-secondary btn-xs"
+                                onClick={() => void onSave({ contact_id: contact.contact_id, customer_id: contact.customer_id, name: contact.name,
+                                                            email: contact.email ?? '', phone: p.phone, role: contact.role ?? '', gets: contact.usually })}>
+                          Save to {contact.name}
+                        </button>
+                        <button type="button" className="btn btn-ghost btn-xs" onClick={() => onIgnore(p.value)}
+                                aria-label={`Ignore this number for ${p.name}`}>Ignore</button>
+                      </div>
+                    )}
+                  </div>
                 </li>
               );
             })}
             {found.people.map((p) => (
               <li key={p.email}>
-                <div className="pp-person-name">{p.name}</div>
-                <div className="pp-person-sub">{p.email}{p.phone ? ` · ${p.phone}` : ''}</div>
-                <div className="pp-person-sub">{p.seen}</div>
-                {can.edit && (
-                  <div className="pp-found-actions">
-                    <button type="button" className="btn btn-secondary btn-xs"
-                            onClick={() => setAdding({ name: p.name, email: p.email, phone: p.phone ?? '' })}>
-                      Add to {customer}
-                    </button>
-                    <button type="button" className="btn btn-ghost btn-xs" onClick={() => onIgnore(p.email)}
-                            aria-label={`Ignore ${p.name}`}><Icon name="x" size={14} /></button>
-                  </div>
-                )}
+                <div>
+                  <div className="pn">{p.name}</div>
+                  <div className="pe">{p.email}{p.phone ? ` · ${p.phone}` : ''} · {p.seen}</div>
+                  {can.edit && (
+                    <div className="fa">
+                      <button type="button" className="btn btn-secondary btn-xs" onClick={() => setAdding({ name: p.name, email: p.email, phone: p.phone ?? '' })}>
+                        Add to {customer}
+                      </button>
+                      <button type="button" className="btn btn-ghost btn-xs" onClick={() => onIgnore(p.email)} aria-label={`Ignore ${p.name}`}>Ignore</button>
+                    </div>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -100,20 +95,19 @@ export function People({ page, onGets, onSave, onIgnore }: Props) {
 function PersonRow({ person: p, gets, canEdit, onGets }: { person: Person; gets: Record<string, string>; canEdit: boolean;
                                                            onGets: (id: string, gets: string) => void }) {
   return (
-    <li className={p.gets === 'none' ? 'is-off' : ''}>
-      <span className="pp-avatar" aria-hidden="true">{p.initials}</span>
-      <div className="pp-person-name">{p.name}{p.role && <span className="text-tertiary"> · {p.role}</span>}</div>
-      <div className="pp-person-sub">
-        {[p.email, p.phone].filter(Boolean).join(' · ')}{p.at_parent ? ' · parent company' : ''}
+    <li className={p.gets === 'none' ? 'off' : ''}>
+      <span className="avatar" aria-hidden="true">{p.initials}</span>
+      <div style={{ minWidth: 0 }}>
+        <div className="pn">{p.name}{p.role && <span> · {p.role}</span>}</div>
+        <div className="pe">{[p.email, p.phone].filter(Boolean).join(' · ')}{p.at_parent ? ' · parent company' : ''}</div>
+        {canEdit ? (
+          <select value={p.gets} aria-label={`What ${p.name} gets on this project`} onChange={(e) => onGets(p.contact_id, e.target.value)}>
+            {Object.entries(gets).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
+        ) : (
+          <div className="pe">{gets[p.gets]}</div>
+        )}
       </div>
-      {canEdit ? (
-        <select className="form-select pp-gets" value={p.gets} aria-label={`What ${p.name} gets on this project`}
-                onChange={(e) => onGets(p.contact_id, e.target.value)}>
-          {Object.entries(gets).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-        </select>
-      ) : (
-        <div className="pp-person-sub">{gets[p.gets]}</div>
-      )}
     </li>
   );
 }
@@ -140,7 +134,7 @@ export function ContactForm({ initial, usually, submitLabel, onSubmit, onCancel 
   }
 
   return (
-    <form className="pp-contact-form" onSubmit={submit}>
+    <form className="stack-form" onSubmit={submit}>
       <label htmlFor={`${id}-name`} className="form-label">Name</label>
       <input id={`${id}-name`} className="form-input" value={f.name} maxLength={150} onChange={set('name')} />
       <label htmlFor={`${id}-role`} className="form-label">Role <span className="text-tertiary">(optional)</span></label>
@@ -154,7 +148,7 @@ export function ContactForm({ initial, usually, submitLabel, onSubmit, onCancel 
       <select id={`${id}-gets`} className="form-select" value={f.gets} onChange={set('gets')}>
         {Object.entries(usually).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
       </select>
-      <div className="pp-form-actions">
+      <div className="form-actions-row">
         <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving…' : submitLabel}</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
       </div>

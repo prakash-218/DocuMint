@@ -169,3 +169,16 @@ def test_the_timeline_shows_emails_in_place_of_their_events():
     # without the mail, the email's event stays and the email doesn't show
     assert [i['title'] for i in V.timeline(events, messages, False)] == [
         'Agreed 4.5% off\nif delivered in 6 weeks', 'Email from Ravi', 'Quotation Q/1 finalized']
+
+
+def test_lists_tag_a_project_with_the_step_it_has_reached():
+    def tagged(docs):
+        st, _ = look(docs)
+        return V.stage_label(st, docs)
+    assert tagged([]) == 'New'
+    assert tagged([doc('quote', 'draft')]) == 'Quoted'
+    assert tagged([doc('quote', 'sent')]) == 'Quoted'
+    assert tagged([doc('quote', 'accepted')]) == 'Accepted'
+    assert tagged([doc('quote', 'converted'), doc('proforma', 'sent')]) == 'Advance'
+    assert tagged([doc('quote', 'converted'), doc('invoice', 'pending', paid=0)]) == 'Invoiced'
+    assert tagged([doc('quote', 'converted'), doc('invoice', 'paid', paid=1000)]) == 'Paid'

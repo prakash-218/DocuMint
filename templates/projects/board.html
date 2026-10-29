@@ -3,13 +3,10 @@
 {# The new projects list and board: the React screen in frontend/src/islands/board/ draws everything below the header #}
 
 {% block title %}Projects{% endblock %}
-{% block page_title %}Projects{% endblock %}
+{% block header_title %}<nav class="crumbs" aria-label="Breadcrumb"><b>Projects</b></nav>{% endblock %}
 
 {% block header_actions %}
 <a href="{{ url_for('projects_bp.list_projects') }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic list</span></a>
-{% if current_org_role in editor_roles %}
-<a href="{{ url_for('projects_bp.create_project') }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New project</span></a>
-{% endif %}
 {% endblock %}
 
 {% block content %}

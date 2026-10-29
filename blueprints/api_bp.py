@@ -92,7 +92,7 @@ def send_email(project_id):
 def home():
     """What needs doing and the money still to come in (home_view.build). Not for Sales: their home is projects."""
     import home_view
-    return jsonify(home_view.build(g.current_org_id, get_current_org_role(), url_for))
+    return jsonify(home_view.build(g.current_org_id, get_current_org_role(), url_for, email=session.get('email')))
 
 
 # ---------------------------------------------------------------- The project page
@@ -275,3 +275,27 @@ def delete_customer_contact(customer_id, contact_id):
     except DatabaseError:
         return jsonify(error="That isn't one of this customer's contacts."), 404
     return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------- Files
+
+@api_bp.route('/files/<attachment_id>', methods=['PATCH'])
+@require_org
+def update_file(attachment_id):
+    """What a dropped-in file is, and its number: {kind, reference_no}. A PO's number goes onto the project's documents."""
+    if get_current_org_role() not in EDITORS:
+        return jsonify(error='Viewers can look at files but not change them'), 403
+    found = projects.get_attachment(attachment_id, g.current_org_id)
+    if not found or get_current_org_role() == SALES and found.get('kind') in projects.NOT_QUOTATIONS:
+        return jsonify(error='Not found'), 404
+    data = _body()
+    if get_current_org_role() == SALES and data.get('kind') in projects.NOT_QUOTATIONS:
+        return jsonify(error="Your role is Sales: that kind of file isn't yours to keep."), 403
+    try:
+        filled = projects.update_attachment(g.current_org_id, found, data.get('kind'), data.get('reference_no') or '')
+    except projects.UploadError as e:
+        return jsonify(error=str(e)), 400
+    except DatabaseError:
+        logger.exception('Could not update file %s', attachment_id)
+        return jsonify(error='Could not save that.'), 500
+    return jsonify(ok=True, filled=filled)

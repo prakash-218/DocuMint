@@ -21,7 +21,7 @@
                 <p class="form-text">New documents of these types offer this template{% if layout.used_for is none %} (now guessed from its name){% endif %}. Leave all unticked to offer it for every type.</p>
             </fieldset>
             <label for="export" class="form-label">Used for exports</label>
-            <select id="export" name="export" class="form-select" style="max-width: 360px;">
+            <select id="export" name="export" class="form-select" style="max-width: 520px;">
                 <option value="auto" {% if layout.export is none %}selected{% endif %}>Automatic ({{ 'yes' if auto_export else 'no' }}: {{ 'foreign currency or "export" in the name' if auto_export else 'home currency' }})</option>
                 <option value="yes" {% if layout.export == true %}selected{% endif %}>Yes</option>
                 <option value="no" {% if layout.export == false %}selected{% endif %}>No</option>

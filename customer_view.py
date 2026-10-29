@@ -80,7 +80,7 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
     from auth import CUSTOMER_EDITORS, EDITORS, MANAGERS, SALES
     from db import db
     from document_service import get_org_profile
-    from documents import fy_start_month, load_json
+    from documents import fy_start_month, load_json, suggest_tax_mode
     from layout import custom_field_defs
     today = today or date.today()
     profile = get_org_profile(org_id)[1]
@@ -115,6 +115,10 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
         if not sites:
             money.pop('customers')
 
+    org = get_org_profile(org_id)[0] or {}
+    state = customer.get('state') or ''
+    tax_note = {'cgst_sgst': f'{state}, so CGST + SGST' if state else 'CGST + SGST', 'igst': f'{state}, so IGST' if state else 'IGST',
+                'lut': 'Export, under LUT'}.get(suggest_tax_mode('invoice', org, customer), '')
     people = contacts.for_customer(org_id, customer)
     values = load_json(customer.get('custom'))
     custom = [{'label': f['label'], 'value': values[f['key']]} for f in custom_field_defs(profile, 'customer') if values.get(f['key'])]
@@ -127,7 +131,7 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
             'address': [x for x in [customer.get('street_address'),
                                     ', '.join(filter(None, [customer.get('city'), customer.get('state'), customer.get('zip_code')])),
                                     customer.get('country')] if x],
-            'archived': bool(customer.get('is_archived')), 'custom': custom,
+            'archived': bool(customer.get('is_archived')), 'custom': custom, 'tax_note': tax_note,
             'classic_url': url('customers_bp.view_customer', customer_id=customer_id),
         },
         'can': can,
@@ -146,6 +150,8 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
                    'url': url('customers_bp.view_customer_new', customer_id=s['customer_id'])} for s in sites],
         'links': {
             'new_project': url('projects_bp.create_project', customer_id=customer_id) if can['edit'] and not customer.get('is_archived') else None,
+            'new_quote': url('invoices_bp.create_invoice', doc_type='quote', customer_id=customer_id)
+            if can['edit'] and not customer.get('is_archived') else None,
             'edit': url('customers_bp.edit_customer', customer_id=customer_id) if can['edit_customer'] else None,
             'add_site': url('customers_bp.create_customer', parent_id=customer_id)
             if can['manage'] and not customer.get('parent_id') and not customer.get('is_archived') else None,

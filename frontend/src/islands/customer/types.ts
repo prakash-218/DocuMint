@@ -62,18 +62,20 @@ export interface CustomerData {
     address: string[];
     archived: boolean;
     custom: { label: string; value: string }[];
+    /** How GST applies to them: 'Tamil Nadu, so CGST + SGST'. */
+    tax_note: string;
     classic_url: string;
   };
   can: { edit: boolean; edit_customer: boolean; manage: boolean; sales: boolean };
   /** null for Sales: what a customer owes isn't theirs to see. */
   money: Money | null;
   projects: Row[];
-  documents: (Doc & { site: string | null })[];
+  documents: (Doc & { site: string | null; project_id: string | null })[];
   statuses: Record<string, string>;
   files: FileGroup[];
   files_count: number;
   people: Contact[];
   usually: Record<string, string>;
   sites: { id: string; name: string; tax_id: string | null; archived: boolean; documents: number; url: string }[];
-  links: { new_project: string | null; edit: string | null; add_site: string | null };
+  links: { new_project: string | null; new_quote: string | null; edit: string | null; add_site: string | null };
 }

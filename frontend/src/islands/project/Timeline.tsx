@@ -15,16 +15,26 @@ function icon(item: TimelineItem): IconName {
   return 'flag';
 }
 
+/** The prototype's colour for each kind of entry: emails blue, payments green, notes amber, documents violet. */
+function kind(item: TimelineItem): string {
+  if (item.type === 'email') return 't-email';
+  if (item.type === 'note') return 't-note';
+  if (item.kind === 'payment') return 't-pay';
+  if (item.kind?.startsWith('quote_') || item.kind?.startsWith('document_')) return 't-doc';
+  return '';
+}
+
 interface Props {
   items: TimelineItem[];
   canEdit: boolean;
   readMail: boolean;
   onNote: (text: string) => Promise<boolean>;
   onReply: (threadId: string) => void;
+  onEmail?: () => void;
 }
 
 /** Emails, notes and what happened, newest first, with filters; a note tells whoever comes next what was agreed. */
-export function Timeline({ items, canEdit, readMail, onNote, onReply }: Props) {
+export function Timeline({ items, canEdit, readMail, onNote, onReply, onEmail }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
   const [all, setAll] = useState(false);
   const [note, setNote] = useState('');
@@ -43,49 +53,54 @@ export function Timeline({ items, canEdit, readMail, onNote, onReply }: Props) {
   }
 
   return (
-    <section className="card pp-card" aria-labelledby="pp-timeline">
-      <div className="card-header pp-card-head">
-        <h2 className="card-title" id="pp-timeline">Timeline</h2>
-        <div className="pp-chips" role="group" aria-label="Show">
+    <section className="card" aria-labelledby="pp-timeline">
+      <div className="card-h">
+        <h2 id="pp-timeline">Timeline</h2>
+        <div className="filters" role="group" aria-label="Show">
           {filters.map(([key, label]) => (
-            <button key={key} type="button" className="pp-chip" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>
+            <button key={key} type="button" className="chip" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>
           ))}
         </div>
       </div>
-      <div className="card-body">
+      <div className="card-b">
         {canEdit && (
-          <form className="pp-note-form" onSubmit={add}>
+          <form className="composer-row" onSubmit={add}>
             <label htmlFor="pp-note" className="sr-only">Add a note</label>
-            <textarea id="pp-note" className="form-textarea" rows={2} value={note} maxLength={4000}
+            <textarea id="pp-note" rows={1} value={note} maxLength={4000}
                       placeholder="Add a note: a call, what was agreed, what's next" onChange={(e) => setNote(e.target.value)} />
             <button type="submit" className="btn btn-secondary" disabled={saving || !note.trim()}>{saving ? 'Adding…' : 'Add note'}</button>
+            {onEmail && <button type="button" className="btn btn-secondary" onClick={onEmail}><Icon name="mail" />Email</button>}
           </form>
         )}
-        {visible.length === 0 && <p className="text-tertiary pp-empty">Nothing here yet.</p>}
-        <ul className="pp-feed">
+        {visible.length === 0 && <p className="empty-feed">Nothing here yet.</p>}
+        <ul className="feed">
           {visible.map((item) => (
-            <li key={item.id} className={`pp-ev type-${item.type}${item.direction === 'out' ? ' is-out' : ''}`}>
-              <span className="pp-ev-icon" aria-hidden="true"><Icon name={icon(item)} size={14} /></span>
-              <div className="pp-ev-main">
-                <div className="pp-ev-title">
+            <li key={item.id} className={`ev ${kind(item)}`}>
+              <span className="ico" aria-hidden="true"><Icon name={icon(item)} size={14} /></span>
+              <div style={{ minWidth: 0 }}>
+                <div className="ev-title">
                   {item.link && item.type !== 'note' ? <a href={item.link}>{item.title}</a> : item.title}
                 </div>
-                {item.body && <div className="pp-ev-body">{item.body}</div>}
-                <div className="pp-ev-meta">
-                  {[item.who, item.files ? `${item.files} attachment${item.files === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}
-                </div>
+                {item.body && <div className="ev-body">{item.body}</div>}
+                {(item.who || item.files) && (
+                  <div className="ev-by">
+                    {[item.who, item.files ? `${item.files} attachment${item.files === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}
+                  </div>
+                )}
                 {canEdit && readMail && item.type === 'email' && item.direction !== 'out' && item.thread_id && (
-                  <button type="button" className="btn btn-ghost btn-xs pp-reply" onClick={() => onReply(item.thread_id!)}>
-                    <Icon name="reply" size={14} />Reply
-                  </button>
+                  <div className="ev-act">
+                    <button type="button" className="btn btn-secondary btn-xs" onClick={() => onReply(item.thread_id!)}>
+                      <Icon name="reply" size={14} />Reply
+                    </button>
+                  </div>
                 )}
               </div>
-              <span className="pp-ev-when">{when(item.when)}</span>
+              <span className="ev-date">{when(item.when)}</span>
             </li>
           ))}
         </ul>
         {shown.length > SHOWN && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAll(!all)}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAll(!all)}>
             {all ? `Show the latest ${SHOWN}` : `Show all ${shown.length}`}
           </button>
         )}
