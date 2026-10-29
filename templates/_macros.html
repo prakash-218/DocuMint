@@ -53,21 +53,6 @@
 </div>
 {% endmacro %}
 
-{# <option>s for a customer picker: customers with sites become a group ("Hydro Parts": main, Chennai, US ...) #}
-{% macro customer_options(customers, selected=None) %}
-{% for g in customers | customer_groups %}
-{% set c = g.customer %}
-{% if g.sites %}
-<optgroup label="{{ c.name }}">
-    <option value="{{ c.customer_id }}" {% if c.customer_id == selected %}selected{% endif %}>{{ c.name }}{% if c.city %} — {{ c.city }}{% endif %}</option>
-    {% for s in g.sites %}<option value="{{ s.customer_id }}" {% if s.customer_id == selected %}selected{% endif %}>{{ s.site or s.name }}{% if s.name != c.name and s.site %} — {{ s.name }}{% endif %}</option>{% endfor %}
-</optgroup>
-{% else %}
-<option value="{{ c.customer_id }}" {% if c.customer_id == selected %}selected{% endif %}>{{ c | customer_label }}</option>
-{% endif %}
-{% endfor %}
-{% endmacro %}
-
 {# Page links under a list: "26–50 of 312   ‹ 1 2 [3] 4 … 13 ›". p is a pagination.Page #}
 {% macro pager(p, noun='') %}
 {% if p and p.pages > 1 %}
@@ -84,24 +69,6 @@
     </span>
 </nav>
 {% endif %}
-{% endmacro %}
-
-{# A searchable list of projects to pick one from (static/js/project-picker.js; include that script on the page).
-   source: the JSON list (projects_bp.picker_options). Picking submits the surrounding form with project_id,
-   or, given href (with __ID__ for the project), goes there. current: the project it's in now. #}
-{% macro project_picker(id, source, current=None, href=None, prefer=None, placeholder='Search projects by name, number or customer') %}
-<div class="project-picker" data-project-picker data-source="{{ source }}"{% if current %} data-current="{{ current }}"{% endif %}{% if href %} data-href="{{ href }}"{% endif %}{% if prefer %} data-prefer="{{ prefer }}"{% endif %}>
-    <div class="pp-bar">
-        <div class="search-input pp-search">
-            <i data-lucide="search"></i>
-            <input type="search" class="form-input pp-query" id="{{ id }}" placeholder="{{ placeholder }}" autocomplete="off"
-                   role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="{{ id }}-list" aria-label="Search projects">
-        </div>
-        <select class="form-select pp-fy" aria-label="Financial year" hidden><option value="">All years</option></select>
-    </div>
-    <ul class="pp-list" id="{{ id }}-list" role="listbox" aria-label="Projects"><li class="pp-empty">Loading projects…</li></ul>
-    <p class="pp-more" hidden></p>
-</div>
 {% endmacro %}
 
 {# A React screen (frontend/src/islands.ts) mounted here, with these props. skeleton (list, page, home, doc): the grey

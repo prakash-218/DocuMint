@@ -454,3 +454,13 @@ def timeline(events: List[Dict], messages: List[Dict], reads_mail: bool, custome
                       'link': f"/emails/{m['thread_id']}"})
     items.sort(key=lambda i: str(i['when'] or ''), reverse=True)
     return items
+
+
+def new_project(org_id, customer_id: Optional[str], url: Callable) -> Dict:
+    """The new project form (frontend/src/islands/project/NewProject.tsx); it posts to projects_bp.create_project."""
+    import projects
+    from db import db
+    from editor_page import _customers
+    return {'title': 'New project', 'action': url('projects_bp.create_project'), 'cancel': url('projects_bp.list_projects'),
+            'customers': _customers(db.execute_proc('sp_list_customers', (org_id, False)) or []),
+            'customer_id': customer_id or '', 'years': projects.recent_fiscal_years(org_id)}

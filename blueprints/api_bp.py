@@ -417,3 +417,125 @@ def update_file(attachment_id):
         logger.exception('Could not update file %s', attachment_id)
         return jsonify(error='Could not save that.'), 500
     return jsonify(ok=True, filled=filled)
+
+
+# ---------------------------------------------------------------- Lists and forms (their forms post to the pages' routes)
+
+@api_bp.route('/customers')
+@require_org
+def customers():
+    """The customers list (customer_view.listing): ?q= searches, ?include_archived=true shows archived ones, ?page=."""
+    import customer_view
+    return jsonify(customer_view.listing(g.current_org_id, (request.args.get('q') or '').strip(),
+                                         request.args.get('include_archived', '').lower() == 'true', get_current_org_role(), url_for))
+
+
+@api_bp.route('/customers/new')
+@require_org
+def new_customer():
+    """A new customer's form; ?parent_id= adds a site of that customer, starting from its details."""
+    import customer_view
+    from access import get_org_customer
+    if get_current_org_role() not in CUSTOMER_EDITORS:
+        return jsonify(error='You need to be an owner, admin or sales to create customers'), 403
+    defaults = {}
+    parent = get_org_customer(request.args['parent_id'], g.current_org_id)[0] if request.args.get('parent_id') else None
+    if parent and not parent.get('parent_id'):
+        defaults = {k: parent.get(k) for k in ('name', 'tax_id', 'state', 'country')}
+        defaults['parent_id'] = parent['customer_id']
+    return jsonify(customer_view.form(g.current_org_id, None, defaults, url_for))
+
+
+@api_bp.route('/customers/<customer_id>/form')
+@require_org
+def customer_form(customer_id):
+    import customer_view
+    if get_current_org_role() not in CUSTOMER_EDITORS:
+        return jsonify(error='You need to be an owner, admin or sales to edit customers'), 403
+    found, refused = _customer(customer_id)
+    if refused:
+        return refused
+    return jsonify(customer_view.form(g.current_org_id, found, {}, url_for))
+
+
+@api_bp.route('/new-project')
+@require_org
+def new_project():
+    """The new project form (project_view.new_project); ?customer_id= picks the customer."""
+    if get_current_org_role() not in EDITORS:
+        return jsonify(error='Viewers can look but not change things'), 403
+    return jsonify(project_view.new_project(g.current_org_id, request.args.get('customer_id'), url_for))
+
+
+@api_bp.route('/emails')
+@require_org
+def emails():
+    """The inbox (email_view.inbox): threads not in a project yet, or ?show=all; ?page=."""
+    import email_view
+    if get_current_org_role() not in MAIL_READERS:
+        return jsonify(error="Your role doesn't read the mailboxes"), 403
+    data = email_view.inbox(g.current_org_id, request.args.get('show', 'unlinked'), get_current_org_role(), url_for)
+    return jsonify(project_view._plain(data))
+
+
+@api_bp.route('/emails/<thread_id>')
+@require_org
+def email_thread(thread_id):
+    import email_view
+    if get_current_org_role() not in MAIL_READERS:
+        return jsonify(error="Your role doesn't read the mailboxes"), 403
+    data = email_view.thread(g.current_org_id, thread_id, url_for)
+    return jsonify(project_view._plain(data)) if data else (jsonify(error='Not found'), 404)
+
+
+@api_bp.route('/notifications')
+@require_org
+def notifications():
+    """Your notifications (notifications_view.build): unread, or ?show=all; ?page=."""
+    import notifications_view
+    data = notifications_view.build(g.current_user['user_id'], g.current_org_id, request.args.get('show') != 'all', url_for)
+    return jsonify(project_view._plain(data))
+
+
+@api_bp.route('/settings')
+@require_org
+def settings():
+    """The settings page (settings_view.index): owners and admins also manage the team there."""
+    import settings_view
+    data = settings_view.index(g.current_user, g.current_org_id, session.get('org_name') or '', get_current_org_role(), url_for)
+    return jsonify(project_view._plain(data))
+
+
+@api_bp.route('/settings/organizations/<org_id>')
+@require_org
+def organization(org_id):
+    """The organization's name and address form; owners only, and only the one you're in."""
+    import settings_view
+    if str(org_id) != str(g.current_org_id):
+        return jsonify(error='You can only edit the current organization'), 403
+    if get_current_org_role() != 'owner':
+        return jsonify(error='Only organization owners can edit organization details'), 403
+    found = db.execute_proc('sp_get_organization_details', (org_id,)) or []
+    if not found:
+        return jsonify(error='Not found'), 404
+    return jsonify(settings_view.organization(found[0], url_for))
+
+
+@api_bp.route('/settings/audit-log')
+@require_org
+def audit_log():
+    """The audit log (settings_view.audit): ?table_name= one kind of change, ?page=; owners and admins."""
+    import settings_view
+    if get_current_org_role() not in MANAGERS:
+        return jsonify(error='Only owners and admins can view the audit log'), 403
+    return jsonify(settings_view.audit(g.current_org_id, request.args.get('table_name') or '', url_for))
+
+
+@api_bp.route('/settings/profile')
+@require_org
+def business_profile():
+    """The business profile's form (settings_view.profile); owners and admins."""
+    import settings_view
+    if get_current_org_role() not in MANAGERS:
+        return jsonify(error='Only organization owners can change the business profile'), 403
+    return jsonify(project_view._plain(settings_view.profile(g.current_org_id, url_for)))

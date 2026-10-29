@@ -70,8 +70,9 @@ def new_menu(role: Optional[str], with_project: bool = True) -> List[Dict]:
     return items
 
 
-def boot(role: Optional[str], unread: int) -> Dict:
-    """What the React app starts with: who's signed in, the sidebar, the links it needs, and the page's messages."""
+def boot(role: Optional[str], unread: int, posted: Optional[Dict] = None) -> Dict:
+    """What the React app starts with: who's signed in, the sidebar, the links it needs, and the page's messages.
+    posted: a form that didn't save (spa(posted=...)), so its screen starts from what was typed."""
     from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, MANAGERS, SALES
     orgs = session.get('user_organizations') or []
     return {
@@ -85,10 +86,13 @@ def boot(role: Optional[str], unread: int) -> Dict:
                   'logout': url_for('auth_bp.logout'), 'select_org': url_for('settings_bp.select_org'),
                   'search': url_for('search_bp.items'), 'new': new_menu(role)},
         'flashes': [{'category': 'info' if c == 'message' else c, 'text': m} for c, m in get_flashed_messages(with_categories=True)],
+        'posted': posted,
     }
 
 
-def spa(title: str, skeleton: str = 'page'):
+def spa(title: str, skeleton: str = 'page', posted: bool = False):
     """The React app's page for this address: the frame drawn as it will look, with the screen's grey shapes in it until
-    the app arrives and takes over. title and skeleton (list, page, home) are only for that first moment."""
-    return render_template('spa.html', title=title, skeleton=skeleton, path=request.path)
+    the app arrives and takes over. title and skeleton (list, page, home) are only for that first moment. posted: this
+    answers a form that didn't save, so the screen starts from what was typed (boot's posted) and its message."""
+    form = {'path': request.path, 'values': request.form.to_dict()} if posted else None
+    return render_template('spa.html', title=title, skeleton=skeleton, path=request.path, posted=form)

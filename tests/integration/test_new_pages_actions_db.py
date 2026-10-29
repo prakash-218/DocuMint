@@ -88,8 +88,9 @@ def test_customer_files_portal_archive_and_edit_from_the_new_page(client, gst_or
     assert _post(client, f'/customers/{customer}/unarchive', {}, page).endswith(page)
     edit = data['links']['edit']
     assert edit == f'/customers/{customer}/edit'
-    form = client.get(edit).get_data(as_text=True)
-    assert f'action="/customers/{customer}/edit"' in form and f'href="/customers/{customer}"' in form   # cancel goes back too
+    from tests.spa import screen
+    form = screen(client, f'/api/customers/{customer}/form')
+    assert (form['action'], form['cancel']) == (f'/customers/{customer}/edit', f'/customers/{customer}')    # cancel goes back too
     assert _post(client, edit, {'name': f'Gear Cutters {tag}', 'city': 'Hosur', 'country': 'India', 'state': 'Tamil Nadu', 'parent_id': ''},
                  f'/customers/{customer}/edit').endswith(page)
 

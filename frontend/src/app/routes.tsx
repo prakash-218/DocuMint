@@ -3,8 +3,9 @@
 import type { ComponentType } from 'react';
 import { matchRoutes } from 'react-router';
 import type { SkeletonKind } from '../Skeleton';
-import { CustomerScreen, DocumentScreen, EditDocumentScreen, HomeScreen, ListScreen, NewDocumentScreen, PackingScreen,
-         ProjectScreen, ProjectsScreen } from './screens';
+import { AuditLogScreen, CustomerScreen, CustomersScreen, DocumentScreen, EditCustomerScreen, EditDocumentScreen, HomeScreen,
+         InboxScreen, ListScreen, NewCustomerScreen, NewDocumentScreen, NewProjectScreen, NotificationsScreen, OrgScreen,
+         PackingScreen, ProfileScreen, ProjectScreen, ProjectsScreen, SettingsScreen, ThreadScreen } from './screens';
 
 export interface AppRoute {
   path: string;
@@ -34,6 +35,17 @@ export const ROUTES: AppRoute[] = [
   { path: '/quotes/:invoiceId/packing', screen: PackingScreen, skeleton: 'page', label: 'Packing', ids: ['invoiceId'] },
   { path: '/proformas/:invoiceId/packing', screen: PackingScreen, skeleton: 'page', label: 'Packing', ids: ['invoiceId'] },
   { path: '/invoices/:invoiceId/packing', screen: PackingScreen, skeleton: 'page', label: 'Packing', ids: ['invoiceId'] },
+  { path: '/customers', screen: CustomersScreen, skeleton: 'list', label: 'Customers' },
+  { path: '/customers/create', screen: NewCustomerScreen, skeleton: 'page', label: 'New customer' },
+  { path: '/customers/:customerId/edit', screen: EditCustomerScreen, skeleton: 'page', label: 'Edit customer', ids: ['customerId'] },
+  { path: '/projects/new', screen: NewProjectScreen, skeleton: 'page', label: 'New project' },
+  { path: '/emails', screen: InboxScreen, skeleton: 'list', label: 'Emails' },
+  { path: '/emails/:threadId', screen: ThreadScreen, skeleton: 'page', label: 'Email', ids: ['threadId'] },
+  { path: '/notifications', screen: NotificationsScreen, skeleton: 'list', label: 'Notifications' },
+  { path: '/settings', screen: SettingsScreen, skeleton: 'page', label: 'Settings' },
+  { path: '/settings/profile', screen: ProfileScreen, skeleton: 'page', label: 'Business profile' },
+  { path: '/settings/audit-log', screen: AuditLogScreen, skeleton: 'list', label: 'Audit log' },
+  { path: '/settings/organizations/:orgId/edit', screen: OrgScreen, skeleton: 'page', label: 'Name & address', ids: ['orgId'] },
 ];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

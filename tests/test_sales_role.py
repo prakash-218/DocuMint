@@ -53,12 +53,24 @@ def test_sales_delete_their_draft_quotations_only(sales, fake_db):
     assert ('sp_delete_invoice', ('Q-1',)) in fake_db.calls
 
 
+@pytest.mark.parametrize('path', ['/api/customers', '/api/customers/new', '/api/new-project',
+                                  '/api/settings'])
+def test_sales_read_the_screens_they_open(sales, path):
+    assert sales.get(path).status_code == 200, path
+
+
+@pytest.mark.parametrize('path', ['/api/emails', '/api/notifications', '/api/settings/audit-log', '/api/settings/profile'])
+def test_sales_dont_read_the_others(sales, path):
+    assert sales.get(path).status_code == 403, path
+
+
 def test_sales_menu_and_search(sales):
-    html = sales.get('/customers/').get_data(as_text=True)
-    nav = html.split('<nav aria-label="Main">')[1].split('</nav>')[0]
-    assert 'Quotations' in nav and 'Projects' in nav and 'Customers' in nav
-    assert not any(x in nav for x in ('Dashboard', 'Proforma invoices', '>Invoices<', 'Templates', 'Emails', 'Audit log'))
-    assert 'New customer' in html                                                   # Sales add customers
+    from tests.spa import boot_of
+    boot = boot_of(sales.get('/customers/').get_data(as_text=True))
+    nav = [i['label'] for s in boot['sidebar'] for i in s['items']]
+    assert {'Quotations', 'Projects', 'Customers'} <= set(nav)
+    assert not set(nav) & {'Dashboard', 'Proforma invoices', 'Invoices', 'Templates', 'Emails', 'Audit log'}
+    assert sales.get('/api/customers').get_json()['new'] == '/customers/create'        # Sales add customers
     items = sales.get('/search/items').get_json()['items']
     titles = {i['title'] for i in items}
     assert {'Projects', 'Quotations', 'Customers', 'New quotation', 'New project', 'New customer'} <= titles

@@ -434,7 +434,8 @@ def test_template_pages_and_custom_fields(client, gst_org):
         client.post('/settings/profile', data={**PROFILE, 'orgcf_label_1': 'MSME No.', 'orgcf_value_1': 'UDYAM-TN-02-0000001',
                                                'orgcf_print_1': 'on', 'custcf_label_1': 'Vendor code', 'custcf_print_1': 'on'})
         customer = _customer(org_id, 'Brakes India Ltd', 'Tamil Nadu', 'India')
-        assert 'Vendor code' in client.get(f'/customers/{customer}/edit').get_data(as_text=True)
+        from tests.spa import screen
+        assert 'Vendor code' in [f['label'] for f in screen(client, f'/api/customers/{customer}/form')['custom']]
         db.execute_proc('sp_update_customer_custom', (customer, org_id, '{"vendor_code": "BIL-4471"}'), fetch=False)
 
         invoice_id, _ = _create(client, org_id, 'invoice', 'Tax Invoice', customer,

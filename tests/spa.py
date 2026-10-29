@@ -75,3 +75,10 @@ def packing(client, invoice_id: str) -> dict:
     response = client.get(f'/api/packing/{invoice_id}')
     assert response.status_code == 200, response.get_data(as_text=True)[:300]
     return response.get_json()
+
+
+def screen(client, path: str) -> dict:
+    """Any screen's JSON from the API (/api/customers?q=, /api/settings/profile and the like), checked it loaded."""
+    response = client.get(path)
+    assert response.status_code == 200, (path, response.get_data(as_text=True)[:300])
+    return response.get_json()

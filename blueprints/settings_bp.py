@@ -9,6 +9,7 @@ from db import db, DatabaseError
 from auth import require_auth, require_org
 from store.schema import ROLES
 from access import safe_referrer
+import nav
 
 logger = logging.getLogger(__name__)
 
@@ -18,45 +19,9 @@ settings_bp = Blueprint('settings_bp', __name__)
 @settings_bp.route('/')
 @require_org
 def index():
-    """Settings page"""
-    user = g.current_user
-    org_id = g.current_org_id
-
-    # Get current role
-    current_role = None
-    if session.get('user_organizations'):
-        for org in session['user_organizations']:
-            if str(org.get('org_id')) == str(org_id):
-                current_role = org.get('role')
-                break
-
-    try:
-        user_orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
-        current_org_id = g.current_org_id if hasattr(g, 'current_org_id') else None
-        
-        # Fetch team management data for owners
-        pending_requests = []
-        active_members = []
-        if current_role in ('owner', 'admin'):
-            pending_requests = db.execute_proc('sp_get_pending_members', (org_id,))
-            active_members = db.execute_proc('sp_get_org_members', (org_id,))
-            if active_members:
-                active_members = [m for m in active_members if m.get('status') in ['active', 'deactivated']]
-        
-        return render_template('settings/index.html', 
-                             user_organizations=user_orgs or [], 
-                             current_org_id=current_org_id,
-                             current_org_role=current_role,
-                             pending_requests=pending_requests or [],
-                             active_members=active_members or [])
-    except DatabaseError:
-        current_org_id = g.current_org_id if hasattr(g, 'current_org_id') else None
-        return render_template('settings/index.html', 
-                             user_organizations=[], 
-                             current_org_id=current_org_id,
-                             current_org_role=None,
-                             pending_requests=[],
-                             active_members=[])
+    """The settings page, in the React app (settings_view.index)."""
+    import nav
+    return nav.spa('Settings', 'page')
 
 
 @settings_bp.route('/select-org', methods=['GET', 'POST'])
@@ -348,9 +313,7 @@ def edit_organization(org_id):
             
             if not name:
                 flash('Organization name is required', 'error')
-                org_details = db.execute_proc('sp_get_organization_details', (org_id,))
-                org = org_details[0] if org_details and len(org_details) > 0 else None
-                return render_template('settings/edit_org.html', organization=org)
+                return nav.spa('Name & address', 'page', posted=True)
             
             try:
                 db.execute_proc('sp_update_organization', (
@@ -374,7 +337,7 @@ def edit_organization(org_id):
             flash('Organization not found', 'error')
             return redirect(url_for('settings_bp.index'))
         
-        return render_template('settings/edit_org.html', organization=org)
+        return nav.spa('Name & address', 'page', posted=request.method == 'POST')   # the form: settings_view.organization
     except DatabaseError as e:
         flash(f'Error loading organization: {str(e)}', 'error')
         return redirect(url_for('settings_bp.index'))
@@ -477,28 +440,7 @@ def audit_log():
         flash('Only owners and admins can view the audit log', 'error')
         return redirect(url_for('settings_bp.index'))
     
-    try:
-        from pagination import Page
-        table_filter = request.args.get('table_name')
-        count = db.execute_proc_single('sp_count_audit_log', (org_id, table_filter or None)) or {}
-        page = Page.from_count(count.get('n'), per_page=50)
-        audit_logs = db.execute_proc('sp_get_audit_log', (org_id, table_filter or None, page.per_page, page.offset)) or []
-        from app_helpers import describe_audit
-        docs = {d['invoice_id']: d for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []}
-        for log in audit_logs:
-            log['entry'] = describe_audit(log, docs)
-
-        return render_template('settings/audit_log.html',
-                             audit_logs=audit_logs,
-                             page=page,
-                             current_org_role=current_role,
-                             table_filter=table_filter)
-    except DatabaseError as e:
-        flash(f'Error loading audit log: {str(e)}', 'error')
-        return render_template('settings/audit_log.html',
-                             audit_logs=[],
-                             current_org_role=current_role,
-                             table_filter=None)
+    return nav.spa('Audit log', 'list')                    # the list: settings_view.audit
 
 
 
@@ -541,7 +483,7 @@ def _image_data_uri(upload):
 def business_profile():
     """Tax registrations, bank details, numbering and document defaults (owners only)."""
     from documents import DOC_TYPES
-    from document_service import get_org_profile, save_org_profile, series_status, set_next_number
+    from document_service import get_org_profile, save_org_profile, set_next_number
 
     org_id = g.current_org_id
     if _current_role(org_id) not in ('owner', 'admin'):
@@ -639,8 +581,7 @@ def business_profile():
         flash('Business profile saved', 'success')
         return redirect(url_for('settings_bp.business_profile'))
 
-    return render_template('settings/profile.html', org=org, profile=profile,
-                           series=series_status(org_id, profile), currencies=CURRENCIES)
+    return nav.spa('Business profile', 'page')             # the form: settings_view.profile
 
 
 @settings_bp.route('/profile/starter-templates', methods=['POST'])

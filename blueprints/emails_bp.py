@@ -3,7 +3,7 @@
 import io
 import logging
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, flash, g, redirect, request, send_file, url_for
 
 from auth import MAIL_READERS, get_current_org_role, require_org
 from db import DatabaseError, db
@@ -23,34 +23,22 @@ def _guard():
 @emails_bp.route('/')
 @require_org
 def inbox():
+    """The inbox, in the React app (email_view.inbox)."""
     _guard()
-    from pagination import Page
-    show = request.args.get('show', 'unlinked')
-    unlinked = show == 'unlinked'
-    count = db.execute_proc_single('sp_count_email_threads', (g.current_org_id, None, None, unlinked)) or {}
-    page = Page.from_count(count.get('n'))
-    threads = db.execute_proc('sp_list_email_threads', (g.current_org_id, None, None, unlinked,
-                                                         page.per_page, page.offset)) or []
-    accounts = db.execute_proc('sp_list_email_accounts', (g.current_org_id,)) or []
-    return render_template('emails/inbox.html', threads=threads, page=page, show=show, accounts=accounts,
-                           current_org_role=get_current_org_role())
+    import nav
+    return nav.spa('Emails', 'list')
 
 
 @emails_bp.route('/<thread_id>')
 @require_org
 def thread(thread_id):
+    """A thread, in the React app (email_view.thread)."""
     _guard()
+    import nav
     result = db.execute_proc('sp_get_email_thread', (thread_id, g.current_org_id))
     if not result:
         abort(404)
-    sets = result if isinstance(result[0], list) else [result]
-    thread, messages = sets[0][0], (sets[1] if len(sets) > 1 else [])
-    files = sets[2] if len(sets) > 2 else []
-    by_message = {}
-    for f in files:
-        by_message.setdefault(f['message_id'], []).append(f)
-    return render_template('emails/thread.html', thread=thread, messages=messages, files=by_message,
-                           current_org_role=get_current_org_role())
+    return nav.spa((result[0] if isinstance(result[0], list) else result)[0].get('subject') or 'Email', 'page')
 
 
 @emails_bp.route('/<thread_id>/project', methods=['POST'])

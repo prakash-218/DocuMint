@@ -128,10 +128,8 @@
     {% endif %}
 
     {% block extra_js %}{% endblock %}
-    <script src="{{ url_for('static', filename='js/table-sort.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script src="{{ url_for('static', filename='js/fuzzy.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/project-picker.js') }}"></script>
     <script src="{{ url_for('static', filename='js/palette.js') }}"></script>
     {{ frontend_assets() }}
     <script>

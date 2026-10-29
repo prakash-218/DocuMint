@@ -179,7 +179,8 @@ SALES_PAGES = {
     'search_bp': None,
     'api_bp': {'me', 'documents', 'document_page', 'new_document', 'edit_document', 'compose', 'send_email', 'list_projects',
                'project', 'update_project', 'add_note', 'set_person', 'save_person', 'customer', 'save_customer_contact',
-               'delete_customer_contact', 'update_file'},
+               'delete_customer_contact', 'update_file', 'customers', 'new_customer', 'customer_form', 'new_project',
+               'settings'},
     'settings_bp': {'index', 'select_org'},
 }
 

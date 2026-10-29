@@ -60,6 +60,11 @@ class Page:
     def has_next(self) -> bool:
         return self.page < self.pages
 
+    def json(self, noun: str = '') -> dict:
+        """For the React app's pager (frontend/src/app/ui.tsx): it links ?page=n on the address it's on."""
+        return {'page': self.page, 'pages': self.pages, 'first': self.first, 'last': self.last, 'total': self.total,
+                'numbers': self.numbers(), 'noun': noun}
+
     def numbers(self, around: int = 2) -> List[Optional[int]]:
         """Page numbers to link, None for a gap: 1 … 4 5 [6] 7 8 … 20."""
         keep = {1, self.pages} | set(range(self.page - around, self.page + around + 1))

@@ -29,6 +29,7 @@ export interface Boot {
   orgs: { id: string; name: string }[];        // only when there's more than one to switch between
   links: { home: string; logout: string; select_org: string; search: string; new: NewItem[] };
   flashes: { category: string; text: string }[];
+  posted?: { path: string; values: Record<string, string> } | null;   // a form that didn't save (nav.spa(posted=True))
 }
 
 export function readBoot(doc: Document = document): Boot {

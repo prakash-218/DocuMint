@@ -14,7 +14,8 @@ def test_the_teams_other_addresses_are_kept_and_count_as_ours(client, gst_org):
     try:
         assert client.post('/settings/profile', data={**PROFILE, 'team_addresses': 'Ravi.Home@Gmail.com\ndesk.two@yahoo.example'}).status_code == 302
         assert get_org_profile(gst_org)[1]['team_addresses'] == ['ravi.home@gmail.com', 'desk.two@yahoo.example']
-        assert 'ravi.home@gmail.com, desk.two@yahoo.example' in client.get('/settings/profile').get_data(as_text=True)
+        from tests.spa import screen
+        assert screen(client, '/api/settings/profile')['values']['team_addresses'] == 'ravi.home@gmail.com, desk.two@yahoo.example'
         assert {'ravi.home@gmail.com', 'desk.two@yahoo.example'} <= set(contacts.own_domains(gst_org))
 
         _flashes(client)

@@ -1,6 +1,6 @@
 """Notifications for owners and admins: what happened on projects."""
 
-from flask import Blueprint, abort, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, g, redirect, url_for
 
 from access import safe_referrer
 from auth import require_org
@@ -16,13 +16,9 @@ def _user_id():
 @notifications_bp.route('/')
 @require_org
 def index():
-    from pagination import Page
-    unread_only = request.args.get('show') != 'all'
-    count = db.execute_proc_single('sp_count_notifications', (_user_id(), g.current_org_id, unread_only)) or {}
-    page = Page.from_count(count.get('n'))
-    items = db.execute_proc('sp_list_notifications', (_user_id(), g.current_org_id, page.per_page, unread_only,
-                                                       page.offset)) or []
-    return render_template('notifications/index.html', items=items, page=page, unread_only=unread_only)
+    """Notifications, in the React app (notifications_view.build)."""
+    import nav
+    return nav.spa('Notifications', 'list')
 
 
 @notifications_bp.route('/<notification_id>/open')

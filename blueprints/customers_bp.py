@@ -4,14 +4,14 @@ Customers blueprint - CRUD operations for customers
 
 import re
 
-from flask import Blueprint, request, render_template, redirect, url_for, flash, g
+from flask import Blueprint, request, redirect, url_for, flash, g
 from db import db, DatabaseError
 from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, require_org, get_current_org_role
 from access import get_org_customer
-from documents import load_json
 from payment_terms import parse_days
 import contacts
 import customers as C
+import nav
 
 customers_bp = Blueprint('customers_bp', __name__)
 
@@ -61,24 +61,9 @@ def _save_custom(customer_id, org_id, form, defs):
 @customers_bp.route('/')
 @require_org
 def list_customers():
-    """List all customers"""
-    org_id = g.current_org_id
-    current_role = get_current_org_role()
-
-    try:
-        include_archived = request.args.get('include_archived', 'false').lower() == 'true'
-        customers = db.execute_proc('sp_list_customers', (org_id, include_archived)) or []
-        query = (request.args.get('q') or '').strip()
-        customers = C.search(customers, query)
-        from pagination import paginate
-        page = paginate(C.group(customers))         # whole groups, so a site stays with its customer
-        return render_template('customers/list.html', customers=customers, groups=page.items, page=page,
-                               include_archived=include_archived,
-                               query=query, current_org_role=current_role)
-    except DatabaseError:
-        flash('Error loading customers', 'error')
-        return render_template('customers/list.html', customers=[], groups=[], include_archived=False, query='',
-                               current_org_role=current_role)
+    """The customers list, in the React app (customer_view.listing)."""
+    import nav
+    return nav.spa('Customers', 'list')
 
 
 @customers_bp.route('/create', methods=['GET', 'POST'])
@@ -104,7 +89,7 @@ def create_customer():
         days, problem = parse_days(request.form.get('payment_days'))
         if not name or problem:
             flash(problem or 'Customer name is required', 'error')
-            return render_template('customers/create.html', custom_values={}, **_form_context(org_id, defaults=request.form))
+            return nav.spa('New customer', 'page', posted=True)
 
         try:
 
@@ -124,13 +109,7 @@ def create_customer():
         except DatabaseError as e:
             flash(f'Error creating customer: {str(e)}', 'error')
 
-    defaults = {}
-    parent, _ = get_org_customer(request.args['parent_id'], org_id) if request.args.get('parent_id') else (None, [])
-    if parent and not parent.get('parent_id'):          # "Add site": start from the parent's details
-        defaults = {k: parent.get(k) for k in ('name', 'tax_id', 'state', 'country')}
-        defaults['parent_id'] = parent['customer_id']
-    return render_template('customers/create.html', custom_values={},
-                           **_form_context(org_id, defaults=request.form if request.method == 'POST' else defaults))
+    return nav.spa('New customer', 'page', posted=request.method == 'POST')   # the form: customer_view.form
 
 
 @customers_bp.route('/<customer_id>/statement.pdf')
@@ -366,8 +345,7 @@ def edit_customer(customer_id):
         days, problem = parse_days(request.form.get('payment_days'))
         if not name or problem:
             flash(problem or 'Customer name is required', 'error')
-            return render_template('customers/edit.html', customer=customer, custom_values=load_json(customer.get('custom')),
-                                   **_form_context(org_id, customer))
+            return nav.spa(f"Edit {customer.get('name') or 'customer'}", 'page', posted=True)
 
         try:
             db.execute_proc('sp_update_customer', (
@@ -392,8 +370,7 @@ def edit_customer(customer_id):
         except DatabaseError as e:
             flash(f'Error updating customer: {str(e)}', 'error')
 
-    return render_template('customers/edit.html', customer=customer, custom_values=load_json(customer.get('custom')),
-                           **_form_context(org_id, customer))
+    return nav.spa(f"Edit {customer.get('name') or 'customer'}", 'page', posted=request.method == 'POST')
 
 
 @customers_bp.route('/<customer_id>/delete', methods=['POST'])
