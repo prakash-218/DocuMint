@@ -92,7 +92,7 @@ def send_email(project_id):
 def home():
     """What needs doing and the money still to come in (home_view.build). Not for Sales: their home is projects."""
     import home_view
-    return jsonify(home_view.build(g.current_org_id, get_current_org_role(), url_for))
+    return jsonify(home_view.build(g.current_org_id, get_current_org_role(), url_for, email=session.get('email')))
 
 
 # ---------------------------------------------------------------- The project page

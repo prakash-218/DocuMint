@@ -111,6 +111,17 @@ def stage(docs: List[Dict], project_status: str = 'open', today: Optional[date] 
     return {'steps': steps, 'current': current, 'pill': _pill(current, s, f)}
 
 
+def stage_label(st: Dict, docs: List[Dict]) -> str:
+    """The step a job has reached, as the prototypes' lists tag it: Quoted (sent, or still a draft), Accepted,
+    Advance, Invoiced, Paid; New before any quotation."""
+    reached = [x['label'] for x in st['steps'] if x['state'] == 'done']
+    if st['current'] == 'advance' and any(d.get('doc_type') == 'proforma' and d.get('status') != 'draft' for d in docs):
+        return 'Advance'                                  # asked for, waiting
+    if reached:
+        return reached[-1]
+    return 'Quoted' if any(d.get('doc_type') == 'quote' for d in docs) else 'New'
+
+
 def _pill(current, s, f) -> Dict:
     if current is None:
         return {'text': 'Paid', 'tone': 'done'}
@@ -377,6 +388,7 @@ def projects_list(org_id, role: str, url: Callable, today: Optional[date] = None
             'fiscal_year': p.get('fiscal_year'), 'status': p.get('status') or 'open',
             'stage': st['current'] if not (sales and st['current'] not in ('quoted', 'accepted', None)) else 'accepted',
             'pill': st['pill'], 'sub': (step or {}).get('sub') or '',
+            'stage_label': stage_label(st, docs),
             'next': nxt['text'], 'action': next((a['label'] for a in nxt['actions'] if a['primary']), None),
             'tone': nxt['tone'], 'currency': currency,
             'quoted': float((f['quote'] or {}).get('total_amount') or 0),

@@ -2,16 +2,21 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../api';
 import { money, totals, when } from '../../format';
 import { Icon, type IconName } from '../../icons';
-import './home.css';
+import type { Tone } from '../project/types';
 
-// Home: what needs doing (from where each project is, as on the projects list) and the money still to come in.
+// Home, as the prototype draws it: a greeting and the three numbers that matter, what needs doing (one row a
+// kind, each opening to its projects), the money to come in by how old it is, and what happened lately.
 
 type Totals = Record<string, number>;
 
 export interface HomeData {
+  hello?: { name: string; today: string; fy: string; greeting: string };
+  open_quotes?: { count: number; total: Totals };
   attention: {
     key: string;
     title: string;
+    label?: string;
+    names?: string;
     count: number;
     total: Totals;
     items: { title: string; sub: string; amount: number | null; currency: string; url: string; action: string | null }[];
@@ -31,12 +36,27 @@ export interface HomeData {
   links: { projects: string; classic: string };
 }
 
-const ICONS: Record<string, IconName> = {
-  follow_up: 'clock', accepted: 'flag', advance: 'rupee', invoice: 'file', payment: 'rupee', drafts: 'pencil', paid_open: 'done',
+// Each kind of thing to do: its icon and tone, as in the prototype
+const KINDS: Record<string, { icon: IconName; tone: Tone }> = {
+  follow_up: { icon: 'clock', tone: 'action' },
+  accepted: { icon: 'done', tone: 'action' },
+  advance: { icon: 'rupee', tone: 'wait' },
+  invoice: { icon: 'file', tone: 'action' },
+  payment: { icon: 'receipt', tone: 'late' },
+  drafts: { icon: 'pencil', tone: 'draft' },
+  paid_open: { icon: 'done', tone: 'done' },
+};
+export const EVENT_ICONS: Record<string, IconName> = {
+  email_received: 'mail', email_sent: 'send', payment: 'rupee', note: 'note', file_uploaded: 'paperclip', project_created: 'plus',
+  project_status: 'flag', document_created: 'pencil', document_sent: 'send', document_converted: 'file', document_corrected: 'pencil',
+  document_reopened: 'pencil', quote_revised: 'file', quote_status: 'done',
 };
 
 /** ₹65,69,390 + $8,701: each currency's total, biggest first. */
 export { totals };
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const primary = (t: Totals) => t.INR ?? Object.values(t)[0] ?? 0;
 
 export default function Home() {
   const [data, setData] = useState<HomeData | null>(null);
@@ -47,78 +67,117 @@ export default function Home() {
       .catch((e) => setError(e instanceof ApiError ? e.message : "Couldn't load the home page. Check your connection."));
   }, []);
 
-  if (!data) return error ? <p className="hm-error" role="alert">{error}</p> : <p className="text-tertiary">Loading…</p>;
+  if (!data) return <div className="ui">{error ? <p className="error" role="alert">{error}</p> : <p className="loading">Loading…</p>}</div>;
 
   const r = data.to_receive;
+  const old = r.ages[r.ages.length - 1];
+  const hello = data.hello;
+  const today = hello ? new Date(`${hello.today}T00:00:00`) : new Date();
+  const ageWidth = r.ages.map((a) => primary(a.total));
   return (
-    <div className="hm-wrap">
-      <div className="hm">
-        <section className="hm-attention" aria-labelledby="hm-attention">
-          <h2 id="hm-attention" className="hm-heading">Needs attention</h2>
-          {data.attention.length === 0 && !data.unfiled_emails && (
-            <p className="card card-body text-tertiary">Nothing waiting on you. New enquiries and payments will show here.</p>
-          )}
-          {data.attention.map((g) => (
-            <details key={g.key} className="card hm-group" open={g.key !== 'paid_open'}>
-              <summary>
-                <span className="hm-group-icon" aria-hidden="true"><Icon name={ICONS[g.key] ?? 'flag'} size={16} /></span>
-                <span className="hm-group-title">{g.title}</span>
-                <span className="hm-group-count">{g.count}</span>
-                {Object.keys(g.total).length > 0 && g.key !== 'paid_open' && <span className="hm-group-total">{totals(g.total)}</span>}
-              </summary>
-              <ul className="hm-items">
-                {g.items.map((it) => (
-                  <li key={it.url}>
-                    <a href={it.url}>
-                      <span className="hm-item-main">
-                        <span className="hm-item-title">{it.title}</span>
-                        <span className="hm-item-sub">{it.sub}</span>
-                      </span>
-                      <span className="hm-item-side">
-                        {!!it.amount && <span className="hm-item-amount">{money(it.amount, it.currency)}</span>}
-                        {it.action && <span className="hm-item-action">{it.action} →</span>}
-                      </span>
-                    </a>
+    <div className="ui">
+      <header className="head">
+        <div>
+          <h1>{hello ? `${hello.greeting}${hello.name ? `, ${hello.name}` : ''}` : 'Home'}</h1>
+          <div className="meta">
+            <span>{today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+            {hello?.fy && <span>FY {hello.fy}</span>}
+          </div>
+        </div>
+        <div className="head-right"><a className="btn btn-secondary" href={data.links.projects}>All projects</a></div>
+      </header>
+
+      <div className="stats">
+        <div className="stat"><small>To receive</small><b>{r.count ? totals(r.total) : money(0)}</b>
+          <span className="cap">{plural(r.count, 'invoice', 'invoices')}</span></div>
+        <div className={`stat${old?.count ? ' late' : ''}`}><small>Over 90 days old</small><b>{old?.count ? totals(old.total) : money(0)}</b>
+          <span className="cap">{plural(old?.count ?? 0, 'invoice', 'invoices')}</span></div>
+        <div className="stat"><small>Open quotations</small><b>{data.open_quotes?.count ? totals(data.open_quotes.total) : money(0)}</b>
+          <span className="cap">{plural(data.open_quotes?.count ?? 0, 'quotation', 'quotations')} not answered yet</span></div>
+      </div>
+
+      <div className="home-cols">
+        <section className="card" aria-labelledby="hm-attention">
+          <div className="card-h"><h2 id="hm-attention">Needs attention</h2><span className="muted">Open a row for its projects</span></div>
+          <div className="card-b">
+            {data.attention.length === 0 && !data.unfiled_emails && (
+              <p className="empty-feed">Nothing waiting on you. New enquiries and payments will show here.</p>
+            )}
+            <ul className="attn">
+              {data.attention.map((g) => {
+                const k = KINDS[g.key] ?? { icon: 'flag' as IconName, tone: 'action' as Tone };
+                return (
+                  <li key={g.key}>
+                    <details>
+                      <summary>
+                        <span className={`ai tone-${k.tone}`}><Icon name={k.icon} size={15} /></span>
+                        <span><span className="at">{g.label ?? g.title}</span><span className="as">{g.names}</span></span>
+                        <span className="aa">{Object.keys(g.total).length > 0 && g.key !== 'paid_open' ? totals(g.total) : ''}</span>
+                        <span className="chev" aria-hidden="true"><Icon name="chevronRight" size={16} /></span>
+                      </summary>
+                      <ul className="attn-items">
+                        {g.items.map((i) => (
+                          <li key={i.url + i.title}>
+                            <a href={i.url}>
+                              <span><span className="at">{i.title}</span><span className="as">{i.sub}</span></span>
+                              <span className="attn-side">
+                                {i.amount ? <span className="aa">{money(i.amount, i.currency)}</span> : null}
+                                {i.action && <span className="attn-act">{i.action} →</span>}
+                              </span>
+                            </a>
+                          </li>
+                        ))}
+                        {g.more > 0 && <li><a href={data.links.projects} className="attn-more">and {g.more} more on the projects list</a></li>}
+                      </ul>
+                    </details>
                   </li>
-                ))}
-              </ul>
-              {g.more > 0 && <a className="hm-more" href={data.links.projects}>and {g.more} more on the projects board</a>}
-            </details>
-          ))}
-          {data.unfiled_emails && (
-            <a className="card hm-group hm-emails" href={data.unfiled_emails.url}>
-              <span className="hm-group-icon" aria-hidden="true"><Icon name="mail" size={16} /></span>
-              <span className="hm-group-title">Emails not filed to a project</span>
-              <span className="hm-group-count">{data.unfiled_emails.count}</span>
-              <span className="hm-item-action">File them →</span>
-            </a>
-          )}
+                );
+              })}
+              {data.unfiled_emails && (
+                <li>
+                  <a href={data.unfiled_emails.url}>
+                    <span className="ai tone-draft"><Icon name="mail" size={15} /></span>
+                    <span><span className="at">{plural(data.unfiled_emails.count, 'email not filed to a project', 'emails not filed to a project')}</span>
+                      <span className="as">Each is offered a project to go in</span></span>
+                    <span className="aa" />
+                    <span className="chev" aria-hidden="true"><Icon name="chevronRight" size={16} /></span>
+                  </a>
+                </li>
+              )}
+            </ul>
+          </div>
         </section>
 
-        <aside className="hm-side" aria-label="Money">
-          <section className="card hm-card" aria-labelledby="hm-receive">
-            <div className="card-header"><h2 className="card-title" id="hm-receive">To receive</h2></div>
-            <div className="card-body">
-              <p className="hm-big">{totals(r.total)}</p>
-              <p className="hm-cap">on {r.count} tax invoice{r.count === 1 ? '' : 's'}, by how long ago each was sent</p>
-              <ul className="hm-ages">
+        <div className="col-side">
+          <section className="card" aria-labelledby="hm-receive">
+            <div className="card-h"><h2 id="hm-receive">To receive</h2><span className="num">{r.count ? totals(r.total) : money(0)}</span></div>
+            <div className="card-b">
+              {r.count > 0 && (
+                <div className="agebar" aria-hidden="true">
+                  {r.ages.map((a, i) => ageWidth[i] > 0 && <span key={a.label} className={`g-${i}`} style={{ flex: ageWidth[i] }} title={`${a.label}: ${totals(a.total)}`} />)}
+                </div>
+              )}
+              <ul className="agetiles" aria-label="By how long ago each invoice was sent">
                 {r.ages.map((a, i) => (
-                  <li key={a.label} className={`age-${i}`}>
-                    <span className="hm-age-label">{a.label}</span>
-                    <span className="hm-age-total">{a.count ? totals(a.total) : '—'}</span>
-                    <span className="hm-age-count">{a.count || ''}</span>
+                  <li key={a.label}>
+                    <small><i className={`g-${i}`} />{a.label}</small>
+                    <b>{a.count ? totals(a.total) : '—'}</b>
+                    <span className="cnt">{plural(a.count, 'invoice', 'invoices')}</span>
                   </li>
                 ))}
               </ul>
               {r.advances.count > 0 && (
-                <p className="hm-advances">Plus {totals(r.advances.total)} in advances asked for on {r.advances.count} project{r.advances.count === 1 ? '' : 's'}.</p>
+                <p className="muted" style={{ margin: '10px 0 0', fontSize: 13 }}>
+                  Advances requested on proformas: <span className="num">{totals(r.advances.total)}</span> ({plural(r.advances.count, 'project', 'projects')}).
+                  They count once paid.
+                </p>
               )}
               {r.customers.length > 0 && (
                 <>
                   <h3 className="hm-sub">Who owes the most</h3>
-                  <ul className="hm-customers">
+                  <ul className="hm-owe">
                     {r.customers.map((c) => (
-                      <li key={c.id}>{c.url ? <a href={c.url}>{c.name}</a> : <span>{c.name}</span>}<span className="hm-age-total">{totals(c.total)}</span></li>
+                      <li key={c.id}>{c.url ? <a href={c.url}>{c.name}</a> : <span>{c.name}</span>}<span className="num">{totals(c.total)}</span></li>
                     ))}
                   </ul>
                 </>
@@ -126,28 +185,25 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="card hm-card" aria-labelledby="hm-month">
-            <div className="card-header"><h2 className="card-title" id="hm-month">{data.month.label}</h2></div>
-            <div className="card-body hm-month">
-              <div><span className="hm-cap">Invoiced</span><b>{totals(data.month.invoiced)}</b></div>
-              <div><span className="hm-cap">Received</span><b>{totals(data.month.received)}</b></div>
+          <section className="card" aria-labelledby="hm-recent">
+            <div className="card-h"><h2 id="hm-recent">Recent activity</h2></div>
+            <div className="card-b">
+              {data.recent.length === 0 ? <p className="empty-feed">Nothing yet.</p> : (
+                <ul className="act">
+                  {data.recent.map((e) => (
+                    <li key={e.id}>
+                      <span className="ico"><Icon name={EVENT_ICONS[e.kind] ?? 'file'} size={14} /></span>
+                      <div>
+                        {e.link ? <a href={e.link}>{e.title}</a> : e.title}
+                        <small>{[when(e.when), e.project, e.who].filter(Boolean).join(' · ')}</small>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </section>
-
-          <section className="card hm-card" aria-labelledby="hm-recent">
-            <div className="card-header"><h2 className="card-title" id="hm-recent">Lately</h2></div>
-            <ul className="hm-recent">
-              {data.recent.map((e) => (
-                <li key={e.id}>
-                  <span className="hm-recent-title">{e.link ? <a href={e.link}>{e.title}</a> : e.title}</span>
-                  <span className="hm-item-sub">
-                    {[e.project, e.who, when(e.when)].filter(Boolean).join(' · ')}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </aside>
+        </div>
       </div>
     </div>
   );

@@ -394,6 +394,20 @@ def view_invoice_new(invoice_id):
     context['doc_next'] = document_view.next_step(invoice, summary, context['advance_received'], context['open_advances'], can,
                                                   url_for, context['convert_defaults'], can_email=bool(project))
     context['doc_steps'] = document_view.steps(invoice, summary, context['advance_received'])
+    # As the prototype draws it: its state, the money, and beside it the project's documents, who gets it, what happened
+    advance_received = context['advance_received']
+    doc_pill = document_view.pill(invoice, summary, advance_received)
+    people, events = [], []
+    if project:
+        import contacts
+        people = contacts.for_project(g.current_org_id, project['project_id'])
+        events = db.execute_proc('sp_list_project_events', (project['project_id'], g.current_org_id, 200)) or []
+    context.update(
+        doc_pill=doc_pill,
+        doc_money=document_view.money_strip(invoice, summary, context['payments'], advance_received),
+        doc_chain=document_view.chain(context['project_docs'], invoice_id, url_for) if project else [],
+        doc_people=[] if role == SALES and invoice.get('doc_type') != 'quote' else document_view.who_gets_it(invoice, people),
+        doc_activity=document_view.activity(events, invoice_id, (invoice.get('customer_name'), invoice.get('customer_site'))))
     return render_template('invoices/new_view.html', doc_endpoint='invoices_bp.view_invoice_new',
                            project_endpoint='projects_bp.view_project_new', **context)
 

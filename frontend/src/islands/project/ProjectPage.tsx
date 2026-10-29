@@ -7,7 +7,6 @@ import { People, type ContactFields } from './People';
 import { Costings, Details, Files, type DetailFields } from './Side';
 import { Timeline } from './Timeline';
 import type { Page } from './types';
-import './project.css';
 
 // The new project page: where the job is (worked out from its documents), what to do next, the money, the
 // documents from quotation to payment, one timeline, and the people, files and details beside them.
@@ -46,36 +45,48 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
   }
 
   if (!page) {
-    return error ? <p className="pp-error" role="alert">{error}</p> : <p className="text-tertiary pp-loading">Loading the project…</p>;
+    return <div className="ui">{error ? <p className="error" role="alert">{error}</p> : <p className="loading">Loading the project…</p>}</div>;
   }
 
-  const { can } = page;
+  const { can, project } = page;
   return (
-    <div className="pp">
+    <div className="ui">
       {error && (
-        <div className="pp-error" role="alert">
+        <div className="error" role="alert">
           <span>{error}</span>
           <button type="button" className="btn btn-ghost btn-xs" onClick={() => setError('')}>Dismiss</button>
         </div>
       )}
 
-      <div className="pp-stage">
-        <span className={`pp-pill tone-${page.stage.pill.tone}`}>{page.stage.pill.text}</span>
-        <Tracker steps={page.stage.steps} />
-      </div>
+      <header className="head">
+        <div>
+          <h1>{project.title}</h1>
+          <div className="meta">
+            <span className="mono">{project.label}</span>
+            <a href={project.customer.url}>{project.customer.name}{project.customer.site ? ` · ${project.customer.site}` : ''}</a>
+            <span>FY {project.fiscal_year}</span>
+            {project.reference && <span>Ref. {project.reference}</span>}
+            {project.status !== 'open' && <span>{page.statuses[project.status]}</span>}
+          </div>
+        </div>
+        <div className="head-right"><span className={`pill tone-${page.stage.pill.tone}`}>{page.stage.pill.text}</span></div>
+      </header>
+
+      <Tracker steps={page.stage.steps} />
       <NextStep next={page.next} onEmail={(invoiceId) => setCompose({ invoiceId })}
                 onStatus={(status) => void change(() => api.patch(base, { status }), `Project marked ${page.statuses[status]?.toLowerCase()}`)} />
       <MoneyStrip rows={page.money} quotedOnly={can.sales} />
 
-      <div className="pp-cols">
-        <div className="pp-main">
-          <Documents docs={page.documents} newDocument={page.new_document} canEdit={can.edit} sales={can.sales}
+      <div className="cols">
+        <div className="col-main">
+          <Documents docs={page.documents} newDocument={page.new_document} canEdit={can.edit} sales={can.sales} current={page.stage.current}
                      onEmail={(invoiceId) => setCompose({ invoiceId })} />
           <Timeline items={page.timeline} canEdit={can.edit} readMail={can.read_mail}
                     onNote={(text) => change(() => api.post(`${base}/notes`, { text }), 'Note added')}
-                    onReply={(threadId) => setCompose({ threadId })} />
+                    onReply={(threadId) => setCompose({ threadId })}
+                    onEmail={can.edit ? () => setCompose({}) : undefined} />
         </div>
-        <aside className="pp-side" aria-label="People, files and details">
+        <aside className="col-side" aria-label="People, files and details">
           <People page={page}
                   onGets={(contactId, gets) => void change(() => api.post(`${base}/people`, { contact_id: contactId, gets }), 'Saved')}
                   onSave={(fields: ContactFields) => change(() => api.post(`${base}/contacts`, fields),

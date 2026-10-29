@@ -59,3 +59,14 @@ def test_money_to_receive_by_the_invoices_age_and_customer():
         ('Over 90 days', 1, {'USD': 300})]
     assert [(c['name'], c['total']) for c in r['customers']] == [('Gear', {'INR': 14000}), ('Axle', {'INR': 8000, 'USD': 300})]
     assert r['advances'] == {'count': 1, 'total': {'INR': 40000}}
+
+
+def test_rows_say_how_many_and_which_and_the_greeting_uses_a_first_name():
+    rows = [row(f'Job {n}', 'paid', 'Waiting for payment', due=1000 * n) for n in range(1, 7)]
+    [group] = H.attention(rows, [])
+    assert group['label'] == '6 projects waiting for payment'
+    assert group['names'] == 'Job 6 · Job 5 · Job 4 · Job 3 and 2 more'      # most owed first
+    [one] = H.attention([row('Drill jig', 'invoiced', 'To invoice', tone='action')], [])
+    assert one['label'] == '1 project ready to invoice'
+    assert H.first_name('ravi@example.com') == 'Ravi'
+    assert H.first_name('info@example.com') == '' and H.first_name('demo-1@example.com') == '' and H.first_name(None) == ''

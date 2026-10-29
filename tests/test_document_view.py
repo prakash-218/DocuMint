@@ -107,3 +107,39 @@ def test_a_revised_version_points_to_the_newest_and_viewers_get_no_actions():
     assert revised['tone'] == 'draft' and revised['actions'] == []
     assert states(doc('proforma', 'revised'))[2] == ('advance', 'skipped', 'Revised')
     assert look(doc('invoice', 'pending'), {'total': 10, 'balance': 10}, can={'edit': False, 'sales': False})['actions'] == []
+
+
+def test_the_head_pill_and_money_strip_say_where_the_money_is():
+    assert D.pill(doc('quote', 'sent'), {}) == {'text': 'Sent', 'tone': 'wait'}
+    assert D.pill(doc('quote', 'declined'), {})['tone'] == 'late'
+    assert D.pill(doc('proforma', 'sent'), {}, advance_received=0)['text'] == 'Advance asked'
+    assert D.pill(doc('proforma', 'sent'), {}, advance_received=40000) == {'text': 'Advance received', 'tone': 'done'}
+    assert D.pill(doc('invoice', 'pending'), {'balance': 100, 'paid': 18})['text'] == 'Part paid'
+    assert D.pill(doc('invoice', 'paid'), {'balance': 0}) == {'text': 'Paid', 'tone': 'done'}
+
+    assert D.money_strip(doc('quote', 'sent'), {'total': 100}, []) is None
+    payments = [{'amount': 40000, 'advance_number': 'PI/007'}, {'amount': 30000, 'advance_number': None}]
+    strip = D.money_strip(doc('invoice', 'pending'), {'total': 118000, 'balance': 48000, 'tax_lines': [1]}, payments)
+    assert [(m['label'], m['value'], m['cap'], m.get('late', False)) for m in strip] == [
+        ('Invoice total', 118000, 'incl. GST', False), ('Less advance', -40000, 'On proforma PI/007', False),
+        ('Received since', 30000, '', False), ('Due', 48000, '', True)]
+    strip = D.money_strip(doc('proforma', 'sent'), {'total': 100000, 'advance': {'percent': 40, 'amount': 40000}}, [], advance_received=10000)
+    assert [(m['label'], m['value'], m['cap']) for m in strip] == [
+        ('Proforma total', 100000, ''), ('Advance asked', 40000, '40% of the order'), ('Advance received', 10000, ''),
+        ('Still to come', 30000, '')]
+
+
+def test_beside_the_document_its_chain_who_gets_it_and_what_happened():
+    docs = [{'invoice_id': 'I-1', 'doc_type': 'invoice', 'status': 'pending', 'total_amount': 500, 'paid_amount': 0, 'doc_number': '058'},
+            {'invoice_id': 'Q-1', 'doc_type': 'quote', 'status': 'converted', 'total_amount': 500, 'paid_amount': 0, 'doc_number': 'Q/041',
+             'versions': [{'invoice_id': 'Q-0'}]}]
+    chain = D.chain(docs, 'Q-0', url)
+    assert [(c['kind'], c['number'], c['pill']['text'], c['here']) for c in chain] == [
+        ('Quotation', 'Q/041', 'Accepted', True), ('Tax Invoice', '058', 'Unpaid', False)]   # an earlier version is "here" too
+    people = [{'name': 'A', 'project_gets': 'all'}, {'name': 'B', 'project_gets': 'billing'}, {'name': 'C', 'project_gets': 'none'}]
+    assert [p['name'] for p in D.who_gets_it(doc('quote', 'sent'), people)] == ['A']
+    assert [p['name'] for p in D.who_gets_it(doc('invoice', 'pending'), people)] == ['A', 'B']
+    events = [{'kind': 'payment', 'title': 'Payment of ₹500 on 058', 'body': 'Axle Works', 'link': '/invoices/I-1', 'created_at': '2026-10-20'},
+              {'kind': 'note', 'title': 'Called', 'body': 'Call back Monday', 'link': '/invoices/I-1'}, {'kind': 'note', 'title': 'Other', 'link': '/x'}]
+    act = D.activity(events, 'I-1', ('Axle Works', None))
+    assert [(a['title'], a['body'], a['tone']) for a in act] == [('Payment of ₹500 on 058', None, 't-pay'), ('Called', 'Call back Monday', 't-note')]

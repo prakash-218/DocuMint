@@ -4,12 +4,9 @@
 
 {% block title %}{{ customer | customer_label }}{% endblock %}
 {% block page_title %}{{ customer.site if customer.parent_id and customer.site else customer.name }}{% endblock %}
-{% block page_description %}<p class="header-description">{% if customer.parent_id %}Site of <a href="{{ url_for('customers_bp.view_customer_new', customer_id=customer.parent_id) }}">{{ customer.parent_name }}</a> · {% endif %}{{ [customer.city, customer.country] | select | join(', ') }}{% if customer.is_archived %} · Archived{% endif %}</p>{% endblock %}
+{% block header_title %}<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('customers_bp.list_customers') }}">Customers</a><span aria-hidden="true">/</span>{% if customer.parent_id %}<a href="{{ url_for('customers_bp.view_customer_new', customer_id=customer.parent_id) }}">{{ customer.parent_name }}</a><span aria-hidden="true">/</span>{% endif %}<b>{{ customer.site if customer.parent_id and customer.site else customer.name }}</b></nav>{% endblock %}
 
 {% block header_actions %}
-{% if nav_role in editor_roles and not customer.is_archived %}
-<a href="{{ url_for('projects_bp.create_project', customer_id=customer.customer_id) }}" class="btn btn-secondary"><i data-lucide="briefcase"></i><span class="btn-label">New project</span></a>
-{% endif %}
 {% if nav_role in customer_editor_roles %}
 <a href="{{ url_for('customers_bp.edit_customer', customer_id=customer.customer_id) }}" class="btn btn-secondary"><i data-lucide="pencil"></i><span class="btn-label">Edit</span></a>
 {% endif %}

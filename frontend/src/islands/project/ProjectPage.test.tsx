@@ -76,9 +76,10 @@ describe('ProjectPage', () => {
     const form = accept.closest('form')!;
     expect(form).toHaveAttribute('action', '/quotes/Q-1/status');
     expect(form.querySelector('input[name=status]')).toHaveValue('accepted');
-    expect(screen.getByText('₹4,95,600', { selector: '.pp-money b' })).toBeInTheDocument();
-    expect(screen.getByText('Q/041 (original)')).toBeInTheDocument();                  // the earlier version
-    expect(screen.getByText('No proforma (only when an advance is asked for)')).toBeInTheDocument();
+    expect(screen.getByText('₹4,95,600', { selector: '.money b' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Earlier versions' })).toHaveTextContent('Original · Q/041 (original)');
+    expect(screen.getByText('Proforma for the advance').closest('.slot')).toHaveClass('later');   // not the next step yet
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Hob arbor set');
   });
 
   it('adds a note and shows the page as it is now', async () => {

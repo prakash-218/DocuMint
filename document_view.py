@@ -166,3 +166,87 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
     if not edit:
         out['actions'] = []
     return out
+
+
+def pill(doc: Dict, summary: Dict, advance_received: float = 0) -> Dict:
+    """The document's state in a word or two, in its tone (as the prototype's pills): Sent, Accepted, Unpaid, Paid..."""
+    kind = get_type(doc.get('doc_type'))
+    status = doc.get('status') or 'draft'
+    if status == 'draft':
+        return {'text': 'Draft', 'tone': 'draft'}
+    if status == 'revised':
+        return {'text': 'Revised', 'tone': 'draft'}
+    if kind.key == 'quote':
+        return {'sent': {'text': 'Sent', 'tone': 'wait'}, 'accepted': {'text': 'Accepted', 'tone': 'done'},
+                'declined': {'text': 'Declined', 'tone': 'late'}}.get(status, {'text': 'Accepted', 'tone': 'done'})
+    if kind.key == 'proforma':
+        if status == 'converted':
+            return {'text': 'Invoiced', 'tone': 'done'}
+        return {'text': 'Advance received', 'tone': 'done'} if advance_received else {'text': 'Advance asked', 'tone': 'wait'}
+    if status == 'paid' or (summary.get('balance') or 0) <= 0.005:
+        return {'text': 'Paid', 'tone': 'done'}
+    return {'text': 'Part paid', 'tone': 'wait'} if (summary.get('paid') or 0) > 0 else {'text': 'Unpaid', 'tone': 'wait'}
+
+
+def money_strip(doc: Dict, summary: Dict, payments: List[Dict], advance_received: float = 0) -> Optional[List[Dict]]:
+    """The four amounts under the next step: for an invoice its total, the advance taken off it, what came in since,
+    and what's due; for a proforma its total, the advance asked, received and still to come. None for a quotation."""
+    kind = get_type(doc.get('doc_type'))
+    total = float(summary.get('total') or 0)
+    if kind.key == 'quote' or (doc.get('status') or 'draft') == 'draft':
+        return None
+    if kind.key == 'proforma':
+        advance = summary.get('advance') or {}
+        asked = float(advance.get('amount') or total)
+        return [{'label': 'Proforma total', 'value': total, 'cap': 'incl. GST' if summary.get('tax_lines') else ''},
+                {'label': 'Advance asked', 'value': asked, 'cap': f"{advance['percent']:g}% of the order" if advance.get('percent') else 'The whole proforma'},
+                {'label': 'Advance received', 'value': advance_received, 'cap': 'Nothing yet' if not advance_received else ''},
+                {'label': 'Still to come', 'value': max(0.0, asked - advance_received), 'cap': '' if asked - advance_received > 0.005 else 'All in',
+                 'late': asked - advance_received > 0.005}]
+    advance_in = sum(float(p.get('amount') or 0) for p in payments if p.get('advance_number'))
+    since = sum(float(p.get('amount') or 0) for p in payments if not p.get('advance_number'))
+    balance = float(summary.get('balance') or 0)
+    advance_of = next((p.get('advance_number') for p in payments if p.get('advance_number')), None)
+    return [{'label': 'Invoice total', 'value': total, 'cap': 'incl. GST' if summary.get('tax_lines') else ''},
+            {'label': 'Less advance', 'value': -advance_in, 'cap': f'On proforma {advance_of}' if advance_of else 'No advance'},
+            {'label': 'Received since', 'value': since, 'cap': '' if since else 'Nothing yet'},
+            {'label': 'Due', 'value': balance, 'cap': 'Nothing due' if balance <= 0.005 else '', 'late': balance > 0.005}]
+
+
+def chain(project_docs: List[Dict], here_id, url: Callable) -> List[Dict]:
+    """The project's documents, quotation to tax invoice, for the side of a document's page."""
+    from documents import balance_of
+    order = {'quote': 0, 'proforma': 1, 'invoice': 2, 'export_invoice': 2}
+    out = []
+    for d in sorted(project_docs, key=lambda d: (order.get(d.get('doc_type'), 3), str(d.get('issue_date') or ''))):
+        kind = get_type(d.get('doc_type'))
+        paid = float(d.get('paid_amount') or 0)
+        summary = {'balance': balance_of(d) if kind.takes_payments else 0, 'paid': paid}
+        out.append({'kind': kind.label, 'number': display_number(d), 'pill': pill(d, summary, paid if kind.key == 'proforma' else 0),
+                    'total': float(d.get('total_amount') or 0), 'currency': d.get('currency_code') or 'INR',
+                    'url': url('invoices_bp.view_invoice_new', invoice_id=d['invoice_id']),
+                    'here': str(d['invoice_id']) == str(here_id) or any(str(v.get('invoice_id')) == str(here_id) for v in d.get('versions') or []),
+                    'paid': kind.takes_payments and summary['balance'] <= 0.005 or (kind.key == 'proforma' and paid > 0)})
+    return out
+
+
+def who_gets_it(doc: Dict, people: List[Dict]) -> List[Dict]:
+    """The project's contacts who get this kind of document: quotations go to those who get everything, proformas
+    and invoices also to those who get the billing."""
+    wanted = ('all',) if doc.get('doc_type') == 'quote' else ('all', 'billing')
+    return [p for p in people if (p.get('project_gets') or p.get('gets')) in wanted]
+
+
+EVENT_ICONS = {'payment': ('indian-rupee', 't-pay'), 'email_sent': ('send', 't-email'), 'email_received': ('mail', 't-email'),
+               'note': ('sticky-note', 't-note')}
+
+
+def activity(events: List[Dict], doc_id, customer_names=()) -> List[Dict]:
+    """What happened to this document (its events in the project), newest first. A body that only names the
+    customer (the page says who already) is left out."""
+    mine = [e for e in events if str(doc_id) in (e.get('link') or '')]
+    names = {(n or '').strip().lower() for n in customer_names if n}
+    return [{'title': e.get('title'), 'body': None if (e.get('body') or '').strip().lower() in names else e.get('body'), 'when': e.get('created_at'),
+             'who': (e.get('actor_email') or '').split('@')[0] or None,
+             'icon': EVENT_ICONS.get(e.get('kind'), ('file-text', 't-doc'))[0],
+             'tone': EVENT_ICONS.get(e.get('kind'), ('file-text', 't-doc'))[1]} for e in mine]

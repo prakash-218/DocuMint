@@ -48,6 +48,18 @@
     --neutral-ink: #52514e;
     --neutral-soft: #efeee9;
 
+    /* Where a job or document is (the prototypes' palette): to do (amber), waiting (blue), late (red), done (mint);
+       serious is between amber and red, for 45-90 days late */
+    --mint: #0f7653;
+    --mint-soft: #e2f3ea;
+    --amber: #9a5200;
+    --amber-soft: #fdf0da;
+    --serious: #c2410c;
+    --red: #b42318;
+    --red-soft: #fce9e7;
+    --info: #3a5ba0;
+    --info-soft: #e8eef9;
+
     /* Charts */
     --chart-surface: var(--surface-1);
     --chart-series-1: #6250d6;
@@ -128,6 +140,15 @@
         --neutral: #6f6d68;
         --neutral-ink: #c3c2b7;
         --neutral-soft: #2a2a27;
+        --mint: #45c99a;
+        --mint-soft: #11291f;
+        --amber: #f2b04a;
+        --amber-soft: #2e2511;
+        --serious: #f28c4b;
+        --red: #f2857a;
+        --red-soft: #3a1715;
+        --info: #8faef0;
+        --info-soft: #182238;
         --chart-series-1: #9085e9;
         --chart-grid: #2c2c2a;
         --chart-axis: #383835;
@@ -164,6 +185,15 @@
     --neutral: #6f6d68;
     --neutral-ink: #c3c2b7;
     --neutral-soft: #2a2a27;
+    --mint: #45c99a;
+    --mint-soft: #11291f;
+    --amber: #f2b04a;
+    --amber-soft: #2e2511;
+    --serious: #f28c4b;
+    --red: #f2857a;
+    --red-soft: #3a1715;
+    --info: #8faef0;
+    --info-soft: #182238;
     --chart-series-1: #9085e9;
     --chart-grid: #2c2c2a;
     --chart-axis: #383835;

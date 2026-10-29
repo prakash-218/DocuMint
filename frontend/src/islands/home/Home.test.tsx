@@ -3,11 +3,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Home, { totals, type HomeData } from './Home';
 
 const DATA: HomeData = {
+  hello: { name: 'Ravi', today: '2026-10-28', fy: '26-27', greeting: 'Good morning' },
+  open_quotes: { count: 3, total: { INR: 1454940 } },
   attention: [
-    { key: 'follow_up', title: 'Quotations with no answer for over two weeks', count: 2, total: { INR: 595600, USD: 1200 },
+    { key: 'follow_up', title: 'Quotations with no answer for over two weeks', label: '2 quotations with no answer after 14 days',
+      names: 'Hob arbor set · Programming charges', count: 2, total: { INR: 595600, USD: 1200 },
       items: [{ title: 'Hob arbor set', sub: 'Hosur plant · PRJ-041 · Waiting · 19 days', amount: 495600, currency: 'INR',
                 url: '/projects/P-41/new', action: 'Send a follow-up' }], more: 1 },
-    { key: 'paid_open', title: 'Paid in full, still open', count: 1, total: { INR: 90000 },
+    { key: 'paid_open', title: 'Paid in full, still open', label: '1 project paid in full, still open', names: 'Old fixture', count: 1, total: { INR: 90000 },
       items: [{ title: 'Old fixture', sub: 'Axle Works · PRJ-002', amount: 90000, currency: 'INR', url: '/projects/P-2/new',
                 action: 'Mark the project completed' }], more: 0 },
   ],
@@ -35,32 +38,34 @@ afterEach(() => {
 });
 
 describe('Home', () => {
-  it('lists what needs doing under each heading, with the way to do it', async () => {
+  it('greets, and lists what needs doing one row a kind, each opening to its projects', async () => {
     serve();
     render(<Home />);
-    const followUps = (await screen.findByText('Quotations with no answer for over two weeks')).closest('details')!;
-    expect(followUps).toHaveAttribute('open');
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(/^Good (morning|afternoon|evening), Ravi$/);
+    expect(screen.getByText('Over 90 days old').closest('.stat')).not.toHaveClass('late');        // nothing that old
+    const followUps = screen.getByText('2 quotations with no answer after 14 days').closest('details')!;
+    expect(followUps).not.toHaveAttribute('open');
+    expect(within(followUps).getByText('Hob arbor set · Programming charges')).toBeInTheDocument();
     expect(within(followUps).getByText('₹5,95,600 + $1,200')).toBeInTheDocument();
+    expect(followUps.querySelector('.ai')).toHaveClass('tone-action');
     const link = within(followUps).getByRole('link', { name: /Hob arbor set/ });
     expect(link).toHaveAttribute('href', '/projects/P-41/new');
     expect(link).toHaveTextContent('Send a follow-up →');
-    expect(within(followUps).getByRole('link', { name: 'and 1 more on the projects board' })).toHaveAttribute('href', '/projects/board');
-    expect(screen.getByText('Paid in full, still open').closest('details')).not.toHaveAttribute('open');   // folded: least urgent
-    expect(screen.getByRole('link', { name: /Emails not filed to a project\s*4/ })).toHaveAttribute('href', '/emails/');
+    expect(within(followUps).getByRole('link', { name: 'and 1 more on the projects list' })).toHaveAttribute('href', '/projects/board');
+    expect(screen.getByRole('link', { name: /4 emails not filed to a project/ })).toHaveAttribute('href', '/emails/');
   });
 
   it('shows the money to come in, by how old the invoices are', async () => {
     serve();
     render(<Home />);
     const receive = (await screen.findByRole('heading', { name: 'To receive' })).closest('section')!;
-    expect(within(receive).getByText('₹22,00,000')).toBeInTheDocument();
-    expect(within(receive).getAllByRole('listitem').slice(0, 4).map((li) => li.textContent)).toEqual(
-      ['0–30 days₹10,00,0001', '31–60 days—', '61–90 days₹12,00,0002', 'Over 90 days—']);
-    expect(within(receive).getByText(/Plus ₹1,98,240 in advances asked for on 1 project\./)).toBeInTheDocument();
+    expect(within(receive).getAllByText('₹22,00,000')[0]).toBeInTheDocument();
+    const ages = within(receive).getByRole('list', { name: 'By how long ago each invoice was sent' });
+    expect(within(ages).getAllByRole('listitem').map((li) => li.textContent)).toEqual(
+      ['0–30 days₹10,00,0001 invoice', '31–60 days—0 invoices', '61–90 days₹12,00,0002 invoices', 'Over 90 days—0 invoices']);
+    expect(receive.querySelectorAll('.agebar span')).toHaveLength(2);                                 // a coloured part for each age with money
+    expect(within(receive).getByText(/Advances requested on proformas:/)).toHaveTextContent('₹1,98,240 (1 project). They count once paid.');
     expect(within(receive).getByText('Gear Cutters Ltd · Hosur plant')).toBeInTheDocument();
-    const month = screen.getByRole('heading', { name: 'October' }).closest('section')!;
-    expect(within(month).getByText('₹4,77,994')).toBeInTheDocument();
-    expect(within(month).getByText('₹0')).toBeInTheDocument();
   });
 
   it("says why when it can't load", async () => {
