@@ -67,7 +67,7 @@ def test_logo_and_tab_icons(client, login_as):
     login_as('U-A', ORG_A, 'alice@a.com')
     app_page = client.get('/dashboard/').get_data(as_text=True)              # the app draws its own sidebar and logo
     assert 'img/favicon.svg' in app_page and 'img/apple-touch-icon.png' in app_page
-    html = client.get('/templates/').get_data(as_text=True)                  # a server page
+    html = client.get('/settings/select-org').get_data(as_text=True)         # a server page
     assert 'img/documint-icon.svg' in html and 'img/favicon.svg' in html and 'img/apple-touch-icon.png' in html
     assert '>DM</span>' not in html
     for name in ('documint-icon.svg', 'documint-mark.svg', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'):

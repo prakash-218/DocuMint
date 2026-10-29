@@ -3,9 +3,10 @@
 import type { ComponentType } from 'react';
 import { matchRoutes } from 'react-router';
 import type { SkeletonKind } from '../Skeleton';
-import { AuditLogScreen, CustomerScreen, CustomersScreen, DocumentScreen, EditCustomerScreen, EditDocumentScreen, HomeScreen,
-         InboxScreen, ListScreen, NewCustomerScreen, NewDocumentScreen, NewProjectScreen, NotificationsScreen, OrgScreen,
-         PackingScreen, ProfileScreen, ProjectScreen, ProjectsScreen, SettingsScreen, ThreadScreen } from './screens';
+import { AuditLogScreen, CostingScreen, CustomerScreen, CustomersScreen, DocumentScreen, EditCustomerScreen, EditDocumentScreen,
+         EditTemplateScreen, HomeScreen, InboxScreen, ListScreen, NewCustomerScreen, NewDocumentScreen, NewProjectScreen,
+         NewTemplateScreen, NotificationsScreen, OrgScreen, PackingScreen, ProfileScreen, ProjectScreen, ProjectsScreen,
+         RatesScreen, SettingsScreen, TemplateLayoutScreen, TemplateScreen, TemplatesScreen, ThreadScreen } from './screens';
 
 export interface AppRoute {
   path: string;
@@ -46,6 +47,13 @@ export const ROUTES: AppRoute[] = [
   { path: '/settings/profile', screen: ProfileScreen, skeleton: 'page', label: 'Business profile' },
   { path: '/settings/audit-log', screen: AuditLogScreen, skeleton: 'list', label: 'Audit log' },
   { path: '/settings/organizations/:orgId/edit', screen: OrgScreen, skeleton: 'page', label: 'Name & address', ids: ['orgId'] },
+  { path: '/costings/rates', screen: RatesScreen, skeleton: 'page', label: 'Rates list' },
+  { path: '/costings/:costingId', screen: CostingScreen, skeleton: 'page', label: 'Costing', ids: ['costingId'] },
+  { path: '/templates', screen: TemplatesScreen, skeleton: 'list', label: 'Templates' },
+  { path: '/templates/create', screen: NewTemplateScreen, skeleton: 'page', label: 'New template' },
+  { path: '/templates/:templateId', screen: TemplateScreen, skeleton: 'page', label: 'Template', ids: ['templateId'] },
+  { path: '/templates/:templateId/layout', screen: TemplateLayoutScreen, skeleton: 'page', label: 'Pages & printing', ids: ['templateId'] },
+  { path: '/templates/:templateId/edit', screen: EditTemplateScreen, skeleton: 'page', label: 'Edit template', ids: ['templateId'] },
 ];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

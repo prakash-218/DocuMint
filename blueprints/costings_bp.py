@@ -4,7 +4,7 @@ Owners and admins only - costs and margins never reach members, viewers or custo
 import json
 import logging
 
-from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, g, jsonify, redirect, request, url_for
 
 import costing as K
 import projects
@@ -75,14 +75,11 @@ def create():
 @costings_bp.route('/<costing_id>')
 @require_org
 def edit(costing_id):
+    """A costing in its editor, in the React app (costing_view.editor)."""
     _guard()
     row = _costing_or_404(costing_id)
-    others = [c for c in K.list_for(g.current_org_id, row['project_id']) if c['costing_id'] != row['costing_id']]
-    from money import SYMBOLS
-    return render_template('costings/editor.html', costing=row, result=K.result_of(row), modes=K.MODES,
-                           rounding=K.ROUNDING, currencies=sorted(SYMBOLS), templates=_quote_templates(g.current_org_id, row['currency']),
-                           other_versions=others, base_currency=_base_currency(), rates=K.rates(g.current_org_id),
-                           spreads=K.SPREADS, shared_kinds=K.SHARED_KINDS)
+    import nav
+    return nav.spa(f"Costing v{row['version']} · {row.get('title') or ''}", 'page')
 
 
 @costings_bp.route('/<costing_id>/preview', methods=['POST'])
@@ -204,11 +201,8 @@ def rates():
             logger.exception('Could not save the rates for %s', org_id)
             flash(f'Could not save the rates: {e}', 'error')
         return redirect(url_for('costings_bp.rates', back=request.args.get('back') or None))
-    known = K.rates(org_id)
-    back = request.args.get('back') or ''
-    back_row = K.get(back, org_id) if back else None
-    return render_template('costings/rates.html', rates=known, suggestions=K.rate_suggestions(org_id, known),
-                           base_currency=_base_currency(), back=back_row)
+    import nav
+    return nav.spa('Rates list', 'page')                   # the list: costing_view.rates_page
 
 
 @costings_bp.route('/<costing_id>/delete', methods=['POST'])

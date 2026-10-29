@@ -21,6 +21,12 @@ const Settings = lazy(() => import('../islands/settings/Settings'));
 const Profile = lazy(() => import('../islands/settings/Profile'));
 const AuditLog = lazy(() => import('../islands/settings/AuditLog'));
 const OrgForm = lazy(() => import('../islands/settings/OrgForm'));
+const CostingPage = lazy(() => import('../islands/costing/CostingEditor'));
+const RatesPage = lazy(() => import('../islands/costing/Rates'));
+const TemplateList = lazy(() => import('../islands/templates/TemplateList'));
+const TemplatePage = lazy(() => import('../islands/templates/TemplatePage'));
+const PagesPrinting = lazy(() => import('../islands/templates/PagesPrinting'));
+const Builder = lazy(() => import('../islands/templates/Builder'));
 
 export function HomeScreen() {
   return <Home />;
@@ -144,4 +150,45 @@ export function AuditLogScreen() {
 export function OrgScreen() {
   const { orgId = '' } = useParams();
   return <OrgForm key={orgId} orgId={orgId} />;
+}
+
+/** /costings/<id>: a costing in its editor */
+export function CostingScreen() {
+  const { costingId = '' } = useParams();
+  return <CostingPage key={costingId} costingId={costingId} />;
+}
+
+/** /costings/rates (?back=<costing id>) */
+export function RatesScreen() {
+  const { key, search } = useListKey();
+  return <RatesPage key={key} search={search} />;
+}
+
+/** /templates/ (?include_archived=true, ?page=) */
+export function TemplatesScreen() {
+  const { key, search } = useListKey();
+  return <TemplateList key={key} search={search} />;
+}
+
+/** /templates/<id> */
+export function TemplateScreen() {
+  const { templateId = '' } = useParams();
+  return <TemplatePage key={templateId} templateId={templateId} />;
+}
+
+/** /templates/<id>/layout: pages & printing */
+export function TemplateLayoutScreen() {
+  const { templateId = '' } = useParams();
+  return <PagesPrinting key={templateId} templateId={templateId} />;
+}
+
+/** /templates/create */
+export function NewTemplateScreen() {
+  return <Builder source="/api/templates/new" title="New template" />;
+}
+
+/** /templates/<id>/edit: its fields in the builder */
+export function EditTemplateScreen() {
+  const { templateId = '' } = useParams();
+  return <Builder key={templateId} source={`/api/templates/${templateId}/fields`} title="Edit template" />;
 }

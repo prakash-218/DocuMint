@@ -539,3 +539,94 @@ def business_profile():
     if get_current_org_role() not in MANAGERS:
         return jsonify(error='Only organization owners can change the business profile'), 403
     return jsonify(project_view._plain(settings_view.profile(g.current_org_id, url_for)))
+
+
+# ---------------------------------------------------------------- Costings and templates
+
+def _base_currency():
+    from document_service import get_org_profile
+    return get_org_profile(g.current_org_id)[1].get('default_currency') or 'INR'
+
+
+@api_bp.route('/costings/rates')
+@require_org
+def costing_rates():
+    """The usual rates (costing_view.rates_page); ?back=<costing id> to go back to it. Owners and admins."""
+    import costing as K
+    import costing_view
+    if get_current_org_role() not in MANAGERS:
+        return jsonify(error='Only owners and admins see costings'), 403
+    back = K.get(request.args['back'], g.current_org_id) if request.args.get('back') else None
+    return jsonify(project_view._plain(costing_view.rates_page(g.current_org_id, back, _base_currency(), url_for)))
+
+
+@api_bp.route('/costings/<costing_id>')
+@require_org
+def costing(costing_id):
+    """A costing in its editor (costing_view.editor). Owners and admins."""
+    import costing as K
+    import costing_view
+    if get_current_org_role() not in MANAGERS:
+        return jsonify(error='Only owners and admins see costings'), 403
+    row = K.get(costing_id, g.current_org_id)
+    if not row:
+        return jsonify(error='Not found'), 404
+    return jsonify(project_view._plain(costing_view.editor(g.current_org_id, row, _base_currency(), url_for)))
+
+
+@api_bp.route('/templates')
+@require_org
+def templates():
+    """The templates as cards (template_view.cards); ?include_archived=true, ?page=."""
+    import template_view
+    return jsonify(template_view.cards(g.current_org_id, request.args.get('include_archived', '').lower() == 'true',
+                                       get_current_org_role(), url_for))
+
+
+@api_bp.route('/templates/new')
+@require_org
+def new_template():
+    import template_builder as TB
+    import template_view
+    if get_current_org_role() not in MANAGERS:
+        return jsonify(error='Only owners and admins can create templates'), 403
+    return jsonify(template_view.builder(g.current_org_id, None, None, TB.STARTER, url_for))
+
+
+@api_bp.route('/templates/<template_id>')
+@require_org
+def template(template_id):
+    """A template's page (template_view.overview): its preview on sample values, formulas, pages, use and versions."""
+    import template_view
+    data = template_view.overview(g.current_org_id, template_id, get_current_org_role(), url_for)
+    return jsonify(project_view._plain(data)) if data else (jsonify(error='Not found'), 404)
+
+
+@api_bp.route('/templates/<template_id>/layout')
+@require_org
+def template_layout(template_id):
+    """Pages & printing (template_view.layout_page). Owners and admins."""
+    import template_view
+    from access import get_org_template
+    if get_current_org_role() not in MANAGERS:
+        return jsonify(error='Only owners and admins can change how templates print'), 403
+    info = get_org_template(template_id, g.current_org_id)
+    if not info:
+        return jsonify(error='Not found'), 404
+    return jsonify(template_view.layout_page(g.current_org_id, template_id, info, url_for))
+
+
+@api_bp.route('/templates/<template_id>/fields')
+@require_org
+def template_fields(template_id):
+    """The latest version's fields in the builder (template_view.builder). Owners and admins."""
+    import template_builder as TB
+    import template_view
+    if get_current_org_role() not in MANAGERS:
+        return jsonify(error='Only owners and admins can edit templates'), 403
+    info = next((t for t in db.execute_proc('sp_list_templates', (g.current_org_id, False)) or []
+                 if t.get('template_id') == template_id and t.get('version') == t.get('latest_version')), None)
+    if not info:
+        return jsonify(error='Not found'), 404
+    return jsonify(template_view.builder(g.current_org_id, template_id, info, TB.sections_for_editor(template_id, info['version']),
+                                         url_for, in_use=TB.version_in_use(g.current_org_id, template_id, info['version'])))

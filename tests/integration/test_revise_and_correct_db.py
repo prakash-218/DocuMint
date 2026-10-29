@@ -153,11 +153,12 @@ def test_templates_say_what_they_are_for(client, gst_org):
     assert 'Quotation with cost break-up' in mine and 'Tax Invoice' not in mine and 'Tax Invoice' in others
 
     # Changing it: the Tax Invoice template is offered for quotations too
-    layout_page = client.get(f'/templates/{invoice["template_id"]}/layout').get_data(as_text=True)
-    assert 'name="used_for" value="invoice" class="form-checkbox" checked' in layout_page
+    from tests.spa import screen
+    assert screen(client, f'/api/templates/{invoice["template_id"]}/layout')['used_for'] == ['invoice']
     form = {'page_count': '0', 'export': 'auto', 'used_for': ['invoice', 'quote']}
     assert client.post(f'/templates/{invoice["template_id"]}/layout', data=form).status_code == 302
     assert load_layout(invoice['template_id'], org_id)['used_for'] == ['invoice', 'quote']
     assert 'Tax Invoice' in [t['name'] for t in editor(client, f'/quotes/create?project_id={project_id}')['templates']]
     client.post(f'/templates/{invoice["template_id"]}/layout', data={**form, 'used_for': ['invoice']})
-    assert 'For invoices' in client.get('/templates/').get_data(as_text=True)
+    [card] = [c for c in screen(client, '/api/templates')['cards'] if c['url'] == f"/templates/{invoice['template_id']}"]
+    assert card['used_for'] == 'invoices'
