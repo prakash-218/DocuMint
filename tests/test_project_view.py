@@ -64,6 +64,13 @@ def test_a_sent_quotation_waits_for_the_answer():
     assert nxt['actions'][1] == {'label': 'Send a follow-up', 'kind': 'email', 'invoice_id': q['invoice_id'], 'primary': False}
 
 
+def test_after_two_weeks_without_an_answer_the_next_step_is_to_chase_it():
+    q = doc('quote', 'sent', issue='2026-10-01')
+    st, nxt = look([q])
+    assert nxt['tone'] == 'action' and nxt['sub'] == 'No answer for 19 days. Time to follow it up.'
+    assert labels(nxt) == ['Mark accepted', 'Send a follow-up*', 'Mark declined', 'Make a revision']
+
+
 def test_a_declined_quotation():
     st, nxt = look([doc('quote', 'declined')])
     assert states(st)[1] == ('accepted', 'late', 'Declined') and st['pill'] == {'text': 'Declined', 'tone': 'late'}

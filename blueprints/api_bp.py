@@ -87,6 +87,13 @@ def send_email(project_id):
 
 # ---------------------------------------------------------------- The project page
 
+@api_bp.route('/projects')
+@require_org
+def list_projects():
+    """Every project with where it is and what's next (project_view.projects_list), for the list and the board."""
+    return jsonify(project_view.projects_list(g.current_org_id, get_current_org_role(), url_for))
+
+
 @api_bp.route('/projects/<project_id>')
 @require_org
 def project(project_id):
