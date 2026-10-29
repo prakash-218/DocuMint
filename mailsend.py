@@ -124,25 +124,39 @@ def reply_subject(subject: str) -> str:
 
 # ---------------------------------------------------------------- Sending
 
+def _said(e: smtplib.SMTPResponseException) -> str:
+    """The server's reply, first line, e.g. '530 5.7.0 Authentication Required.'"""
+    text = e.smtp_error.decode(errors='replace') if isinstance(e.smtp_error, bytes) else str(e.smtp_error)
+    return f'{e.smtp_code} {text.splitlines()[0] if text else ""}'.strip()
+
+
 def send(cfg: Dict, message: EmailMessage, recipients: List[str]) -> None:
     try:
         if cfg['smtp_ssl']:
             server = smtplib.SMTP_SSL(cfg['smtp_host'], cfg['smtp_port'], timeout=30)
         else:
             server = smtplib.SMTP(cfg['smtp_host'], cfg['smtp_port'], timeout=30)
+        with server:
+            server.ehlo()                       # what the server offers (STARTTLS, AUTH) is only known after EHLO
             if cfg['smtp_starttls']:
                 server.starttls()
-        with server:
+                server.ehlo()
             if cfg['smtp_user'] and cfg['smtp_password'] and server.has_extn('auth'):
                 server.login(cfg['smtp_user'], cfg['smtp_password'])
             server.send_message(message, to_addrs=recipients)
     except smtplib.SMTPRecipientsRefused as e:
-        raise SendError('The mail server refused ' + ', '.join(e.recipients) + '.', 502) from e
+        raise SendError('The mail server refused ' + ', '.join(e.recipients) + '. Nothing was sent.', 502) from e
     except smtplib.SMTPAuthenticationError as e:
-        raise SendError('The mail server didn\'t accept the mailbox\'s login. Check its SMTP password.', 502) from e
+        raise SendError(f"The mail server didn't accept the mailbox's login ({_said(e)}). Check its password.", 502) from e
+    except smtplib.SMTPSenderRefused as e:
+        logger.error('%s refused to send from %s: %s', cfg['smtp_host'], e.sender, _said(e))
+        raise SendError(f'The mail server refused to send from {e.sender} ({_said(e)}). Nothing was sent.', 502) from e
+    except smtplib.SMTPResponseException as e:
+        logger.error('Sending through %s failed: %s', cfg['smtp_host'], _said(e))
+        raise SendError(f'The mail server said: {_said(e)}. Nothing was sent.', 502) from e
     except (smtplib.SMTPException, OSError) as e:
         logger.exception('Sending through %s failed', cfg['smtp_host'])
-        raise SendError(f'Couldn\'t reach the mail server ({type(e).__name__}). Nothing was sent.', 502) from e
+        raise SendError(f"Couldn't reach the mail server ({type(e).__name__}). Nothing was sent.", 502) from e
 
 
 def save_to_sent(cfg: Dict, message: EmailMessage) -> Optional[str]:

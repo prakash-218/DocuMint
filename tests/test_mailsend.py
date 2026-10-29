@@ -61,6 +61,51 @@ def test_email_send_from_picks_the_mailbox(mailbox):
     assert mailsend.sender_config()['address'] == 'other@ourworks.example'
 
 
+class FakeGmail:
+    """Like smtp.gmail.com: AUTH is only offered after EHLO, and nothing is sent without logging in."""
+
+    def __init__(self, host, port, timeout=None):
+        self.features, self.logged_in, self.sent = {}, None, []
+        FakeGmail.last = self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def ehlo(self):
+        self.features = {'auth': 'LOGIN PLAIN XOAUTH2'}
+
+    def has_extn(self, name):
+        return name.lower() in self.features
+
+    def login(self, user, password):
+        self.logged_in = (user, password)
+
+    def send_message(self, message, to_addrs=None):
+        import smtplib
+        if not self.logged_in:
+            raise smtplib.SMTPSenderRefused(530, b'5.7.0 Authentication Required. For more information...', message['From'])
+        self.sent.append(to_addrs)
+
+
+def test_it_logs_in_to_gmail_before_sending(monkeypatch):
+    monkeypatch.setattr(mailsend.smtplib, 'SMTP_SSL', FakeGmail)
+    cfg = {'smtp_host': 'smtp.gmail.com', 'smtp_port': 465, 'smtp_ssl': True, 'smtp_starttls': False,
+           'smtp_user': 'collector@gmail.com', 'smtp_password': 'app-password'}
+    message = mailsend.build_message('Our Works', 'desk@ourworks.example', ['ravi@gearco.example'], [], 'Hello', 'Hi.')
+    mailsend.send(cfg, message, ['ravi@gearco.example'])
+    assert FakeGmail.last.logged_in == ('collector@gmail.com', 'app-password')
+    assert FakeGmail.last.sent == [['ravi@gearco.example']]
+
+    # and when the server still refuses, the person sending sees what it said
+    with pytest.raises(mailsend.SendError) as refused:
+        mailsend.send({**cfg, 'smtp_password': None}, message, ['ravi@gearco.example'])
+    assert str(refused.value) == ('The mail server refused to send from Our Works <desk@ourworks.example> '
+                                  '(530 5.7.0 Authentication Required. For more information...). Nothing was sent.')
+
+
 def test_a_reply_stays_in_its_thread_and_carries_the_pdfs():
     m = mailsend.build_message('Our Works', 'desk@ourworks.example', ['ravi@gearco.example'], ['accounts@gearco.example'],
                                'Re: PO for hob arbors', 'Dear Ravi,\n\nAttached.', [('Quote_Q-041.pdf', b'%PDF-1.4 x')],
