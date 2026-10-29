@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../api';
 import { Skeleton } from '../../Skeleton';
+import { PageHeader } from '../../app/PageHeader';
 import { Composer } from '../EmailComposer';
 import { Documents } from './Documents';
 import { MoneyStrip, NextStep, Tracker } from './Overview';
@@ -46,12 +47,19 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
   }
 
   if (!page) {
-    return error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="page" label="Loading the project…" />;
+    return (
+      <>
+        <PageHeader title="Project" crumbs={[{ label: 'Projects', href: '/projects/' }, { label: '…' }]} />
+        {error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="page" label="Loading the project…" />}
+      </>
+    );
   }
 
   const { can, project } = page;
   return (
     <div className="ui">
+      <PageHeader title={`${project.title} · ${project.label}`}
+                  crumbs={[{ label: 'Projects', href: '/projects/' }, { label: `${project.label} ${project.title}` }]} />
       {error && (
         <div className="error" role="alert">
           <span>{error}</span>

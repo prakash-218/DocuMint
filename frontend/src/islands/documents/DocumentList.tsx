@@ -3,6 +3,7 @@ import { api, ApiError } from '../../api';
 import { day, money, totals } from '../../format';
 import { Icon } from '../../icons';
 import { Skeleton } from '../../Skeleton';
+import { PageHeader } from '../../app/PageHeader';
 import type { Tone } from '../project/types';
 
 // Quotations, proformas or invoices, as the prototype's list draws them: tabs with how many and how much, one
@@ -79,7 +80,18 @@ function remember(tab: string, query: string) {
   } catch { /* the address stays as it was */ }
 }
 
-export default function DocumentList({ group, tab: firstTab = 'all', query: firstQuery = '' }: { group: string; tab?: string; query?: string }) {
+const TITLES: Record<string, string> = { quotes: 'Quotations', proformas: 'Proforma invoices', invoices: 'Invoices' };
+
+export default function DocumentList(props: { group: string; tab?: string; query?: string }) {
+  return (
+    <>
+      <PageHeader title={TITLES[props.group] ?? 'Documents'} />
+      <ListScreen {...props} />
+    </>
+  );
+}
+
+function ListScreen({ group, tab: firstTab = 'all', query: firstQuery = '' }: { group: string; tab?: string; query?: string }) {
   const [data, setData] = useState<DocList | null>(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState(firstTab);

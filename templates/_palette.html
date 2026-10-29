@@ -1,0 +1,18 @@
+{# The search (Ctrl K), static/js/palette.js: on the server pages and the React app #}
+{% if nav_role %}
+    <dialog class="k-dialog palette" id="palette" aria-label="Search" data-source="{{ url_for('search_bp.items') }}">
+        <div class="palette-search">
+            <i data-lucide="search"></i>
+            <input type="text" class="palette-query" placeholder="Search documents, projects, customers, pages…" aria-label="Search"
+                   autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list">
+            <button type="button" class="kbd palette-esc" data-close aria-label="Close">Esc</button>
+        </div>
+        <ul class="palette-list" id="palette-list" role="listbox" aria-label="Results"></ul>
+        <p class="palette-more" hidden></p>
+        <div class="palette-foot">
+            <span><kbd class="kbd">↑</kbd> <kbd class="kbd">↓</kbd> move</span>
+            <span><kbd class="kbd">Enter</kbd> open</span>
+            <span><kbd class="kbd" data-palette-key>Ctrl Enter</kbd> new tab</span>
+        </div>
+    </dialog>
+{% endif %}

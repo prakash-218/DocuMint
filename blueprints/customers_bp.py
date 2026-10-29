@@ -166,7 +166,8 @@ def view_customer_new(customer_id):
 @customers_bp.route('/<customer_id>')
 @require_org
 def view_customer(customer_id):
-    """A customer: what they owe, their projects, documents, statement, files and people (frontend/src/islands/customer/)."""
+    """A customer: what they owe, their projects, documents, statement, files and people, in the React app
+    (frontend/src/islands/customer/)."""
     try:
         customer, _ = get_org_customer(customer_id, g.current_org_id)
     except DatabaseError:
@@ -174,7 +175,8 @@ def view_customer(customer_id):
     if not customer:
         flash('Customer not found', 'error')
         return redirect(url_for('customers_bp.list_customers'))
-    return render_template('customers/new_view.html', customer=customer)
+    import nav
+    return nav.spa(C.label(customer), 'page')
 
 
 def _customer_page(customer_id):

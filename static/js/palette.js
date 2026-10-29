@@ -200,7 +200,8 @@
         remember(item);
         if (newTab) { root.open(item.url, '_blank'); return; }
         dialog.close();
-        root.location = item.url;
+        if (root.dmNavigate) root.dmNavigate(item.url);    // the React app opens its own screens without a page load
+        else root.location = item.url;
     }
 
     function open() {
@@ -231,11 +232,11 @@
             if (dialog.open) dialog.close(); else open();
         }
     });
-    document.querySelectorAll('[data-palette-open]').forEach(function (btn) {
-        btn.addEventListener('click', open);
-        btn.addEventListener('mouseenter', load);         // start loading before the click
-        btn.addEventListener('focus', load);
-    });
+    // The search buttons, wherever they are (the React app draws its own after this runs)
+    function opener(e) { return e.target && e.target.closest ? e.target.closest('[data-palette-open]') : null; }
+    document.addEventListener('click', function (e) { if (opener(e)) open(); });
+    document.addEventListener('mouseover', function (e) { if (opener(e)) load(); });     // start loading before the click
+    document.addEventListener('focusin', function (e) { if (opener(e)) load(); });
     // Back to a page the search left from: don't show it still open
     root.addEventListener('pageshow', function (e) { if (e.persisted && dialog.open) dialog.close(); });
 })(this);

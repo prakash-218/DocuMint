@@ -3,6 +3,7 @@ import { api, ApiError } from '../../api';
 import { day, money, totals } from '../../format';
 import { Icon } from '../../icons';
 import { Skeleton } from '../../Skeleton';
+import { PageHeader } from '../../app/PageHeader';
 import type { Tone } from '../project/types';
 
 // The projects list, and a board by stage, as the prototype draws them: each project shows the step it has
@@ -69,6 +70,15 @@ const sumQuoted = (rows: Row[]) => {
 };
 
 export default function ProjectsBoard() {
+  return (
+    <>
+      <PageHeader title="Projects" />
+      <ProjectsScreen />
+    </>
+  );
+}
+
+function ProjectsScreen() {
   const [data, setData] = useState<Projects | null>(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>('open');

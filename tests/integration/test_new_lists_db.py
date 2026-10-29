@@ -3,9 +3,6 @@ The quotation, proforma and invoice lists against real PostgreSQL (same opt-in a
 from GET /api/documents/<group>, a link from elsewhere opening a tab, and Sales on quotations only.
 """
 
-import html
-import json
-import re
 import uuid
 
 from tests.integration.test_app_db import OWNER, VIEWER, login, pytestmark  # noqa: F401
@@ -37,10 +34,9 @@ def test_each_list_with_where_its_documents_stand(client, gst_org):
     invoice = _rows(client, 'invoices')[invoice_id]
     assert (invoice['tab'], invoice['tag']['text'], invoice['balance']) == ('draft', 'Draft', None)
 
-    # A link from elsewhere (Home) opens its tab
-    page = client.get('/invoices/?status=overdue&q=spline').get_data(as_text=True)
-    props = json.loads(html.unescape(re.search(r'data-island="document-list" data-props="([^"]*)"', page).group(1)))
-    assert props == {'group': 'invoices', 'tab': 'overdue', 'query': 'spline'}
+    # A link from elsewhere (Home) to a tab is the app's page; the app opens the tab (frontend/src/app/App.test.tsx)
+    from tests.spa import boot_of
+    assert boot_of(client.get('/invoices/?status=overdue&q=spline').get_data(as_text=True))
 
     # Sales: the quotations list, not the others
     _set_role(client, VIEWER, 'sales')

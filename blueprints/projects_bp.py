@@ -15,6 +15,7 @@ from db import DatabaseError, db
 import projects as J
 import activity
 import contacts
+import nav
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +108,8 @@ def create_project():
 @projects_bp.route('/')
 @require_org
 def list_projects():
-    """Every project with where it stands, as a list or a board by stage (React, frontend/src/islands/board/)."""
-    return render_template('projects/board.html')
+    """Every project with where it stands, as a list or a board by stage, in the React app (frontend/src/islands/board/)."""
+    return nav.spa('Projects', 'list')
 
 
 @projects_bp.route('/board')
@@ -121,8 +122,10 @@ def board():
 @projects_bp.route('/<project_id>')
 @require_org
 def view_project(project_id):
-    """A project: where it is, what's next, its documents, timeline, people and files (frontend/src/islands/project/)."""
-    return render_template('projects/new_view.html', project=_project_or_404(project_id))
+    """A project: where it is, what's next, its documents, timeline, people and files, in the React app
+    (frontend/src/islands/project/)."""
+    project = _project_or_404(project_id)
+    return nav.spa(f"{project['title']} · {J.project_label(project)}", 'page')
 
 
 @projects_bp.route('/<project_id>/new')

@@ -34,76 +34,24 @@
                 </a>
             </div>
             <nav aria-label="Main">
-                {% set ep = request.endpoint or '' %}
+                {# The sections and links come from nav.sidebar(), which the React app draws too #}
+                {% set sections = nav_sidebar(nav_role, unread_notifications) %}
+                {% set on = nav_active(sections, request.path) %}
+                {% for section in sections %}
                 <div class="nav-section">
+                    {% if section.title %}<div class="nav-section-title">{{ section.title }}</div>{% endif %}
                     <ul class="sidebar-nav">
-                        {% if not quotations_only %}
+                        {% for item in section['items'] %}
                         <li class="sidebar-nav-item">
-                            <a href="{{ url_for('dashboard_bp.index') }}" class="sidebar-nav-link {% if ep.startswith('dashboard_bp') %}active{% endif %}">
-                                <i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span>
-                            </a>
-                        </li>
-                        {% endif %}
-                        {% if nav_role in ('owner', 'admin') %}
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('notifications_bp.index') }}" class="sidebar-nav-link {% if ep.startswith('notifications_bp') %}active{% endif %}">
-                                <i data-lucide="bell" class="nav-icon"></i><span>Notifications</span>
-                                {% if unread_notifications %}<span class="nav-badge" aria-label="{{ unread_notifications }} unread">{{ unread_notifications if unread_notifications < 100 else '99+' }}</span>{% endif %}
-                            </a>
-                        </li>
-                        {% endif %}
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('projects_bp.list_projects') }}" class="sidebar-nav-link {% if ep.startswith('projects_bp') %}active{% endif %}">
-                                <i data-lucide="briefcase" class="nav-icon"></i><span>Projects</span>
-                            </a>
-                        </li>
-                        {% if nav_role in ('owner', 'admin', 'member') %}
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('emails_bp.inbox') }}" class="sidebar-nav-link {% if ep.startswith('emails_bp') %}active{% endif %}">
-                                <i data-lucide="mail" class="nav-icon"></i><span>Emails</span>
-                            </a>
-                        </li>
-                        {% endif %}
-                        {% set doc_group = doc_nav_group if doc_nav_group is defined else 'invoices' %}
-                        {% for key, label, icon in [('quote', 'Quotations', 'file-pen-line'), ('proforma', 'Proforma invoices', 'file-clock'), ('invoices', 'Invoices', 'file-text')] if key == 'quote' or not quotations_only %}
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('invoices_bp.list_invoices', type=None if key == 'invoices' else key) }}"
-                               class="sidebar-nav-link {% if ep.startswith('invoices_bp') and doc_group == key %}active{% endif %}">
-                                <i data-lucide="{{ icon }}" class="nav-icon"></i><span>{{ label }}</span>
+                            <a href="{{ item.href }}" class="sidebar-nav-link {% if item.key == on %}active{% endif %}">
+                                <i data-lucide="{{ item.icon }}" class="nav-icon"></i><span>{{ item.label }}</span>
+                                {% if item.badge %}<span class="nav-badge" aria-label="{{ item.badge }} unread">{{ item.badge if item.badge < 100 else '99+' }}</span>{% endif %}
                             </a>
                         </li>
                         {% endfor %}
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('customers_bp.list_customers') }}" class="sidebar-nav-link {% if ep.startswith('customers_bp') %}active{% endif %}">
-                                <i data-lucide="users" class="nav-icon"></i><span>Customers</span>
-                            </a>
-                        </li>
-                        {% if not quotations_only %}
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('templates_bp.list_templates') }}" class="sidebar-nav-link {% if ep.startswith('templates_bp') %}active{% endif %}">
-                                <i data-lucide="layout-template" class="nav-icon"></i><span>Templates</span>
-                            </a>
-                        </li>
-                        {% endif %}
                     </ul>
                 </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Organization</div>
-                    <ul class="sidebar-nav">
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('settings_bp.index') }}" class="sidebar-nav-link {% if ep.startswith('settings_bp') and ep != 'settings_bp.audit_log' %}active{% endif %}">
-                                <i data-lucide="settings" class="nav-icon"></i><span>Settings</span>
-                            </a>
-                        </li>
-                        {% if nav_role in ('owner', 'admin') %}
-                        <li class="sidebar-nav-item">
-                            <a href="{{ url_for('settings_bp.audit_log') }}" class="sidebar-nav-link {% if ep == 'settings_bp.audit_log' %}active{% endif %}">
-                                <i data-lucide="history" class="nav-icon"></i><span>Audit log</span>
-                            </a>
-                        </li>
-                        {% endif %}
-                    </ul>
-                </div>
+                {% endfor %}
             </nav>
             <div class="sidebar-footer">
                 {% set user_orgs = session.get('user_organizations', []) %}
@@ -167,23 +115,7 @@
         </main>
     </div>
 
-    {% if nav_role %}
-    <dialog class="k-dialog palette" id="palette" aria-label="Search" data-source="{{ url_for('search_bp.items') }}">
-        <div class="palette-search">
-            <i data-lucide="search"></i>
-            <input type="text" class="palette-query" placeholder="Search documents, projects, customers, pages…" aria-label="Search"
-                   autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list">
-            <button type="button" class="kbd palette-esc" data-close aria-label="Close">Esc</button>
-        </div>
-        <ul class="palette-list" id="palette-list" role="listbox" aria-label="Results"></ul>
-        <p class="palette-more" hidden></p>
-        <div class="palette-foot">
-            <span><kbd class="kbd">↑</kbd> <kbd class="kbd">↓</kbd> move</span>
-            <span><kbd class="kbd">Enter</kbd> open</span>
-            <span><kbd class="kbd" data-palette-key>Ctrl Enter</kbd> new tab</span>
-        </div>
-    </dialog>
-    {% endif %}
+    {% include "_palette.html" %}
     {% else %}
         {% block auth_content %}
         <div class="auth-standalone">

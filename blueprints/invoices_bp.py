@@ -30,10 +30,10 @@ doc_urls.install(invoices_bp)
 @invoices_bp.route('/')
 @require_org
 def list_invoices():
-    """Quotations, proformas or invoices (the address says which): the React list in frontend/src/islands/documents/,
+    """Quotations, proformas or invoices (the address says which), in the React app (frontend/src/islands/documents/),
     fed by GET /api/documents/<doc_path>. ?status= opens a tab and ?q= a search, as links from elsewhere ask."""
-    return render_template('invoices/lists.html', group=g.doc_path, tab=request.args.get('status') or 'all',
-                           query=(request.args.get('q') or '').strip())
+    import nav
+    return nav.spa({'quotes': 'Quotations', 'proformas': 'Proforma invoices'}.get(g.doc_path, 'Invoices'), 'list')
 
 
 @invoices_bp.route('/create', methods=['GET', 'POST'])

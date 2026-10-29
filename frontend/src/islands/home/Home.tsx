@@ -3,6 +3,8 @@ import { api, ApiError } from '../../api';
 import { money, totals, when } from '../../format';
 import { Icon, type IconName } from '../../icons';
 import { Skeleton } from '../../Skeleton';
+import { NewMenu, useBoot } from '../../app/Layout';
+import { PageHeader } from '../../app/PageHeader';
 import type { Tone } from '../project/types';
 
 // Home, as the prototype draws it: a greeting and the three numbers that matter, what needs doing (one row a
@@ -67,6 +69,16 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 const primary = (t: Totals) => t.INR ?? Object.values(t)[0] ?? 0;
 
 export default function Home() {
+  const boot = useBoot();
+  return (
+    <>
+      <PageHeader title="Home" crumbs={[{ label: 'Home' }]} actions={<NewMenu items={boot?.links.new ?? []} />} />
+      <HomeScreen />
+    </>
+  );
+}
+
+function HomeScreen() {
   const [data, setData] = useState<HomeData | null>(null);
   const [error, setError] = useState('');
 
