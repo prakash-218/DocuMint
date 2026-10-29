@@ -32,7 +32,7 @@
                                      'customer': {'name': invoice | customer_label, 'url': url_for('customers_bp.view_customer', customer_id=invoice.customer_id)},
                                      'project': {'label': project | project_label, 'title': project.title,
                                                  'url': url_for('projects_bp.view_project', project_id=project.project_id)} if project else none},
-                            'money': doc_money, 'currency': cur or none}, label='Where this document is') }}
+                            'money': doc_money, 'currency': cur or none}, label='Where this document is', skeleton='doc') }}
 <noscript><p>What to do next needs JavaScript. The <a href="{{ url_for('invoices_bp.view_invoice_classic', invoice_id=invoice.invoice_id) }}">classic page</a> works without it.</p></noscript>
 
 {% set takes_advance = t.takes_advances and status in ('sent', 'converted') %}

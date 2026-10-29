@@ -14,6 +14,6 @@
 {% endblock %}
 
 {% block content %}
-{{ island('customer-page', {'customerId': customer.customer_id}, label='Customer') }}
+{{ island('customer-page', {'customerId': customer.customer_id}, label='Customer', skeleton='page') }}
 <noscript><p>This page needs JavaScript. The <a href="{{ url_for('customers_bp.view_customer_classic', customer_id=customer.customer_id) }}">classic page</a> works without it.</p></noscript>
 {% endblock %}

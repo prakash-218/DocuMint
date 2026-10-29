@@ -11,6 +11,6 @@
 {% endblock %}
 
 {% block content %}
-{{ island('document-list', {'group': group, 'tab': tab, 'query': query}, label=title) }}
+{{ island('document-list', {'group': group, 'tab': tab, 'query': query}, label=title, skeleton='list') }}
 <noscript><p>This page needs JavaScript. The <a href="{{ url_for('invoices_bp.list_invoices_classic', doc_path=group) }}">classic list</a> works without it.</p></noscript>
 {% endblock %}

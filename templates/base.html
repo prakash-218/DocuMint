@@ -18,6 +18,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/ui.css') }}">
+    <noscript><style>.skeleton { display: none; }</style></noscript>{# without JavaScript the screens never come: no shapes, just their note #}
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js" defer></script>
     {% block extra_css %}{% endblock %}
 </head>

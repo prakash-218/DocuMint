@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../../api';
 import { day, money, totals } from '../../format';
 import { Icon } from '../../icons';
+import { Skeleton } from '../../Skeleton';
 import type { Tone } from '../project/types';
 
 // The projects list, and a board by stage, as the prototype draws them: each project shows the step it has
@@ -101,7 +102,7 @@ export default function ProjectsBoard() {
     return [...rows].sort(by[sort]);
   }, [filtered, tab, sort]);
 
-  if (!data) return <div className="ui">{error ? <p className="error" role="alert">{error}</p> : <p className="loading">Loading the projects…</p>}</div>;
+  if (!data) return error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="list" label="Loading the projects…" />;
 
   return (
     <div className="ui">
