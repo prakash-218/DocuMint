@@ -19,7 +19,7 @@
 {% if status != 'draft' and can_edit %}
 <button type="button" class="btn btn-secondary" data-open-dialog="change-dialog"><i data-lucide="pencil"></i><span class="btn-label">Change</span></button>
 {% endif %}
-<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic page</span></a>
+<a href="{{ url_for('invoices_bp.view_invoice_classic', invoice_id=invoice.invoice_id) }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic page</span></a>
 {% endblock %}
 
 {% block content %}
@@ -29,11 +29,11 @@
 <div class="ui doc-page">
 {{ island('document-next', {'next': doc_next, 'invoiceId': invoice.invoice_id, 'projectId': project.project_id if project else none,
                             'head': {'number': invoice | doc_number, 'kind': t.label, 'pill': doc_pill,
-                                     'customer': {'name': invoice | customer_label, 'url': url_for('customers_bp.view_customer_new', customer_id=invoice.customer_id)},
+                                     'customer': {'name': invoice | customer_label, 'url': url_for('customers_bp.view_customer', customer_id=invoice.customer_id)},
                                      'project': {'label': project | project_label, 'title': project.title,
-                                                 'url': url_for('projects_bp.view_project_new', project_id=project.project_id)} if project else none},
-                            'money': doc_money, 'currency': cur}, label='Where this document is') }}
-<noscript><p>What to do next needs JavaScript. The <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}">classic page</a> works without it.</p></noscript>
+                                                 'url': url_for('projects_bp.view_project', project_id=project.project_id)} if project else none},
+                            'money': doc_money, 'currency': cur or none}, label='Where this document is') }}
+<noscript><p>What to do next needs JavaScript. The <a href="{{ url_for('invoices_bp.view_invoice_classic', invoice_id=invoice.invoice_id) }}">classic page</a> works without it.</p></noscript>
 
 {% set takes_advance = t.takes_advances and status in ('sent', 'converted') %}
 {% set record = can_edit and ((t.takes_payments and status == 'pending') or takes_advance) %}
@@ -55,7 +55,7 @@
                             {% if p.advance_number %}Advance, against proforma {{ p.advance_number }}{% elif t.takes_advances %}Advance{% else %}{{ 'Payment' }}{% endif %}{% if p.method %} · {{ p.method }}{% endif %}
                             {% if p.reference_number %}<br><span class="muted">{{ p.reference_number }}</span>{% endif %}
                             {% if p.received_amount %}<br><span class="muted">Credited {{ p.received_amount | currency(p.received_currency) }}{% if p.amount %} @ {{ '%.2f' | format(p.received_amount / p.amount) }}{% endif %}</span>{% endif %}
-                            {% if t.takes_advances %}<br><span class="muted">{% if p.applied %}Applied to <a href="{{ url_for('invoices_bp.view_invoice_new', invoice_id=p.applied_to) }}">{{ p.applied_number or 'a draft invoice' }}</a>{% else %}Goes to the invoice when this proforma is converted{% endif %}</span>{% endif %}
+                            {% if t.takes_advances %}<br><span class="muted">{% if p.applied %}Applied to <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=p.applied_to) }}">{{ p.applied_number or 'a draft invoice' }}</a>{% else %}Goes to the invoice when this proforma is converted{% endif %}</span>{% endif %}
                             {% if p.advance_number and can_edit %}
                             <form method="POST" action="{{ url_for('invoices_bp.remove_advance', invoice_id=invoice.invoice_id, payment_id=p.payment_id) }}" style="display: inline;"
                                   data-confirm="Take this advance off {{ invoice | doc_number }}? It goes back to {{ p.advance_number }}.">
@@ -119,7 +119,7 @@
 
         {% if project %}
         <section class="side-sec" aria-labelledby="doc-people">
-            <h2 id="doc-people">Who gets it <a class="btn btn-secondary btn-xs" href="{{ url_for('projects_bp.view_project_new', project_id=project.project_id) }}">People</a></h2>
+            <h2 id="doc-people">Who gets it <a class="btn btn-secondary btn-xs" href="{{ url_for('projects_bp.view_project', project_id=project.project_id) }}">People</a></h2>
             {% if doc_people %}
             <ul class="people">
                 {% for p in doc_people %}
@@ -184,7 +184,7 @@
                        accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt,.dwg,.dxf,.step,.stp,.igs,.iges,.zip,.eml,.msg">
                 <span data-drop-label>Drop files here or <label for="doc-file" class="linkish">choose files</label></span>
             </form>
-            {% if project %}<p class="muted" style="margin: 0; font-size: 12.5px;">To say what a file is or give its number, open its tag on the <a href="{{ url_for('projects_bp.view_project_new', project_id=project.project_id) }}">project page</a>.</p>{% endif %}
+            {% if project %}<p class="muted" style="margin: 0; font-size: 12.5px;">To say what a file is or give its number, open its tag on the <a href="{{ url_for('projects_bp.view_project', project_id=project.project_id) }}">project page</a>.</p>{% endif %}
             {% endif %}
         </section>
     </aside>

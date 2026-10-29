@@ -114,7 +114,7 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
                    sub="Check it, then finalize it. It can't be edited afterwards; changes go into a revision.",
                    actions=[_post(finish, url('invoices_bp.finalize_invoice', invoice_id=doc_id), primary=True,
                                   confirm=f'{finish} {number}? It can\'t be edited afterwards.'),
-                            _link('Edit', url('invoices_bp.edit_invoice', invoice_id=doc_id, **{'from': 'new'}))])
+                            _link('Edit', url('invoices_bp.edit_invoice', invoice_id=doc_id))])
     elif status == 'revised':
         out.update(tone='draft', text=f'{number} was revised.', sub='The newest revision is the one to send or convert.')
     elif kind.key == 'quote':
@@ -224,7 +224,7 @@ def chain(project_docs: List[Dict], here_id, url: Callable) -> List[Dict]:
         summary = {'balance': balance_of(d) if kind.takes_payments else 0, 'paid': paid}
         out.append({'kind': kind.label, 'number': display_number(d), 'pill': pill(d, summary, paid if kind.key == 'proforma' else 0),
                     'total': float(d.get('total_amount') or 0), 'currency': d.get('currency_code') or 'INR',
-                    'url': url('invoices_bp.view_invoice_new', invoice_id=d['invoice_id']),
+                    'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id']),
                     'here': str(d['invoice_id']) == str(here_id) or any(str(v.get('invoice_id')) == str(here_id) for v in d.get('versions') or []),
                     'paid': kind.takes_payments and summary['balance'] <= 0.005 or (kind.key == 'proforma' and paid > 0)})
     return out

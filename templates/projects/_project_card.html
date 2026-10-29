@@ -4,12 +4,12 @@
 <div class="card">
     <div class="card-header">
         <h2 class="card-title">Project</h2>
-        {% if project %}<a href="{{ url_for(project_endpoint | default('projects_bp.view_project'), project_id=project.project_id) }}" class="btn btn-ghost btn-xs">Open</a>{% endif %}
+        {% if project %}<a href="{{ url_for('projects_bp.view_project', project_id=project.project_id) }}" class="btn btn-ghost btn-xs">Open</a>{% endif %}
     </div>
     <div class="card-body">
         {% if project %}
         <p style="margin: 0 0 var(--spacing-sm);">
-            <a href="{{ url_for(project_endpoint | default('projects_bp.view_project'), project_id=project.project_id) }}"><strong>{{ project.title }}</strong></a><br>
+            <a href="{{ url_for('projects_bp.view_project', project_id=project.project_id) }}"><strong>{{ project.title }}</strong></a><br>
             <span class="text-tertiary" style="font-size: var(--font-size-xs);">{{ project | project_label }} · FY {{ project.fiscal_year }}{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</span>
         </p>
         {% set others = project_docs | rejectattr('invoice_id', 'equalto', invoice.invoice_id)
@@ -17,7 +17,7 @@
         {% if others %}
         <ul class="project-card-docs">
             {% for d in others %}
-            <li><a href="{{ url_for(doc_endpoint | default('invoices_bp.view_invoice'), invoice_id=d.invoice_id) }}">{{ d | doc_number }}</a>
+            <li><a href="{{ url_for('invoices_bp.view_invoice', invoice_id=d.invoice_id) }}">{{ d | doc_number }}</a>
                 <span class="text-tertiary">{{ d.doc_type | doc_label }}{% if d.versions %} · {{ d.versions | length + 1 }} versions{% endif %}</span></li>
             {% endfor %}
         </ul>

@@ -77,7 +77,7 @@ def test_a_quotation_emailed_from_its_project(client, gst_org, monkeypatch):
     # It's on the project: a thread of ours, and the activity says who got what
     [thread] = db.execute_proc('sp_list_email_threads', (org_id, project_id, None, False, 10))
     assert thread['thread_id'] == sent['thread_id'] and thread['message_count'] == 1
-    page = client.get(f'/projects/{project_id}').get_data(as_text=True)
+    page = client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
     assert f'Emailed Quotation {quote_no} to Ravi Kumar' in page
 
     # Ravi answers; the sync files it in the same thread, and doesn't store our copy in Sent a second time

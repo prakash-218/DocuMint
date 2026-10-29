@@ -43,9 +43,9 @@ def test_sales_work_on_quotations_only(client, gst_org):
         assert fetch_invoice(own_quote)[0]['status'] == 'sent'
 
         # The owner's project and customer show them the quotation, not the invoice or what's owed
-        page = client.get(f'/projects/{project}').get_data(as_text=True)
+        page = client.get(f'/projects/{project}/classic').get_data(as_text=True)
         assert f'/quotes/{quote_id}' in page and f'/invoices/{invoice_id}' not in page and 'Still due' not in page
-        page = client.get(f'/customers/{customer}').get_data(as_text=True)
+        page = client.get(f'/customers/{customer}/classic').get_data(as_text=True)
         assert quote_no in page and f'/invoices/{invoice_id}' not in page and 'Outstanding' not in page
         items = client.get('/search/items').get_json()['items']
         assert any(i['url'] == f'/quotes/{quote_id}' for i in items) and not any(invoice_id in i['url'] for i in items)

@@ -15,7 +15,7 @@
 {% if not quotations_only %}<a href="{{ url_for('invoices_bp.create_invoice', doc_type='invoice', project_id=project.project_id) }}" class="btn btn-secondary"><i data-lucide="plus"></i><span class="btn-label">New invoice</span></a>{% endif %}
 {% endif %}
 {% if can_edit %}{{ island('email-composer', {'projectId': project.project_id}) }}{% endif %}
-<a href="{{ url_for('projects_bp.view_project_new', project_id=project.project_id) }}" class="btn btn-ghost"><i data-lucide="sparkles"></i><span class="btn-label">Try the new page</span></a>
+<a href="{{ url_for('projects_bp.view_project', project_id=project.project_id) }}" class="btn btn-ghost"><i data-lucide="sparkles"></i><span class="btn-label">New page</span></a>
 {% endblock %}
 
 {% block content %}

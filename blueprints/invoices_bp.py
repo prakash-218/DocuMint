@@ -6,7 +6,7 @@ import logging
 from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, make_response
 from db import db, DatabaseError
 from auth import require_org, get_current_org_role, can_create_invoice, can_edit_invoice, can_delete_invoice, can_finalize_invoice
-from access import get_org_invoice, get_org_template
+from access import back_to_page, get_org_invoice, get_org_template
 from app_helpers import invoice_is_overdue
 from documents import CHOOSABLE, DOC_TYPES, TAX_MODES, get_type, invoice_kind, load_json
 from document_service import (REVISABLE, DocumentError, apply_document_form, convert_document, customer_tax_hints,
@@ -369,10 +369,10 @@ def _create_form(org_id, doc_type):
                            today=date.today().isoformat())
 
 
-@invoices_bp.route('/<invoice_id>')
+@invoices_bp.route('/<invoice_id>/classic')
 @require_org
-def view_invoice(invoice_id):
-    """View invoice details (read-only: formulas are computed, never saved here)"""
+def view_invoice_classic(invoice_id):
+    """The classic document page (read-only: formulas are computed, never saved here)"""
     context = _view_context(invoice_id)
     if not isinstance(context, dict):
         return context
@@ -382,7 +382,15 @@ def view_invoice(invoice_id):
 @invoices_bp.route('/<invoice_id>/new')
 @require_org
 def view_invoice_new(invoice_id):
-    """The new document page: the same document, with what to do next on top (document_view.next_step)."""
+    """Where the new page was while it was opt-in."""
+    return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+
+
+@invoices_bp.route('/<invoice_id>')
+@require_org
+def view_invoice(invoice_id):
+    """A document: its state, what to do next and its money (document_view), the document, and beside it the project's
+    documents, who gets it and what happened."""
     context = _view_context(invoice_id)
     if not isinstance(context, dict):
         return context
@@ -410,25 +418,17 @@ def view_invoice_new(invoice_id):
         doc_chain=document_view.chain(context['project_docs'], invoice_id, url_for) if project else [],
         doc_people=[] if role == SALES and invoice.get('doc_type') != 'quote' else document_view.who_gets_it(invoice, people),
         doc_activity=document_view.activity(events, invoice_id, (invoice.get('customer_name'), invoice.get('customer_site'))))
-    return render_template('invoices/new_view.html', doc_endpoint='invoices_bp.view_invoice_new',
-                           project_endpoint='projects_bp.view_project_new', **context)
+    return render_template('invoices/new_view.html', **context)
 
 
 def _back(invoice_id):
-    """Where a form on a document page goes back to: the new page when that's the one it was sent from, or the
-    editor was opened from (?from=new)."""
-    from urllib.parse import urlparse
-    ref = urlparse(request.referrer or '')
-    if (not ref.netloc or ref.netloc == request.host) and ref.path.rstrip('/').endswith(f'/{invoice_id}/new')             or request.args.get('from') == 'new':
-        return url_for('invoices_bp.view_invoice_new', invoice_id=invoice_id)
-    return url_for('invoices_bp.view_invoice', invoice_id=invoice_id)
+    """Where a form on a document page goes back to: the classic page when that's the one it was sent from, else the page."""
+    return back_to_page('invoices_bp.view_invoice', invoice_id=invoice_id)
 
 
 def _editor(invoice_id, from_id):
-    """The editor for a document (one just made from from_id by converting or revising it, or the one being saved
-    again): when that came from the new page, saving goes back to the new page."""
-    new_page = _back(from_id) == url_for('invoices_bp.view_invoice_new', invoice_id=from_id)
-    return url_for('invoices_bp.edit_invoice', invoice_id=invoice_id, **({'from': 'new'} if new_page else {}))
+    """The editor for a document (one just made from from_id by converting or revising it, or the one being saved again)."""
+    return url_for('invoices_bp.edit_invoice', invoice_id=invoice_id)
 
 
 def _view_context(invoice_id):

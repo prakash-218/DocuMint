@@ -55,12 +55,12 @@ def test_customer_sites(client, gst_org):
     assert '>Gears Division<' in group and '>Madurai<' in group
     response = client.post('/projects/new', data={'customer_id': gears, 'title': 'Spline gauges'})
     project_id = re.search(r'/projects/([0-9a-f-]{36})', response.headers['Location']).group(1)
-    assert f'{name} · Gears Division' in client.get(f'/projects/{project_id}').get_data(as_text=True)
+    assert f'{name} · Gears Division' in client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
 
     # The parent's page has its sites and their projects; a site's page names its parent
-    page = client.get(f'/customers/{parent}').get_data(as_text=True)
+    page = client.get(f'/customers/{parent}/classic').get_data(as_text=True)
     assert 'Add site' in page and 'Gears Division' in page and 'Spline gauges' in page
-    assert f'of <a href="/customers/{parent}">{name}</a>' in client.get(f'/customers/{madurai}').get_data(as_text=True)
+    assert f'of <a href="/customers/{parent}">{name}</a>' in client.get(f'/customers/{madurai}/classic').get_data(as_text=True)
     listing = client.get(f'/customers/?q=madurai').get_data(as_text=True)
     assert name in listing and 'Madurai' in listing and 'row-site' in listing and 'Gears Division' not in listing
 
@@ -109,7 +109,7 @@ def test_thread_files_join_the_project(client, gst_org):
     assert {f['file_name']: f['kind'] for f in files} == {'Drawing A.pdf': 'drawing', 'PO 4500.pdf': 'po',
                                                          'photo.png': 'other'}
     assert {f['email_thread_id'] for f in files} == {thread_id}
-    page = client.get(f'/projects/{project_id}').get_data(as_text=True)
+    page = client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
     assert 'From email' in page and f'/emails/{thread_id}' in page
     pdf = client.get(f"/projects/files/{next(f['attachment_id'] for f in files if f['kind'] == 'po')}")
     assert pdf.data == po

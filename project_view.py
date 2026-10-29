@@ -162,7 +162,7 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
     f = facts(docs)
     edit, sales = can.get('edit'), can.get('sales')
     no = lambda d: display_number(d) or 'draft'  # noqa: E731
-    view = lambda d: url('invoices_bp.view_invoice_new', invoice_id=d['invoice_id'])  # noqa: E731
+    view = lambda d: url('invoices_bp.view_invoice', invoice_id=d['invoice_id'])  # noqa: E731
     edit_doc = lambda d, kind: _link(f'Edit {kind}', url('invoices_bp.edit_invoice', invoice_id=d['invoice_id']), True)  # noqa: E731
     convert = lambda label, source, target, primary=False: _post(  # noqa: E731
         label, url('invoices_bp.convert', invoice_id=source['invoice_id']), {'target': target}, primary)
@@ -248,11 +248,11 @@ def documents(docs: List[Dict], url: Callable) -> List[Dict]:
                     'customer_id': d.get('customer_id'), 'site': d.get('customer_site'), 'project_id': d.get('project_id'),
                     'status': d.get('status') or 'draft', 'issue_date': d.get('issue_date'), 'currency': d.get('currency_code'),
                     'total': float(d.get('total_amount') or 0), 'paid': float(d.get('paid_amount') or 0),
-                    'balance': balance_of(d) if kind.takes_payments else None, 'url': url('invoices_bp.view_invoice_new', invoice_id=d['invoice_id']),
+                    'balance': balance_of(d) if kind.takes_payments else None, 'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id']),
                     'pdf': url('invoices_bp.export_pdf', invoice_id=d['invoice_id']),
                     'versions': [{'invoice_id': v['invoice_id'], 'number': display_number(v), 'issue_date': v.get('issue_date'),
                                   'total': float(v.get('total_amount') or 0),
-                                  'url': url('invoices_bp.view_invoice_new', invoice_id=v['invoice_id'])} for v in d.get('versions') or []]})
+                                  'url': url('invoices_bp.view_invoice', invoice_id=v['invoice_id'])} for v in d.get('versions') or []]})
     return out
 
 
@@ -326,10 +326,10 @@ def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date]
                     'created_at': project.get('created_at'),
                     'customer': {'id': project['customer_id'], 'name': project.get('customer_name'),
                                  'site': project.get('customer_site'),
-                                 'url': url('customers_bp.view_customer_new', customer_id=project['customer_id'])},
+                                 'url': url('customers_bp.view_customer', customer_id=project['customer_id'])},
                     'po': {'number': po.get('reference_no'), 'date': po.get('doc_date'), 'amount': po.get('amount'),
                            'currency': po.get('currency')} if po else None,
-                    'classic_url': url('projects_bp.view_project', project_id=project_id)},
+                    'classic_url': url('projects_bp.view_project_classic', project_id=project_id)},
         'can': can,
         'stage': st,
         'next': next_step(docs, st, project, can, url, today),
@@ -394,7 +394,7 @@ def projects_list(org_id, role: str, url: Callable, today: Optional[date] = None
         step = next((s for s in st['steps'] if s['key'] == st['current']), None)
         rows.append({
             'id': p['project_id'], 'label': projects.project_label(p), 'title': p['title'], 'reference': p.get('reference') or '',
-            'url': url('projects_bp.view_project_new', project_id=p['project_id']),
+            'url': url('projects_bp.view_project', project_id=p['project_id']),
             'customer': {'id': p['customer_id'], 'name': p.get('customer_name'), 'site': p.get('customer_site')},
             'fiscal_year': p.get('fiscal_year'), 'status': p.get('status') or 'open',
             'stage': st['current'] if not (sales and st['current'] not in ('quoted', 'accepted', None)) else 'accepted',
@@ -414,7 +414,7 @@ def projects_list(org_id, role: str, url: Callable, today: Optional[date] = None
     return _plain({'can': can, 'projects': rows, 'board': [{'key': k, 'label': label} for k, label in BOARD],
                    'years': years, 'customers': [{'id': i, 'name': n} for i, n in customers],
                    'new_project': url('projects_bp.create_project') if can['edit'] else None,
-                   'classic_url': url('projects_bp.list_projects')})
+                   'classic_url': url('projects_bp.list_projects_classic')})
 
 
 def _plain(value):

@@ -83,7 +83,7 @@ def test_email_sync_links_threads_to_projects(client, gst_org, monkeypatch):
     assert hello['customer_id'] is None
 
     # Pages: project shows the thread; the inbox shows the unsorted one; the thread shows the mail
-    assert 'RFQ for fixtures' in client.get(f'/projects/{project_id}').get_data(as_text=True)
+    assert 'RFQ for fixtures' in client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
     assert 'Hello there' in client.get('/emails/').get_data(as_text=True)
     page = client.get(f"/emails/{linked[0]['thread_id']}").get_data(as_text=True)
     assert 'Please quote 2 sets.' in page and 'Also add a spare.' in page and 'Drawing A.pdf' in page
@@ -164,7 +164,7 @@ def _admin_checks(client, org_id, viewer, owner):
     assert any(n['title'] == f'Quotation {number} created' and n['project_id'] == project_id for n in admin_notes)
     owner_notes = db.execute_proc('sp_list_notifications', (owner['user_id'], org_id, 20, True)) or []
     assert not any(n['title'] == f'Quotation {number} created' for n in owner_notes)
-    assert f'Quotation {number} created' in client.get(f'/projects/{project_id}').get_data(as_text=True)   # activity
+    assert f'Quotation {number} created' in client.get(f'/projects/{project_id}/classic').get_data(as_text=True)   # activity
 
     # As the admin: sees the badge, can open settings pages, can't make or change owners
     login(client, VIEWER)

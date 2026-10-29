@@ -40,7 +40,7 @@ def test_a_job_from_quotation_to_paid(client, gst_org):
     org_id, tag = gst_org, uuid.uuid4().hex[:6]
     customer = _customer(org_id, f'Gear Cutters {tag}', 'Tamil Nadu', 'India')
     project_id = projects.create_project(org_id, customer, 'Hob arbor set')
-    assert client.get(f'/projects/{project_id}/new').status_code == 200
+    assert client.get(f'/projects/{project_id}').status_code == 200
     assert _where(_page(client, project_id)) == ('quoted', ['New quotation'])
 
     quote_id, quote_no = _create(client, org_id, 'quote', 'Quotation', customer, [{'description': 'Hob arbor', 'price': 10000, 'qty': 1}],
@@ -51,10 +51,10 @@ def test_a_job_from_quotation_to_paid(client, gst_org):
     assert _where(page) == ('accepted', ['Mark accepted'])
     assert page['money'][0]['quoted'] == 10000 and page['documents'][0]['status'] == 'sent'
     # the projects list says the same, for every project at once
-    assert client.get('/projects/board').status_code == 200
+    assert client.get('/projects/').status_code == 200
     row = next(r for r in client.get('/api/projects').get_json()['projects'] if r['id'] == project_id)
     assert (row['stage'], row['pill']['text'], row['action'], row['quoted']) == ('accepted', 'Waiting for an answer', 'Mark accepted', 10000)
-    assert row['url'] == f'/projects/{project_id}/new' and row['numbers'] == [quote_no]   # for the search
+    assert row['url'] == f'/projects/{project_id}' and row['numbers'] == [quote_no]   # for the search
 
     _run(client, page['next']['actions'][0])                                   # the customer said yes
     page = _page(client, project_id)
@@ -84,7 +84,7 @@ def test_a_job_from_quotation_to_paid(client, gst_org):
     assert [a['label'] for a in page['next']['actions']] == ['Mark the project completed']
     row = next(r for r in client.get('/api/projects').get_json()['projects'] if r['id'] == project_id)
     assert (row['stage'], row['pill']['text'], row['due']) == (None, 'Paid', 0)
-    assert project_id in _home(client, 'paid_open') and client.get('/dashboard/new').status_code == 200
+    assert project_id in _home(client, 'paid_open') and client.get('/dashboard/').status_code == 200
 
     # The page's own changes: complete it, a note, the details, a contact and what they get
     assert client.patch(f'/api/projects/{project_id}', json={'status': 'completed'}).status_code == 200

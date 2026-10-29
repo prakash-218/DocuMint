@@ -48,7 +48,7 @@ def test_costing_to_quote(client, gst_org):
     assert 'Costing saved' in page and 'HEC torqueing station' in page and 'Hiwin' in page
     saved = costing.get(costing_id, org_id)
     assert (float(saved['total_cost']), float(saved['total_price'])) == (191300, 220000)
-    assert f'/costings/{costing_id}' in client.get(f'/projects/{project_id}').get_data(as_text=True)
+    assert f'/costings/{costing_id}' in client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
 
     # Make the quote: items and selling prices, never the costs
     template_id = next(t['template_id'] for t in db.execute_proc('sp_list_templates', (org_id, False)) if t['name'] == 'Quotation')
@@ -93,7 +93,7 @@ def test_costing_to_quote(client, gst_org):
         login(client, email)
         assert client.get(f'/costings/{costing_id}').status_code == 403
         assert client.post(f'/costings/{costing_id}/preview', data=_form(SHEET)).status_code == 403
-        assert 'Costings' not in client.get(f'/projects/{project_id}').get_data(as_text=True)
+        assert 'Costings' not in client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
     login(client, OWNER)
 
     # The quote took the next quote number; give it back for the document tests that expect it

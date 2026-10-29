@@ -24,11 +24,11 @@ def test_dropped_files_then_say_what_they_are(client, gst_org):
                                        [{'description': 'Spline gauge', 'qty': 1, 'rate': 1000}], tax_mode='none', project_id=project_id)
 
     # Two files dropped at once, no kind given: each one's from its name, and its own name as its title
-    page = f'http://localhost/projects/{project_id}/new'
+    page = f'http://localhost/projects/{project_id}'
     response = client.post('/projects/files', data={'project_id': project_id, 'file': [(io.BytesIO(PDF), 'Drg HA-220 rev B.pdf'),
                                                                                       (io.BytesIO(PDF), 'scan 0041.pdf')]},
                            content_type='multipart/form-data', headers={'Referer': page})
-    assert response.status_code == 302 and response.headers['Location'].endswith(f'/projects/{project_id}/new')
+    assert response.status_code == 302 and response.headers['Location'].endswith(f'/projects/{project_id}')
     files = {f['file_name']: f for f in projects.list_attachments(org_id, project_id=project_id)}
     assert {n: (f['kind'], f['title']) for n, f in files.items()} == {
         'Drg HA-220 rev B.pdf': ('drawing', 'Drg HA-220 rev B.pdf'), 'scan 0041.pdf': ('other', 'scan 0041.pdf')}
@@ -46,7 +46,7 @@ def test_dropped_files_then_say_what_they_are(client, gst_org):
     assert client.patch(f'/api/files/{scan}', json={'kind': 'nonsense'}).status_code == 400
     assert client.patch(f'/api/files/{uuid.uuid4()}', json={'kind': 'po'}).status_code == 404
     assert client.patch(f'/api/files/{scan}', data={'kind': 'po'}).status_code == 415             # JSON only
-    assert 'data-dropzone' in client.get(f'/proformas/{proforma_id}/new').get_data(as_text=True)
+    assert 'data-dropzone' in client.get(f'/proformas/{proforma_id}').get_data(as_text=True)
 
     # Nothing chosen: said so, nothing stored
     client.post('/projects/files', data={'project_id': project_id}, content_type='multipart/form-data', headers={'Referer': page})
