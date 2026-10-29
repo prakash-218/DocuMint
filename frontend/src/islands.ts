@@ -13,4 +13,5 @@ export const islands: Islands = {
   'home': () => import('./islands/home/Home'),
   'document-next': () => import('./islands/document/DocumentNext'),
   'customer-page': () => import('./islands/customer/CustomerPage'),
+  'document-list': () => import('./islands/documents/DocumentList'),
 };

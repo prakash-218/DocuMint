@@ -95,6 +95,22 @@ def home():
     return jsonify(home_view.build(g.current_org_id, get_current_org_role(), url_for, email=session.get('email')))
 
 
+@api_bp.route('/documents/<any(quotes, proformas, invoices):group>')
+@require_org
+def documents(group):
+    """The quotations, proformas or invoices list (document_list.build). Sales see quotations only."""
+    import document_list
+    role = get_current_org_role()
+    if role == SALES and group != 'quotes':
+        return jsonify(error='Your role is Sales: projects, quotations and customers only'), 403
+    try:
+        docs = db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
+    except DatabaseError:
+        logger.exception("Failed to list documents for org %s", g.current_org_id)
+        return jsonify(error="Couldn't load the documents. Try again in a moment."), 500
+    return jsonify(document_list.build(group, docs, url_for, can_create=role in EDITORS))
+
+
 # ---------------------------------------------------------------- The project page
 
 @api_bp.route('/projects')
