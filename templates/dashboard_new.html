@@ -6,7 +6,7 @@
 {% block header_title %}<nav class="crumbs" aria-label="Breadcrumb"><b>Home</b></nav>{% endblock %}
 
 {% block header_actions %}
-<a href="{{ url_for('dashboard_bp.index') }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic dashboard</span></a>
+<a href="{{ url_for('dashboard_bp.index_classic') }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic dashboard</span></a>
 {% if current_org_role in ('owner', 'admin', 'member') %}
 {% set with_project = true %}{% include "_new_menu.html" %}
 {% endif %}
@@ -14,5 +14,5 @@
 
 {% block content %}
 {{ island('home', {}, label='Home') }}
-<noscript><p>This page needs JavaScript. The <a href="{{ url_for('dashboard_bp.index') }}">classic dashboard</a> works without it.</p></noscript>
+<noscript><p>This page needs JavaScript. The <a href="{{ url_for('dashboard_bp.index_classic') }}">classic dashboard</a> works without it.</p></noscript>
 {% endblock %}

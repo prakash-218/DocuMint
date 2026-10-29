@@ -8,6 +8,7 @@
 
 {% block header_actions %}
 {% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in editor_roles %}
+<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-ghost"><i data-lucide="sparkles"></i><span class="btn-label">New page</span></a>
 {% include "invoices/_pdf_menu.html" %}
 {% if status != 'draft' and can_edit and project %}
 {{ island('email-composer', {'projectId': project.project_id, 'invoiceId': invoice.invoice_id}) }}

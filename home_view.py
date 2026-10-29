@@ -151,7 +151,7 @@ def build(org_id, role: str, url: Callable, today: Optional[date] = None, email:
     events = db.execute_proc('sp_list_recent_events', (org_id, 8)) or []
     receive = to_receive(invoices, [r for r in rows if _group_of(r) == 'advance'], today)
     for c in receive['customers']:
-        c['url'] = url('customers_bp.view_customer_new', customer_id=c['id'])
+        c['url'] = url('customers_bp.view_customer', customer_id=c['id'])
     return project_view._plain({
         'attention': attention(rows, drafts),
         'unfiled_emails': {'count': unfiled, 'url': url('emails_bp.inbox')} if unfiled else None,
@@ -164,7 +164,7 @@ def build(org_id, role: str, url: Callable, today: Optional[date] = None, email:
                                       lambda p: p['amount'])},
         'recent': [{'id': e['event_id'], 'kind': e['kind'], 'title': e['title'], 'when': e['created_at'], 'link': e.get('link'),
                     'who': (e.get('actor_email') or '').split('@')[0] or None, 'project': e.get('project_title'),
-                    'project_url': url('projects_bp.view_project_new', project_id=e['project_id']) if e.get('project_id') else None}
+                    'project_url': url('projects_bp.view_project', project_id=e['project_id']) if e.get('project_id') else None}
                    for e in events],
-        'links': {'projects': url('projects_bp.board'), 'classic': url('dashboard_bp.index')},
+        'links': {'projects': url('projects_bp.list_projects'), 'classic': url('dashboard_bp.index_classic')},
     })

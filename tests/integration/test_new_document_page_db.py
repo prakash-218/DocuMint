@@ -41,12 +41,12 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
     project_id = projects.create_project(org_id, customer, 'Spline gauges')
     quote_id, quote_no = _create(client, org_id, 'quote', 'Quotation', customer, [{'description': 'Spline gauge', 'price': 20000, 'qty': 1}],
                                  tax_mode='none', project_id=project_id)
-    quote = f'/quotes/{quote_id}/new'
+    quote = f'/quotes/{quote_id}'
     props, text = _page(client, quote)
     assert _labels(props) == ['Mark as sent*', 'Edit'] and props['head']['pill'] == {'text': 'Draft', 'tone': 'draft'}
     assert props['head']['number'] == quote_no and props['money'] is None                       # no money strip on a quotation
-    assert props['next']['actions'][1]['href'].endswith(f'/quotes/{quote_id}/edit?from=new')
-    assert f'href="/quotes/{quote_id}"' in text                                # the classic page is a click away
+    assert props['next']['actions'][1]['href'].endswith(f'/quotes/{quote_id}/edit')
+    assert f'href="/quotes/{quote_id}/classic"' in text                                # the classic page is a click away
     # the project page's documents open the new page
     doc = client.get(f'/api/projects/{project_id}').get_json()['documents'][0]
     assert doc['url'] == quote
@@ -60,9 +60,9 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
     assert _labels(props) == ['Raise proforma for the advance*', 'Invoice in full instead', 'Undo: not answered yet']
 
     edit = _send(client, quote, props['next']['actions'][0])                  # the proforma, in the editor
-    assert edit.endswith('/edit?from=new')
+    assert edit.endswith('/edit')
     proforma_id = re.search(r'/proformas/([0-9a-f-]{36})/edit', edit).group(1)
-    proforma = f'/proformas/{proforma_id}/new'
+    proforma = f'/proformas/{proforma_id}'
     client.post(f'/proformas/{proforma_id}/finalize')
     props, text = _page(client, proforma)
     assert _labels(props)[0] == 'Record the advance*' and props['next']['actions'][0]['href'] == '#payment'
@@ -76,13 +76,13 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
 
     edit = _send(client, proforma, props['next']['actions'][0])               # the tax invoice, advance carried
     invoice_id = re.search(r'/invoices/([0-9a-f-]{36})/edit', edit).group(1)
-    invoice = f'/invoices/{invoice_id}/new'
+    invoice = f'/invoices/{invoice_id}'
     client.post(f'/invoices/{invoice_id}/finalize')
     props, _ = _page(client, invoice)
     assert _labels(props) == ['Record payment*', 'Email a reminder'] and props['next']['text'].endswith(' due.')
     # a form sent from the classic page goes back to the classic page
-    assert client.post(f'/invoices/{invoice_id}/payment', data={'amount': '1', 'method': 'Cash'}).headers['Location'] \
-        == f'/invoices/{invoice_id}'
+    assert client.post(f'/invoices/{invoice_id}/payment', data={'amount': '1', 'method': 'Cash'},
+                       headers={'Referer': f'http://localhost{invoice}/classic'}).headers['Location'] == f'{invoice}/classic'
 
     # Sales open the quotation's new page, not the proforma's; viewers see it all and can do nothing
     _set_role(client, VIEWER, 'sales')
@@ -100,4 +100,4 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
         login(client, OWNER)
         _set_role(client, VIEWER, 'viewer')
 
-    assert client.get(f'/invoices/{uuid.uuid4()}/new').status_code == 302    # not there: back to the list
+    assert client.get(f'/invoices/{uuid.uuid4()}').status_code == 302    # not there: back to the list

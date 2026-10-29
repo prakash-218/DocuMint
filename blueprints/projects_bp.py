@@ -9,7 +9,7 @@ import re
 
 from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
-from access import get_org_customer, get_org_invoice, safe_referrer
+from access import back_to_page, get_org_customer, get_org_invoice, safe_referrer
 from auth import MAIL_READERS, can_delete_project, can_edit_invoice, get_current_org_role, quotations_only, require_org
 from db import DatabaseError, db
 from document_service import get_org_profile
@@ -48,9 +48,9 @@ def _need_editor(back):
     return redirect(back)
 
 
-@projects_bp.route('/')
+@projects_bp.route('/classic')
 @require_org
-def list_projects():
+def list_projects_classic():
     org_id = g.current_org_id
     status = request.args.get('status', 'open')
     status = status if status in J.PROJECT_STATUSES or status == 'all' else 'open'
@@ -99,7 +99,7 @@ def picker_options():
 @require_org
 def group_linked():
     """Start projects for documents that are already linked (converted / revised) but not grouped."""
-    back = url_for('projects_bp.list_projects')
+    back = url_for('projects_bp.list_projects_classic')
     denied = _need_editor(back)
     if denied:
         return denied
@@ -118,7 +118,7 @@ def group_linked():
 @require_org
 def create_project():
     org_id = g.current_org_id
-    back = url_for('projects_bp.list_projects')
+    back = url_for('projects_bp.list_projects_classic')
     denied = _need_editor(back)
     if denied:
         return denied
@@ -160,9 +160,9 @@ def create_project():
                            years=J.recent_fiscal_years(org_id))
 
 
-@projects_bp.route('/<project_id>')
+@projects_bp.route('/<project_id>/classic')
 @require_org
-def view_project(project_id):
+def view_project_classic(project_id):
     org_id = g.current_org_id
     project = _project_or_404(project_id)
     docs = J.project_documents(project_id, org_id)
@@ -194,25 +194,39 @@ def view_project(project_id):
                            current_org_role=get_current_org_role())
 
 
+@projects_bp.route('/')
+@require_org
+def list_projects():
+    """Every project with where it stands, as a list or a board by stage (React, frontend/src/islands/board/)."""
+    return render_template('projects/board.html')
+
+
 @projects_bp.route('/board')
 @require_org
 def board():
-    """The new projects list, with a board by stage (React, frontend/src/islands/board/): opt-in for now."""
-    return render_template('projects/board.html')
+    """Where the new list was while it was opt-in."""
+    return redirect(url_for('projects_bp.list_projects'))
+
+
+@projects_bp.route('/<project_id>')
+@require_org
+def view_project(project_id):
+    """A project: where it is, what's next, its documents, timeline, people and files (frontend/src/islands/project/)."""
+    return render_template('projects/new_view.html', project=_project_or_404(project_id))
 
 
 @projects_bp.route('/<project_id>/new')
 @require_org
 def view_project_new(project_id):
-    """The new project page (React, frontend/src/islands/project/): opt-in while it settles in."""
-    return render_template('projects/new_view.html', project=_project_or_404(project_id))
+    """Where the new page was while it was opt-in."""
+    return redirect(url_for('projects_bp.view_project', project_id=project_id))
 
 
 @projects_bp.route('/<project_id>/edit', methods=['POST'])
 @require_org
 def edit_project(project_id):
     project = _project_or_404(project_id)
-    back = url_for('projects_bp.view_project', project_id=project_id)
+    back = _project_page(project_id)
     denied = _need_editor(back)
     if denied:
         return denied
@@ -231,7 +245,7 @@ def edit_project(project_id):
     else:
         if status != project['status'] and status in J.PROJECT_STATUSES:
             activity.record('project_status', f"Project {J.project_label(project)} marked {J.PROJECT_STATUSES[status].lower()}",
-                            project_id=project_id, link=back)
+                            project_id=project_id, link=url_for('projects_bp.view_project', project_id=project_id))
         flash('Project updated', 'success')
     return redirect(back)
 
@@ -241,7 +255,7 @@ def edit_project(project_id):
 def set_person(project_id):
     """What one of the customer's contacts gets on this project: everything, proformas and invoices, or nothing."""
     _project_or_404(project_id)
-    back = url_for('projects_bp.view_project', project_id=project_id) + '#people'
+    back = _project_page(project_id) + '#people'
     denied = _need_editor(back)
     if denied:
         return denied
@@ -270,17 +284,13 @@ def delete_project(project_id):
         flash('Could not delete the project', 'error')
         return redirect(_project_page(project_id))
     flash('Project deleted. Its documents and files are kept, just no longer grouped.', 'success')
-    from_new = _project_page(project_id).endswith('/new')
-    return redirect(url_for('projects_bp.board' if from_new else 'projects_bp.list_projects'))
+    from_classic = _project_page(project_id).endswith('/classic')
+    return redirect(url_for('projects_bp.list_projects_classic' if from_classic else 'projects_bp.list_projects'))
 
 
 def _project_page(project_id):
-    """The project's page to go back to: the new one when that's where the form was sent from, else the classic one."""
-    from urllib.parse import urlparse
-    ref = urlparse(request.referrer or '')
-    if (not ref.netloc or ref.netloc == request.host) and ref.path.rstrip('/').endswith(f'/{project_id}/new'):
-        return url_for('projects_bp.view_project_new', project_id=project_id)
-    return url_for('projects_bp.view_project', project_id=project_id)
+    """The project's page to go back to: the classic one when that's where the form was sent from, else the page."""
+    return back_to_page('projects_bp.view_project', project_id=project_id)
 
 
 @projects_bp.route('/<project_id>/documents', methods=['POST'])
@@ -316,7 +326,7 @@ def project_document(project_id):
 def document_project(invoice_id):
     """From a document page: put it in an existing project of the customer, or take it out."""
     org_id = g.current_org_id
-    back = url_for('invoices_bp.view_invoice', invoice_id=invoice_id)
+    back = back_to_page('invoices_bp.view_invoice', invoice_id=invoice_id)
     denied = _need_editor(back)
     if denied:
         return denied
@@ -385,7 +395,7 @@ def upload_file():
         kind = request.form.get('kind') if request.form.get('kind') in J.DOCUMENT_KINDS else J.guess_kind(upload.filename)
         activity.record('file_uploaded', f"{J.DOCUMENT_KINDS.get(kind, 'File')} uploaded: {upload.filename}"
                         + (f" (No. {request.form.get('reference_no')})" if request.form.get('reference_no') else ''),
-                        project_id=project_id, link=back if project_id else None)
+                        project_id=project_id, link=url_for('projects_bp.view_project', project_id=project_id) if project_id else None)
     if saved:
         message = 'File uploaded' if len(saved) == 1 else f'{len(saved)} files uploaded'
         if filled:

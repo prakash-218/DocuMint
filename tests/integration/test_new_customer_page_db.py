@@ -40,10 +40,10 @@ def test_a_company_and_its_site_on_the_new_page(client, gst_org):
                                                  'payment_date': '2026-04-23'})
 
     # The company: its site, the site's project and proforma, and the advance held (nothing owed yet)
-    assert client.get(f'/customers/{parent}/new').status_code == 200
+    assert client.get(f'/customers/{parent}').status_code == 200
     page = _page(client, parent)
-    assert [(s['name'], s['url']) for s in page['sites']] == [('Hosur plant', f'/customers/{site}/new')]
-    assert [p['title'] for p in page['projects']] == ['Spline gauges'] and page['projects'][0]['url'] == f'/projects/{project_id}/new'
+    assert [(s['name'], s['url']) for s in page['sites']] == [('Hosur plant', f'/customers/{site}')]
+    assert [p['title'] for p in page['projects']] == ['Spline gauges'] and page['projects'][0]['url'] == f'/projects/{project_id}'
     assert [(d['number'], d['site']) for d in page['documents']] == [(pi_no, 'Hosur plant')]
     assert page['money']['count'] == 0 and page['money']['advance_held'] == {'INR': 20000}
     assert _lines(page) == [(f'Advance on {pi_no}', 0, 20000, -20000)]
@@ -54,7 +54,7 @@ def test_a_company_and_its_site_on_the_new_page(client, gst_org):
     invoice_id = re.search(r'/invoices/([0-9a-f-]{36})', response.headers['Location']).group(1)
     client.post(f'/invoices/{invoice_id}/finalize')
     page = _page(client, site)
-    assert page['customer']['parent'] == {'id': parent, 'name': name, 'url': f'/customers/{parent}/new'}
+    assert page['customer']['parent'] == {'id': parent, 'name': name, 'url': f'/customers/{parent}'}
     assert page['sites'] == [] and page['links']['add_site'] is None
     assert page['money']['count'] == 1 and page['money']['total'] == {'INR': 80000} and page['money']['advance_held'] == {}
     assert page['money']['ages'][0]['total'] == {'INR': 80000} and 'customers' not in page['money']
@@ -84,7 +84,7 @@ def test_a_company_and_its_site_on_the_new_page(client, gst_org):
     _set_role(client, VIEWER, 'sales')
     try:
         login(client, VIEWER)
-        assert client.get(f'/customers/{site}/new').status_code == 200
+        assert client.get(f'/customers/{site}').status_code == 200
         page = _page(client, site)
         assert page['money'] is None and page['documents'] == [] and page['can']['sales']
         login(client, OWNER)
@@ -99,4 +99,4 @@ def test_a_company_and_its_site_on_the_new_page(client, gst_org):
 
     assert client.get(f'/api/customers/{uuid.uuid4()}').status_code == 404
     assert client.get('/api/customers/not-an-id').status_code == 404
-    assert client.get(f'/customers/{uuid.uuid4()}/new').status_code == 302
+    assert client.get(f'/customers/{uuid.uuid4()}').status_code == 302

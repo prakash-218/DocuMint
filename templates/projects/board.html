@@ -6,10 +6,10 @@
 {% block header_title %}<nav class="crumbs" aria-label="Breadcrumb"><b>Projects</b></nav>{% endblock %}
 
 {% block header_actions %}
-<a href="{{ url_for('projects_bp.list_projects') }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic list</span></a>
+<a href="{{ url_for('projects_bp.list_projects_classic') }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic list</span></a>
 {% endblock %}
 
 {% block content %}
 {{ island('projects-board', {}, label='Projects') }}
-<noscript><p>This page needs JavaScript. The <a href="{{ url_for('projects_bp.list_projects') }}">classic list</a> works without it.</p></noscript>
+<noscript><p>This page needs JavaScript. The <a href="{{ url_for('projects_bp.list_projects_classic') }}">classic list</a> works without it.</p></noscript>
 {% endblock %}

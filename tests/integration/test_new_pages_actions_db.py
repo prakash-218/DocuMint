@@ -33,18 +33,18 @@ def test_documents_go_in_and_out_of_a_project_and_a_project_goes(client, gst_org
     assert page['links']['new_costing'] and page['links']['rates'] and page['addable'] == []
 
     # Taken out of the first project, it's offered to the second, and added there; both come back to the new page
-    assert _post(client, page['links']['documents'], {'invoice_id': quote_id, 'action': 'remove'}, f'/projects/{first}/new') \
-        .endswith(f'/projects/{first}/new')
+    assert _post(client, page['links']['documents'], {'invoice_id': quote_id, 'action': 'remove'}, f'/projects/{first}') \
+        .endswith(f'/projects/{first}')
     offered = client.get(f'/api/projects/{second}').get_json()['addable']
     assert [(d['invoice_id'], d['number'], d['kind']) for d in offered] == [(quote_id, quote_no, 'Quotation')]
-    assert _post(client, f'/projects/{second}/documents', {'invoice_id': quote_id}, f'/projects/{second}/new').endswith(f'/projects/{second}/new')
+    assert _post(client, f'/projects/{second}/documents', {'invoice_id': quote_id}, f'/projects/{second}').endswith(f'/projects/{second}')
     assert projects.project_of(quote_id, org_id) == second
     assert client.get(f'/api/projects/{second}').get_json()['addable'] == []
 
     # Deleting the first, from its new page, goes to the new list; from the classic page, to the classic list
-    assert _post(client, f'/projects/{first}/delete', {}, f'/projects/{first}/new').endswith('/projects/board')
+    assert _post(client, f'/projects/{first}/delete', {}, f'/projects/{first}').endswith('/projects/')
     assert projects.get_project(first, org_id) is None
-    assert _post(client, f'/projects/{second}/delete', {}, f'/projects/{second}').endswith('/projects/')
+    assert _post(client, f'/projects/{second}/delete', {}, f'/projects/{second}/classic').endswith('/projects/classic')
     assert projects.project_of(quote_id, org_id) is None                                  # the document is kept
 
     try:                                                                                   # viewers: nothing to change
@@ -61,7 +61,7 @@ def test_customer_files_portal_archive_and_edit_from_the_new_page(client, gst_or
     org_id, tag = gst_org, uuid.uuid4().hex[:6]
     customer = _customer(org_id, f'Gear Cutters {tag}', 'Tamil Nadu', 'India')
     project_id = projects.create_project(org_id, customer, 'Drill jig')
-    page = f'/customers/{customer}/new'
+    page = f'/customers/{customer}'
     data = client.get(f'/api/customers/{customer}').get_json()
     assert data['upload']['action'] == '/projects/files' and 'po' in data['upload']['kinds']
     assert data['portal'] == {'email': None, 'login_url': data['portal']['login_url'], 'create': f'/customers/{customer}/create-portal-account'}
@@ -87,11 +87,11 @@ def test_customer_files_portal_archive_and_edit_from_the_new_page(client, gst_or
     assert data['customer']['archived'] and data['links']['archive'] == f'/customers/{customer}/unarchive' and data['upload'] is None
     assert _post(client, f'/customers/{customer}/unarchive', {}, page).endswith(page)
     edit = data['links']['edit']
-    assert edit == f'/customers/{customer}/edit?from=new'
+    assert edit == f'/customers/{customer}/edit'
     form = client.get(edit).get_data(as_text=True)
-    assert f'action="/customers/{customer}/edit?from=new"' in form and f'href="/customers/{customer}/new"' in form   # cancel goes back too
+    assert f'action="/customers/{customer}/edit"' in form and f'href="/customers/{customer}"' in form   # cancel goes back too
     assert _post(client, edit, {'name': f'Gear Cutters {tag}', 'city': 'Hosur', 'country': 'India', 'state': 'Tamil Nadu', 'parent_id': ''},
-                 f'/customers/{customer}/edit?from=new').endswith(page)
+                 f'/customers/{customer}/edit').endswith(page)
 
     # Sales: no portal, no archiving; viewers: no uploads
     _set_role(client, VIEWER, 'sales')

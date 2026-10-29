@@ -172,10 +172,10 @@ MAIL_READERS = ('owner', 'admin', 'member')            # read the mailbox (and w
 # quotation, which also keeps out converting one to a proforma or invoice.
 SALES_PAGES = {
     'projects_bp': None,
-    'invoices_bp': {'list_invoices', 'create_invoice', 'view_invoice', 'view_invoice_new', 'export_pdf', 'finalize_invoice',
-                    'set_status', 'revise', 'edit_invoice', 'reopen', 'delete_invoice'},
-    'customers_bp': {'list_customers', 'view_customer', 'view_customer_new', 'create_customer', 'edit_customer', 'save_contact',
-                     'delete_contact'},
+    'invoices_bp': {'list_invoices', 'create_invoice', 'view_invoice', 'view_invoice_classic', 'view_invoice_new', 'export_pdf',
+                    'finalize_invoice', 'set_status', 'revise', 'edit_invoice', 'reopen', 'delete_invoice'},
+    'customers_bp': {'list_customers', 'view_customer', 'view_customer_classic', 'view_customer_new', 'create_customer',
+                     'edit_customer', 'save_contact', 'delete_contact'},
     'search_bp': None,
     'api_bp': {'me', 'compose', 'send_email', 'list_projects', 'project', 'update_project', 'add_note', 'set_person',
                'save_person', 'customer', 'save_customer_contact', 'delete_customer_contact', 'update_file'},

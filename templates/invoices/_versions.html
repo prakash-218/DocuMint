@@ -6,14 +6,14 @@
 <div class="alert alert-warning version-note">
     <span>This is an earlier version of the {{ doc_type_info(invoice.doc_type).label | lower }}. <strong>{{ latest | doc_number }}</strong>{% if latest.issue_date %} ({{ latest.issue_date | date }}){% endif %}
         replaced it, and is the one to send or convert.</span>
-    <a href="{{ url_for(doc_endpoint | default('invoices_bp.view_invoice'), invoice_id=latest.invoice_id) }}" class="btn btn-secondary btn-sm">Open the latest version</a>
+    <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=latest.invoice_id) }}" class="btn btn-secondary btn-sm">Open the latest version</a>
 </div>
 {% endif %}
 
 <nav class="version-bar" aria-label="Versions of this {{ doc_type_info(invoice.doc_type).label | lower }}">
     {% for v in versions %}
     {% set here = v.invoice_id == invoice.invoice_id %}
-    <a href="{{ url_for(doc_endpoint | default('invoices_bp.view_invoice'), invoice_id=v.invoice_id) }}" class="version{{ ' is-here' if here }}"{% if here %} aria-current="page"{% endif %}>
+    <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=v.invoice_id) }}" class="version{{ ' is-here' if here }}"{% if here %} aria-current="page"{% endif %}>
         <span class="version-name">{{ 'Original' if loop.first else 'Revision ' ~ loop.index0 }}{% if loop.last %} <span class="badge badge-info">Latest</span>{% endif %}</span>
         <span class="version-meta">{{ v | doc_number }}</span>
         <span class="version-meta">{{ v.issue_date | date or 'no date' }} · {{ v.total_amount | currency(v.currency_code) }}</span>

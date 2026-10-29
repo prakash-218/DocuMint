@@ -48,7 +48,7 @@ def test_draft_invoice_edit_page_renders(client, login_as, fake_db):
 
 def test_logo_and_tab_icons(client, login_as):
     login_as('U-A', ORG_A, 'alice@a.com')
-    html = client.get('/dashboard/').get_data(as_text=True)
+    html = client.get('/dashboard/classic').get_data(as_text=True)
     assert 'img/documint-icon.svg' in html and 'img/favicon.svg' in html and 'img/apple-touch-icon.png' in html
     assert '>DM</span>' not in html
     for name in ('documint-icon.svg', 'documint-mark.svg', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'):
@@ -141,7 +141,7 @@ def test_dashboard_numbers(client, login_as, fake_db):
     fake_db.invoices['Q-1'] = {**fake_db.invoices['INV-A'], 'invoice_id': 'Q-1', 'doc_type': 'quote',
                                'status': 'sent', 'issue_date': today.isoformat(), 'total_amount': 5000}
     login_as('U-A', ORG_A, 'alice@a.com')
-    html = client.get('/dashboard/').get_data(as_text=True)
+    html = client.get('/dashboard/classic').get_data(as_text=True)
     assert '$28.50' in html        # outstanding = 38.50 total - 10 paid
     assert '+92.5% vs last month' in html
     assert 'Open quotes' in html and '$5,000.00' in html

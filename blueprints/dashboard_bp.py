@@ -5,7 +5,7 @@ Dashboard blueprint - main dashboard with statistics
 import logging
 from datetime import date
 
-from flask import Blueprint, render_template, g, request
+from flask import Blueprint, render_template, g, request, redirect, url_for
 
 from db import db, DatabaseError
 from auth import require_org, get_current_org_role
@@ -152,9 +152,9 @@ def build_dashboard(org_id, today=None, base_currency=None, home_currency='INR')
     }
 
 
-@dashboard_bp.route('/')
+@dashboard_bp.route('/classic')
 @require_org
-def index():
+def index_classic():
     """Dashboard home page"""
     org_id = g.current_org_id
     current_role = get_current_org_role()
@@ -201,5 +201,12 @@ def build_empty():
 @dashboard_bp.route('/new')
 @require_org
 def index_new():
-    """The new home page (React, frontend/src/islands/home/): what needs doing first. Opt-in for now."""
+    """Where the new home was while it was opt-in."""
+    return redirect(url_for('dashboard_bp.index'))
+
+
+@dashboard_bp.route('/')
+@require_org
+def index():
+    """Home (React, frontend/src/islands/home/): what needs doing first, and the money to come in."""
     return render_template('dashboard_new.html')

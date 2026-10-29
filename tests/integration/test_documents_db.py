@@ -306,9 +306,9 @@ def test_copies_packing_list_and_foreign_payment(client, gst_org):
     page = client.get(f'/invoices/{export_id}').get_data(as_text=True)
     assert 'Credited ₹25,000.00' in page and '@ 83.33' in page
 
-    inr = client.get('/dashboard/?currency=INR').get_data(as_text=True)
+    inr = client.get('/dashboard/classic?currency=INR').get_data(as_text=True)
     assert 'Received in INR this month' in inr and 'Includes $300.00 at credited rates' in inr
-    usd = client.get('/dashboard/?currency=USD').get_data(as_text=True)
+    usd = client.get('/dashboard/classic?currency=USD').get_data(as_text=True)
     assert 'Collected this month' in usd and '$300.00' in usd
 
 

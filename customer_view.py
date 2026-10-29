@@ -32,12 +32,12 @@ def statement(docs: List[Dict], payments: List[Dict], url: Callable, start_month
             lines.append({'date': to_date(d.get('issue_date')), 'order': 0, 'currency': d.get('currency_code') or 'INR',
                           'text': f"{get_type(d['doc_type']).label} {display_number(d)}", 'sub': d.get('customer_site') or '' if sites else '',
                           'owed': float(d.get('total_amount') or 0), 'paid': 0.0,
-                          'url': url('invoices_bp.view_invoice_new', invoice_id=d['invoice_id'])})
+                          'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id'])})
     for p in payments:
         lines.append({'date': to_date(p.get('payment_date')), 'order': 1, 'currency': p.get('currency_code') or 'INR',
                       'text': _payment_text(p), 'sub': ' · '.join(filter(None, [p.get('method'), p.get('reference_number')])),
                       'owed': 0.0, 'paid': float(p.get('amount') or 0),
-                      'url': url('invoices_bp.view_invoice_new', invoice_id=p['invoice_id'])})
+                      'url': url('invoices_bp.view_invoice', invoice_id=p['invoice_id'])})
     lines.sort(key=lambda x: (x['date'] or date.min, x['order']))
     accounts: Dict[str, Dict] = {}
     for x in lines:
@@ -129,13 +129,13 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
         'customer': {
             'id': customer_id, 'name': customer['name'], 'site': customer.get('site') if customer.get('parent_id') else None,
             'parent': {'id': str(customer['parent_id']), 'name': customer.get('parent_name'),
-                       'url': url('customers_bp.view_customer_new', customer_id=customer['parent_id'])} if customer.get('parent_id') else None,
+                       'url': url('customers_bp.view_customer', customer_id=customer['parent_id'])} if customer.get('parent_id') else None,
             'tax_id': customer.get('tax_id'), 'email_domains': customer.get('email_domains'),
             'address': [x for x in [customer.get('street_address'),
                                     ', '.join(filter(None, [customer.get('city'), customer.get('state'), customer.get('zip_code')])),
                                     customer.get('country')] if x],
             'archived': bool(customer.get('is_archived')), 'custom': custom, 'tax_note': tax_note,
-            'classic_url': url('customers_bp.view_customer', customer_id=customer_id),
+            'classic_url': url('customers_bp.view_customer_classic', customer_id=customer_id),
         },
         'can': can,
         'money': money,
@@ -153,12 +153,12 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
         'usually': contacts.USUALLY,
         'sites': [{'id': str(s['customer_id']), 'name': s.get('site') or s['name'], 'tax_id': s.get('tax_id'),
                    'archived': bool(s.get('is_archived')), 'documents': s.get('invoice_count') or 0,
-                   'url': url('customers_bp.view_customer_new', customer_id=s['customer_id'])} for s in sites],
+                   'url': url('customers_bp.view_customer', customer_id=s['customer_id'])} for s in sites],
         'links': {
             'new_project': url('projects_bp.create_project', customer_id=customer_id) if can['edit'] and not customer.get('is_archived') else None,
             'new_quote': url('invoices_bp.create_invoice', doc_type='quote', customer_id=customer_id)
             if can['edit'] and not customer.get('is_archived') else None,
-            'edit': url('customers_bp.edit_customer', customer_id=customer_id, **{'from': 'new'}) if can['edit_customer'] else None,
+            'edit': url('customers_bp.edit_customer', customer_id=customer_id) if can['edit_customer'] else None,
             'add_site': url('customers_bp.create_customer', parent_id=customer_id)
             if can['manage'] and not customer.get('parent_id') and not customer.get('is_archived') else None,
             'archive': url('customers_bp.unarchive_customer' if customer.get('is_archived') else 'customers_bp.archive_customer',

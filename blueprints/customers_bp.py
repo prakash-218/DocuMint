@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, request, render_template, redirect, url_for, flash, g
 from db import db, DatabaseError
 from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, require_org, get_current_org_role, quotations_only
-from access import get_org_customer
+from access import back_to_page, get_org_customer
 from documents import load_json
 import contacts
 import customers as C
@@ -123,9 +123,9 @@ def create_customer():
                            **_form_context(org_id, defaults=request.form if request.method == 'POST' else defaults))
 
 
-@customers_bp.route('/<customer_id>')
+@customers_bp.route('/<customer_id>/classic')
 @require_org
-def view_customer(customer_id):
+def view_customer_classic(customer_id):
     """View customer details"""
     current_role = get_current_org_role()
     try:
@@ -186,7 +186,14 @@ def view_customer(customer_id):
 @customers_bp.route('/<customer_id>/new')
 @require_org
 def view_customer_new(customer_id):
-    """The new customer page: the React screen in frontend/src/islands/customer/ (GET /api/customers/<id>)."""
+    """Where the new page was while it was opt-in."""
+    return redirect(url_for('customers_bp.view_customer', customer_id=customer_id))
+
+
+@customers_bp.route('/<customer_id>')
+@require_org
+def view_customer(customer_id):
+    """A customer: what they owe, their projects, documents, statement, files and people (frontend/src/islands/customer/)."""
     try:
         customer, _ = get_org_customer(customer_id, g.current_org_id)
     except DatabaseError:
@@ -198,13 +205,8 @@ def view_customer_new(customer_id):
 
 
 def _customer_page(customer_id):
-    """The customer's page to go back to: the new one when that's where the form was sent from (or the editor was
-    opened from, ?from=new), else the classic one."""
-    from urllib.parse import urlparse
-    ref = urlparse(request.referrer or '')
-    if (not ref.netloc or ref.netloc == request.host) and ref.path.rstrip('/').endswith(f'/{customer_id}/new')             or request.args.get('from') == 'new':
-        return url_for('customers_bp.view_customer_new', customer_id=customer_id)
-    return url_for('customers_bp.view_customer', customer_id=customer_id)
+    """The customer's page to go back to: the classic one when that's where the form was sent from, else the page."""
+    return back_to_page('customers_bp.view_customer', customer_id=customer_id)
 
 
 def _contact_back(customer_id):
@@ -213,8 +215,8 @@ def _contact_back(customer_id):
     if project_id:
         import projects
         if projects.get_project(project_id, g.current_org_id):
-            return url_for('projects_bp.view_project', project_id=project_id) + '#people'
-    return url_for('customers_bp.view_customer', customer_id=customer_id) + '#contacts'
+            return back_to_page('projects_bp.view_project', project_id=project_id) + '#people'
+    return _customer_page(customer_id) + '#contacts'
 
 
 @customers_bp.route('/<customer_id>/contacts', methods=['POST'])

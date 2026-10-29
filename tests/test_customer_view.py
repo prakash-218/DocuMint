@@ -41,7 +41,7 @@ def test_the_statement_is_what_they_owe_and_paid_with_the_balance_after_each():
     ]
     assert (account['owed'], account['paid'], account['balance']) == (177000, 128000, 49000)
     assert account['lines'][2]['sub'] == 'NEFT / RTGS · UTR 1188' and account['lines'][3]['sub'] == 'Hosur plant'
-    assert account['lines'][1]['url'] == '/invoices_bp.view_invoice_new/invoice_id=D-58'
+    assert account['lines'][1]['url'] == '/invoices_bp.view_invoice/invoice_id=D-58'
 
 
 def test_each_currency_has_its_own_account_and_an_invoice_and_payment_on_one_day_go_invoice_first():
