@@ -1,5 +1,5 @@
-"""Reading the React app's pages in tests: its page (templates/spa.html), a document's page (GET /api/document/<id>)
-and the editor (GET /api/editor/...)."""
+"""Reading the React app's pages in tests: its page (templates/spa.html), a document's page (GET /api/document/<id>),
+the editor (GET /api/editor/...) and a document's packing (GET /api/packing/<id>)."""
 import json
 import re
 from urllib.parse import urlsplit
@@ -68,3 +68,10 @@ def editor_form(data: dict, **changes) -> dict:
         form.update(advance_percent=settings['advance_percent'], advance_basis=settings['advance_basis'])
     form.update(changes)
     return form
+
+
+def packing(client, invoice_id: str) -> dict:
+    """A document's packing, box by box, as the app gets it (packing_page.py)."""
+    response = client.get(f'/api/packing/{invoice_id}')
+    assert response.status_code == 200, response.get_data(as_text=True)[:300]
+    return response.get_json()

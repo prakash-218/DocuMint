@@ -3,7 +3,7 @@ Invoices blueprint - CRUD operations for invoices
 """
 
 import logging
-from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, make_response
+from flask import Blueprint, request, redirect, url_for, flash, session, g, make_response
 from db import db, DatabaseError
 from auth import require_org, get_current_org_role, can_create_invoice, can_edit_invoice, can_delete_invoice, can_finalize_invoice
 from access import get_org_invoice, get_org_template
@@ -559,7 +559,8 @@ def revise(invoice_id):
 @invoices_bp.route('/<invoice_id>/packing', methods=['GET', 'POST'])
 @require_org
 def packing(invoice_id):
-    """Box-by-box packing, for documents whose template has a packing page (editable after finalizing; it's logistics)."""
+    """Box-by-box packing, for documents whose template has a packing page (editable after finalizing; it's logistics).
+    The React app draws it (packing_page.py); this checks it can be opened and saves the form it posts."""
     from document_service import boxes_from_form, save_details
     from invoice_service import build_sections, item_lines, packing_summary
 
@@ -576,12 +577,9 @@ def packing(invoice_id):
         flash('You need to be a Member or Owner to edit packing.', 'error')
         return redirect(_back(invoice_id))
 
-    sections = build_sections(header, values)
-    lines = item_lines(sections)
-
     if request.method == 'POST':
         details = load_json(header.get('details'))
-        boxes = boxes_from_form(request.form, lines, box_fields)
+        boxes = boxes_from_form(request.form, item_lines(build_sections(header, values)), box_fields)
         details['boxes'] = boxes
         if boxes:
             details['packages'] = f"{len(boxes)} {'box' if len(boxes) == 1 else 'boxes'}"
@@ -605,12 +603,9 @@ def packing(invoice_id):
             flash(f"Packing saved: {summary['count']} {'box' if summary['count'] == 1 else 'boxes'}.", 'success')
         return redirect(url_for('invoices_bp.packing', invoice_id=invoice_id))
 
-    details = load_json(header.get('details'))
-    boxes = details.get('boxes') or [{'contents': []}]
-    packed = [{c['ordinal']: c['qty'] for c in (b.get('contents') or [])} for b in boxes]
-    return render_template('invoices/packing.html', invoice=header, lines=lines, boxes=boxes, packed=packed,
-                           details=details, box_fields=box_fields, pack_page=pack_page,
-                           summary=packing_summary(header, sections, box_fields))
+    import nav
+    from documents import display_number
+    return nav.spa(f'Packing · {display_number(header)}', 'page')
 
 
 def _version(header, sections) -> dict:

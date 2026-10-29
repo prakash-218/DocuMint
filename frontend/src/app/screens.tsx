@@ -10,6 +10,7 @@ const DocumentList = lazy(() => import('../islands/documents/DocumentList'));
 const CustomerPage = lazy(() => import('../islands/customer/CustomerPage'));
 const DocumentPage = lazy(() => import('../islands/document/DocumentPage'));
 const EditorPage = lazy(() => import('../islands/editor/EditorPage'));
+const PackingPage = lazy(() => import('../islands/packing/PackingPage'));
 
 export function HomeScreen() {
   return <Home />;
@@ -59,4 +60,10 @@ export function EditDocumentScreen() {
   const location = useLocation();
   return <EditorPage key={location.pathname + location.search} source={`/api/editor/${invoiceId}${location.search}`}
                      title={new URLSearchParams(location.search).get('correct') ? 'Correct' : 'Edit'} />;
+}
+
+/** /invoices/<id>/packing: its packing, box by box */
+export function PackingScreen() {
+  const { invoiceId = '' } = useParams();
+  return <PackingPage key={invoiceId} invoiceId={invoiceId} />;
 }

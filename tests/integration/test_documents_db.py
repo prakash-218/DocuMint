@@ -324,7 +324,11 @@ def test_packing_by_box(client, gst_org):
     lines = item_lines(build_sections(header, values))
     o = [l['ordinal'] for l in lines]
 
-    assert client.get(f'/invoices/{export_id}/packing').status_code == 200
+    from tests.spa import boot_of, packing
+    assert boot_of(client.get(f'/invoices/{export_id}/packing').get_data(as_text=True))   # the app's page
+    empty = packing(client, export_id)
+    assert [l['label'] for l in empty['lines']] == ['Toggle clamp', 'Aluminum bracket', 'Name plate']
+    assert empty['boxes'] == [{'values': {'dimensions': '', 'net_weight': '', 'gross_weight': ''}, 'packed': {}}]
     form = {'box_count': '2', 'packing_list_no': 'PL 900', 'marks': 'HYDRO/1-2',
             'box_1_present': '1', 'box_1_dimensions': '60 x 40 x 30 cm', 'box_1_net_weight': '18', 'box_1_gross_weight': '20',
             f'qty_1_{o[0]}': '10', f'qty_1_{o[1]}': '4',
@@ -336,9 +340,18 @@ def test_packing_by_box(client, gst_org):
     assert pack['count'] == 2 and pack['net_weight'] == 27.5 and pack['gross_weight'] == 31
     assert [len(b['contents']) for b in pack['boxes']] == [2, 2]
     assert [(u['description'], u['missing']) for u in pack['unpacked']] == [('Name plate', 10)]
+    saved = packing(client, export_id)
+    assert saved['packing_list_no'] == 'PL 900' and saved['unpacked'] == [{'label': 'Name plate', 'qty': 10}]
+    assert saved['boxes'][1] == {'values': {'dimensions': '40 x 30 x 20 cm', 'net_weight': '9.5', 'gross_weight': '11'},
+                                 'packed': {str(o[1]): 6, str(o[2]): 40}}
 
     pdf = client.get(f'/invoices/{export_id}/pdf?packing=1')
     assert pdf.status_code == 200 and _pages(pdf.data) == 1
+
+    # A quotation's template has no packing page: nothing to pack, and its address goes back to the quotation
+    quote_id, _ = _create(client, org_id, 'quote', 'Quotation', customer, [{'description': 'Toggle clamp', 'price': 13, 'qty': 1}])
+    assert client.get(f'/api/packing/{quote_id}').status_code == 404
+    assert client.get(f'/quotes/{quote_id}/packing').headers['Location'].endswith(f'/quotes/{quote_id}')
 
 
 def test_quote_cost_breakup(client, gst_org):
@@ -431,8 +444,9 @@ def test_template_pages_and_custom_fields(client, gst_org):
         assert any('page=packing' in link['href'] and link['label'] == 'Shipping list' for link in pdf['links'])
         assert not any('page=terms_of_supply' in link['href'] for link in pdf['links'])   # printed with the document
 
-        editor_page = client.get(f'/invoices/{invoice_id}/packing').get_data(as_text=True)
-        assert 'Pallet no.' in editor_page and 'Gross' not in editor_page
+        from tests.spa import packing
+        labels = [f['label'] for f in packing(client, invoice_id)['box_fields']]
+        assert 'Pallet no.' in labels and not any('Gross' in label for label in labels)
         header, values = fetch_invoice(invoice_id)
         [line] = item_lines(build_sections(header, values))
         client.post(f'/invoices/{invoice_id}/packing', data={

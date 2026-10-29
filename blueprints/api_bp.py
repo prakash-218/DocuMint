@@ -147,6 +147,24 @@ def edit_document(invoice_id):
     return jsonify(project_view._plain(editor_page.edit_page(g.current_org_id, header, correcting, url_for)))
 
 
+@api_bp.route('/packing/<invoice_id>')
+@require_org
+def packing(invoice_id):
+    """A document's packing, box by box (packing_page.build), when its template has a packing page."""
+    from access import get_org_invoice
+    from layout import load_layout, packing_page as page_of
+    import packing_page
+    if get_current_org_role() not in EDITORS:
+        return jsonify(error='You need to be a Member or Owner to edit packing'), 403
+    header, values = get_org_invoice(invoice_id, g.current_org_id)
+    if not header:
+        return jsonify(error='That document is not in this organization'), 404
+    pack_page = page_of(load_layout(header.get('template_id'), g.current_org_id), header.get('doc_type'))
+    if not pack_page:
+        return jsonify(error="This document's template has no packing list page. Add one under Templates → Pages & printing."), 404
+    return jsonify(project_view._plain(packing_page.build(header, values, pack_page, url_for)))
+
+
 @api_bp.route('/documents/<any(quotes, proformas, invoices):group>')
 @require_org
 def documents(group):

@@ -3,8 +3,8 @@
 import type { ComponentType } from 'react';
 import { matchRoutes } from 'react-router';
 import type { SkeletonKind } from '../Skeleton';
-import { CustomerScreen, DocumentScreen, EditDocumentScreen, HomeScreen, ListScreen, NewDocumentScreen, ProjectScreen,
-         ProjectsScreen } from './screens';
+import { CustomerScreen, DocumentScreen, EditDocumentScreen, HomeScreen, ListScreen, NewDocumentScreen, PackingScreen,
+         ProjectScreen, ProjectsScreen } from './screens';
 
 export interface AppRoute {
   path: string;
@@ -31,6 +31,9 @@ export const ROUTES: AppRoute[] = [
   { path: '/quotes/:invoiceId/edit', screen: EditDocumentScreen, skeleton: 'page', label: 'Editor', ids: ['invoiceId'] },
   { path: '/proformas/:invoiceId/edit', screen: EditDocumentScreen, skeleton: 'page', label: 'Editor', ids: ['invoiceId'] },
   { path: '/invoices/:invoiceId/edit', screen: EditDocumentScreen, skeleton: 'page', label: 'Editor', ids: ['invoiceId'] },
+  { path: '/quotes/:invoiceId/packing', screen: PackingScreen, skeleton: 'page', label: 'Packing', ids: ['invoiceId'] },
+  { path: '/proformas/:invoiceId/packing', screen: PackingScreen, skeleton: 'page', label: 'Packing', ids: ['invoiceId'] },
+  { path: '/invoices/:invoiceId/packing', screen: PackingScreen, skeleton: 'page', label: 'Packing', ids: ['invoiceId'] },
 ];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
