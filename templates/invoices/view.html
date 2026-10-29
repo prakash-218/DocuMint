@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "projects/_files.html" import files_card with context %}
+{% from "_macros.html" import island %}
 
 {% block title %}{{ invoice | doc_number }}{% endblock %}
 {% block page_title %}{{ invoice | doc_number }}{% endblock %}
@@ -32,6 +33,9 @@
         {% endif %}
     </div>
 </details>
+{% if status != 'draft' and can_edit and project %}
+{{ island('email-composer', {'projectId': project.project_id, 'invoiceId': invoice.invoice_id}) }}
+{% endif %}
 {% if status != 'draft' and can_edit %}
 <button type="button" class="btn btn-secondary" data-open-dialog="change-dialog"><i data-lucide="pencil"></i><span class="btn-label">Change</span></button>
 {% endif %}
