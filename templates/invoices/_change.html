@@ -13,7 +13,7 @@
                 <p>Fix a mistake: a wrong PO number, date, rate or spelling. It keeps its number{% if t.takes_payments %} and its payments{% endif %},
                     and the correction replaces what was {{ sent_word }}. Recorded in the audit log.</p>
             </div>
-            <a href="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id, correct=1) }}" class="btn btn-secondary btn-sm"><i data-lucide="pencil"></i>Correct it</a>
+            <a href="{{ url_for('invoices_bp.edit_invoice', invoice_id=invoice.invoice_id, correct=1, **({'from': 'new'} if doc_endpoint is defined else {})) }}" class="btn btn-secondary btn-sm"><i data-lucide="pencil"></i>Correct it</a>
         </section>
 
         {% if t.key in ('quote', 'proforma') %}

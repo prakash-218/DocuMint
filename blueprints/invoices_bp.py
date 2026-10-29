@@ -288,7 +288,7 @@ def create_invoice():
 
             activity.document_event('document_created', invoice_header, 'created', project_id=project['project_id'] if project else None)
             flash(f'{get_type(doc_type).label} {invoice_header.get("doc_number") or ""} created', 'success')
-            return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+            return redirect(_back(invoice_id))
 
         except DatabaseError as e:
             logger.exception("Failed to create %s", doc_type)
@@ -373,6 +373,50 @@ def _create_form(org_id, doc_type):
 @require_org
 def view_invoice(invoice_id):
     """View invoice details (read-only: formulas are computed, never saved here)"""
+    context = _view_context(invoice_id)
+    if not isinstance(context, dict):
+        return context
+    return render_template('invoices/view.html', **context)
+
+
+@invoices_bp.route('/<invoice_id>/new')
+@require_org
+def view_invoice_new(invoice_id):
+    """The new document page: the same document, with what to do next on top (document_view.next_step)."""
+    context = _view_context(invoice_id)
+    if not isinstance(context, dict):
+        return context
+    import document_view
+    from auth import SALES
+    invoice, project, summary = context['invoice'], context['project'], context['summary']
+    role = context['current_org_role']
+    can = {'edit': can_edit_invoice(), 'sales': role == SALES}
+    context['doc_next'] = document_view.next_step(invoice, summary, context['advance_received'], context['open_advances'], can,
+                                                  url_for, context['convert_defaults'], can_email=bool(project))
+    context['doc_steps'] = document_view.steps(invoice, summary, context['advance_received'])
+    return render_template('invoices/new_view.html', doc_endpoint='invoices_bp.view_invoice_new',
+                           project_endpoint='projects_bp.view_project_new', **context)
+
+
+def _back(invoice_id):
+    """Where a form on a document page goes back to: the new page when that's the one it was sent from, or the
+    editor was opened from (?from=new)."""
+    from urllib.parse import urlparse
+    ref = urlparse(request.referrer or '')
+    if (not ref.netloc or ref.netloc == request.host) and ref.path.rstrip('/').endswith(f'/{invoice_id}/new')             or request.args.get('from') == 'new':
+        return url_for('invoices_bp.view_invoice_new', invoice_id=invoice_id)
+    return url_for('invoices_bp.view_invoice', invoice_id=invoice_id)
+
+
+def _editor(invoice_id, from_id):
+    """The editor for a document (one just made from from_id by converting or revising it, or the one being saved
+    again): when that came from the new page, saving goes back to the new page."""
+    new_page = _back(from_id) == url_for('invoices_bp.view_invoice_new', invoice_id=from_id)
+    return url_for('invoices_bp.edit_invoice', invoice_id=invoice_id, **({'from': 'new'} if new_page else {}))
+
+
+def _view_context(invoice_id):
+    """What a document page shows (both of them), or a redirect when the document can't be shown."""
     invoice_header, invoice_values = get_org_invoice(invoice_id, g.current_org_id)
     if not invoice_header:
         flash('Invoice not found', 'error')
@@ -414,30 +458,29 @@ def view_invoice(invoice_id):
     project = projects.get_project(projects.project_of(invoice_id, g.current_org_id), g.current_org_id)
     files = projects.list_attachments(g.current_org_id, project_id=project['project_id']) if project else \
         projects.list_attachments(g.current_org_id, invoice_id=invoice_id)
-    return render_template('invoices/view.html',
-                           convert_defaults=convert_defaults, revise_templates=revise_templates,
-                           can_revise=(invoice_header.get('status') or 'draft') in REVISABLE.get(invoice_header.get('doc_type'), ()),
-                           revision_number=next_revision_number(invoice_header)[0],
-                           reopen_blocker=reopen_blocker(invoice_header, payments),
-                           project=project,
-                           project_docs=revisions.collapse(projects.project_documents(project['project_id'], g.current_org_id))
-                           if project else [],
-                           files=files, file_kinds=projects.DOCUMENT_KINDS,
-                           extra_pages=[p for p in pages if not p['with_document']],
-                           has_packing=any(p['kind'] == 'packing' for p in pages),
-                           base_currency=org_profile.get('default_currency') or 'INR',
-                           has_seal=bool(org_profile.get('stamp')),
-                           today=date.today().isoformat(),
-                           **_versions(invoice_header, sections_data, g.current_org_id),
-                           invoice=invoice_header,
-                           sections_data=sections_data,
-                           payments=payments,
-                           summary=invoice_summary(invoice_header, sections_data, payments),
-                           advances=advances_in, advance_received=sum(float(a['amount'] or 0) for a in advances_in),
-                           open_advances=open_advances,
-                           source=source,
-                           templates=templates,
-                           current_org_role=get_current_org_role())
+    return dict(convert_defaults=convert_defaults, revise_templates=revise_templates,
+                can_revise=(invoice_header.get('status') or 'draft') in REVISABLE.get(invoice_header.get('doc_type'), ()),
+                revision_number=next_revision_number(invoice_header)[0],
+                reopen_blocker=reopen_blocker(invoice_header, payments),
+                project=project,
+                project_docs=revisions.collapse(projects.project_documents(project['project_id'], g.current_org_id))
+                if project else [],
+                files=files, file_kinds=projects.DOCUMENT_KINDS,
+                extra_pages=[p for p in pages if not p['with_document']],
+                has_packing=any(p['kind'] == 'packing' for p in pages),
+                base_currency=org_profile.get('default_currency') or 'INR',
+                has_seal=bool(org_profile.get('stamp')),
+                today=date.today().isoformat(),
+                **_versions(invoice_header, sections_data, g.current_org_id),
+                invoice=invoice_header,
+                sections_data=sections_data,
+                payments=payments,
+                summary=invoice_summary(invoice_header, sections_data, payments),
+                advances=advances_in, advance_received=sum(float(a['amount'] or 0) for a in advances_in),
+                open_advances=open_advances,
+                source=source,
+                templates=templates,
+                current_org_role=get_current_org_role())
 
 
 @invoices_bp.route('/<invoice_id>/pdf')
@@ -460,7 +503,7 @@ def export_pdf(invoice_id):
     except Exception:
         logger.exception("PDF generation failed for invoice %s", invoice_id)
         flash('Error generating PDF', 'error')
-    return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    return redirect(_back(invoice_id))
 
 
 @invoices_bp.route('/<invoice_id>/finalize', methods=['POST'])
@@ -469,7 +512,7 @@ def finalize_invoice(invoice_id):
     """Finalize a draft: invoices become 'pending' (awaiting payment), quotes/proformas 'sent'."""
     if not can_finalize_invoice():
         flash('You need to be a Member or Owner to finalize documents.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     invoice_header, _ = get_org_invoice(invoice_id, g.current_org_id)
     if not invoice_header:
@@ -479,7 +522,7 @@ def finalize_invoice(invoice_id):
     doc_type = get_type(invoice_header.get('doc_type'))
     if (invoice_header.get('status') or 'draft') != 'draft':
         flash(f'This {doc_type.short.lower()} is already {invoice_header.get("status")}.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     try:
         db.execute_proc('sp_update_invoice_status', (invoice_id, doc_type.sent_status), fetch=False)
@@ -490,7 +533,7 @@ def finalize_invoice(invoice_id):
     else:
         activity.document_event('document_sent', invoice_header, 'marked as sent' if doc_type.sent_status == 'sent' else 'finalized')
         flash(f'{doc_type.label} finalized. The customer can now see it in their portal.', 'success')
-    return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    return redirect(_back(invoice_id))
 
 
 QUOTE_OUTCOMES = {'accepted': 'marked as accepted', 'declined': 'marked as declined', 'sent': 'reopened'}
@@ -502,22 +545,22 @@ def set_status(invoice_id):
     """Record a customer's answer to a quote."""
     if not can_edit_invoice():
         flash('You need to be a Member or Owner to update documents.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     invoice_header, _ = get_org_invoice(invoice_id, g.current_org_id)
     status = request.form.get('status')
     if not invoice_header or invoice_header.get('doc_type') != 'quote' or status not in QUOTE_OUTCOMES:
         flash("That status change isn't allowed", 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
     if invoice_header.get('status') in ('draft', 'converted'):
         flash('Finalize the quote before recording an answer', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     db.execute_proc('sp_update_invoice_status', (invoice_id, status), fetch=False)
     if status in ('accepted', 'declined'):
         activity.document_event(f'quote_{status}', invoice_header, status)
     flash(f'Quote {QUOTE_OUTCOMES[status]}', 'success')
-    return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    return redirect(_back(invoice_id))
 
 
 @invoices_bp.route('/<invoice_id>/convert', methods=['POST'])
@@ -526,7 +569,7 @@ def convert(invoice_id):
     """Turn a quote into a proforma/invoice, or a proforma into an invoice."""
     if not can_create_invoice():
         flash('You need to be a Member or Owner to create documents.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     org_id = g.current_org_id
     source, values = get_org_invoice(invoice_id, org_id)
@@ -538,17 +581,17 @@ def convert(invoice_id):
     template_id = request.form.get('template_id') or None
     if template_id and not get_org_template(template_id, org_id):
         flash('Template not found', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     _, profile = get_org_profile(org_id)
     try:
         new_id = convert_document(source, values, target, org_id, profile, template_id)
     except DocumentError as e:
         flash(str(e), 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
     except DatabaseError:
         flash('Conversion failed. Nothing was changed.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     _into_project(source, new_id, org_id)
     carried = 0.0
@@ -564,7 +607,7 @@ def convert(invoice_id):
     flash(f'Created {get_type(target).label.lower()} from {source.get("doc_number") or "this document"}'
           + (f', with its advance of {format_money(carried, source.get("currency_code"))}' if carried else '')
           + '. Check the details, then finalize it.', 'success')
-    return redirect(url_for('invoices_bp.edit_invoice', invoice_id=new_id))
+    return redirect(_editor(new_id, invoice_id))
 
 
 def _into_project(source, new_id, org_id):
@@ -581,7 +624,7 @@ def revise(invoice_id):
     """Start a new revision of a sent quotation or proforma (Q/029 -> Q/029R1), in its template or another one."""
     if not can_create_invoice():
         flash('You need to be a Member or Owner to revise documents.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     source, values = get_org_invoice(invoice_id, g.current_org_id)
     if not source:
@@ -590,15 +633,15 @@ def revise(invoice_id):
     template_id = request.form.get('template_id') or None
     if template_id and not get_org_template(template_id, g.current_org_id):
         flash('Template not found', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
     try:
         new_id = revise_document(source, values, g.current_org_id, template_id)
     except DocumentError as e:
         flash(str(e), 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
     except DatabaseError:
         flash('Could not create the revision. Nothing was changed.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     _into_project(source, new_id, g.current_org_id)
     new_header, _ = get_org_invoice(new_id, g.current_org_id)
@@ -607,7 +650,7 @@ def revise(invoice_id):
     moved = source.get('doc_type') == 'proforma' and bool(advances.on_proforma(new_id))
     flash(f"Revision {(new_header or {}).get('doc_number') or ''} created as a draft"
           f"{', with the advances received' if moved else ''}. Make your changes, then mark it as sent.", 'success')
-    return redirect(url_for('invoices_bp.edit_invoice', invoice_id=new_id))
+    return redirect(_editor(new_id, invoice_id))
 
 
 @invoices_bp.route('/<invoice_id>/packing', methods=['GET', 'POST'])
@@ -624,11 +667,11 @@ def packing(invoice_id):
     pack_page = packing_page(load_layout(header.get('template_id'), g.current_org_id), header.get('doc_type'))
     if not pack_page:
         flash("This document's template has no packing list page. Add one under Templates → Pages & printing.", 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
     box_fields = pack_page['box_fields']
     if not can_edit_invoice():
         flash('You need to be a Member or Owner to edit packing.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     sections = build_sections(header, values)
     lines = item_lines(sections)
@@ -729,7 +772,7 @@ def edit_invoice(invoice_id):
     current_role = get_current_org_role()
     if not can_edit_invoice():
         flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to edit invoices.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
     
     org_id = g.current_org_id
 
@@ -747,7 +790,7 @@ def edit_invoice(invoice_id):
         correcting = current_status != 'draft' and request.values.get('correct') == '1'
         if current_status != 'draft' and not correcting:
             flash('This document has been sent. Use "Change" on its page to correct it or make a revision.', 'error')
-            return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+            return redirect(_back(invoice_id))
         total_before = invoice_header.get('total_amount')
     except DatabaseError as e:
         flash('Error loading invoice', 'error')
@@ -899,7 +942,7 @@ def edit_invoice(invoice_id):
                                     current_number=invoice_header.get('doc_number'))
             except DocumentError as e:
                 flash(str(e), 'error')
-                return redirect(url_for('invoices_bp.edit_invoice', invoice_id=invoice_id))
+                return redirect(_editor(invoice_id, invoice_id))
 
             invoice_header, invoice_values = get_org_invoice(invoice_id, org_id)
             recalculate_invoice(invoice_id, invoice_header, invoice_values)
@@ -908,14 +951,14 @@ def edit_invoice(invoice_id):
                 _corrected(invoice_header, total_before)
                 flash(f'{invoice_header.get("doc_number") or "Document"} corrected. It keeps its number; download the PDF '
                       'again and send the corrected one.', 'success')
-                return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+                return redirect(_back(invoice_id))
             flash(f'{get_type(invoice_header.get("doc_type")).label} updated', 'success')
 
-            return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+            return redirect(_back(invoice_id))
 
         except DatabaseError as e:
             flash(f'Error updating invoice: {str(e)}', 'error')
-            return redirect(url_for('invoices_bp.edit_invoice', invoice_id=invoice_id))
+            return redirect(_editor(invoice_id, invoice_id))
 
 
     try:
@@ -1056,7 +1099,7 @@ def edit_invoice(invoice_id):
                                                         [], header=invoice_header))
     except DatabaseError as e:
         flash('Error loading form data', 'error')
-    return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    return redirect(_back(invoice_id))
 
 
 def _corrected(header, total_before):
@@ -1099,7 +1142,7 @@ def reopen_blocker(header, payments) -> str:
 @require_org
 def reopen(invoice_id):
     """Undo "Mark as sent" / "Finalize": back to a draft (same number) to edit and send again."""
-    back = redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    back = redirect(_back(invoice_id))
     if not can_finalize_invoice():
         flash('You need to be a Member or Owner to change documents.', 'error')
         return back
@@ -1138,7 +1181,7 @@ def delete_invoice(invoice_id):
             return redirect(url_for('invoices_bp.list_invoices'))
         if not can_delete_invoice(invoice_header):
             flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to delete invoices.', 'error')
-            return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+            return redirect(_back(invoice_id))
 
 
         db.execute_proc('sp_delete_invoice', (invoice_id,), fetch=False)
@@ -1156,7 +1199,7 @@ def add_payment(invoice_id):
     current_role = get_current_org_role()
     if not can_edit_invoice():
         flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to add payments.', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
     
     amount = request.form.get('amount')
     method = request.form.get('method')
@@ -1164,7 +1207,7 @@ def add_payment(invoice_id):
 
     if not amount:
         flash('Amount is required', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     invoice_header, _ = get_org_invoice(invoice_id, g.current_org_id)
     if not invoice_header:
@@ -1173,16 +1216,16 @@ def add_payment(invoice_id):
     doc_type = get_type(invoice_header.get('doc_type'))
     if not (doc_type.takes_payments or doc_type.takes_advances):
         flash('Payments are recorded against invoices, and advances against proformas', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
     if doc_type.takes_advances and (invoice_header.get('status') or 'draft') == 'draft':
         flash('Finalize the proforma before recording an advance on it', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     try:
         amount_value = float(amount)
     except ValueError:
         flash('Amount must be a number', 'error')
-        return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+        return redirect(_back(invoice_id))
 
     # Foreign-currency invoices: what the bank actually credited in the home currency
     _, profile = get_org_profile(g.current_org_id)
@@ -1194,7 +1237,7 @@ def add_payment(invoice_id):
             received = float(raw_received)
         except ValueError:
             flash('Amount credited must be a number', 'error')
-            return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+            return redirect(_back(invoice_id))
     payment_date = (request.form.get('payment_date') or '').strip() or None
 
     try:
@@ -1213,14 +1256,14 @@ def add_payment(invoice_id):
     except DatabaseError as e:
         flash(f'Error recording payment: {str(e)}', 'error')
 
-    return redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    return redirect(_back(invoice_id))
 
 
 @invoices_bp.route('/<invoice_id>/advances', methods=['POST'])
 @require_org
 def apply_advances(invoice_id):
     """Apply advances received on the customer's proformas to this invoice."""
-    back = redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    back = redirect(_back(invoice_id))
     if not can_edit_invoice():
         flash('You need to be a Member or Owner to apply advances.', 'error')
         return back
@@ -1244,7 +1287,7 @@ def apply_advances(invoice_id):
 @require_org
 def remove_advance(invoice_id, payment_id):
     """Take an applied advance off this invoice; it goes back to its proforma."""
-    back = redirect(url_for('invoices_bp.view_invoice', invoice_id=invoice_id))
+    back = redirect(_back(invoice_id))
     if not can_edit_invoice():
         flash('You need to be a Member or Owner to change advances.', 'error')
         return back

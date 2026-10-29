@@ -196,3 +196,10 @@ def build_empty():
         'top_owed': [],
         'has_invoices': False,
     }
+
+
+@dashboard_bp.route('/new')
+@require_org
+def index_new():
+    """The new home page (React, frontend/src/islands/home/): what needs doing first. Opt-in for now."""
+    return render_template('dashboard_new.html')

@@ -126,3 +126,25 @@ document.addEventListener('click', function (e) {
     var dialog = e.target.closest('dialog[open]');
     if (dialog && (e.target === dialog || e.target.closest('[data-close]'))) dialog.close();
 });
+
+// A link to #id opens the <details> that id is (or is in), and goes to it: "Record payment" -> <details id="payment">
+(function () {
+    function reveal(hash) {
+        var el = hash && hash.length > 1 && document.getElementById(decodeURIComponent(hash.slice(1)));
+        var fold = el && el.closest('details');
+        if (!fold) return false;
+        fold.open = true;
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        var field = fold.querySelector('input:not([type=hidden]):not([type=checkbox]), select, textarea');
+        if (field) field.focus({ preventScroll: true });
+        return true;
+    }
+    document.addEventListener('click', function (e) {
+        var a = e.target.closest('a[href^="#"]');
+        if (a && reveal(a.getAttribute('href'))) {
+            e.preventDefault();
+            history.replaceState(null, '', a.getAttribute('href'));
+        }
+    });
+    reveal(window.location.hash);
+})();

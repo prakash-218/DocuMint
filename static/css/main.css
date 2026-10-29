@@ -1502,6 +1502,14 @@ input[type="date"].form-input { padding-right: 8px; }
 .version-changes-toggle { width: 18px; height: 18px; color: var(--ink-3); transition: transform var(--transition-fast); flex-shrink: 0; }
 .version-changes:not([open]) .version-changes-toggle { transform: rotate(-90deg); }
 .version-changes:not([open]) > summary { border-bottom: 0; }
+/* A card that opens and closes (new document page: record a payment, apply an advance, convert); a link to its id opens it */
+.fold-card > summary { list-style: none; cursor: pointer; flex-wrap: nowrap; }
+.fold-card > summary::-webkit-details-marker { display: none; }
+.fold-toggle { width: 18px; height: 18px; color: var(--ink-3); transition: transform var(--transition-fast); flex-shrink: 0; }
+.fold-card:not([open]) .fold-toggle { transform: rotate(-90deg); }
+.fold-card:not([open]) > summary { border-bottom: 0; }
+.fold-card { scroll-margin-top: calc(var(--header-height) + var(--spacing-md)); }
+.doc-new { margin-top: var(--spacing-md); }
 .total-delta { white-space: nowrap; color: var(--ink-2); font-weight: var(--font-weight-medium); }
 .change-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--spacing-sm); }
 .change-list li { display: flex; align-items: flex-start; gap: var(--spacing-sm); }

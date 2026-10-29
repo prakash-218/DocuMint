@@ -4,7 +4,7 @@
 
 {% block title %}{{ project.title }} · {{ project | project_label }}{% endblock %}
 {% block page_title %}{{ project.title }}{% endblock %}
-{% block page_description %}<p class="header-description">{{ project | project_label }} · FY {{ project.fiscal_year }} · <a href="{{ url_for('customers_bp.view_customer', customer_id=project.customer_id) }}">{{ project | customer_label }}</a>{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</p>{% endblock %}
+{% block page_description %}<p class="header-description">{{ project | project_label }} · FY {{ project.fiscal_year }} · <a href="{{ url_for('customers_bp.view_customer_new', customer_id=project.customer_id) }}">{{ project | customer_label }}</a>{% if project.reference %} · Ref. {{ project.reference }}{% endif %}</p>{% endblock %}
 
 {% block header_actions %}
 <a href="{{ url_for('projects_bp.view_project', project_id=project.project_id) }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic page</span></a>

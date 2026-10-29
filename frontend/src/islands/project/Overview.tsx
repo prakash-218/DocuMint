@@ -62,6 +62,8 @@ export function ActionButton({ action: a, onEmail, onStatus }: { action: Action 
       return <button type="button" className={cls} onClick={() => onEmail(a.invoice_id)}><Icon name="mail" />{a.label}</button>;
     case 'status':
       return <button type="button" className={cls} onClick={() => onStatus(a.status)}>{a.label}</button>;
+    case 'dialog': // a <dialog> on the page, which static/js/app.js opens
+      return <button type="button" className={cls} data-open-dialog={a.dialog}>{a.label}</button>;
   }
 }
 

@@ -16,7 +16,7 @@
 {% endblock %}
 
 {% block header_actions %}
-<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) if editing else (url_for('projects_bp.view_project', project_id=project.project_id) if project else url_for('invoices_bp.list_invoices', type=t.key if t.key in ('quote', 'proforma') else None)) }}"
+<a href="{{ url_for('invoices_bp.view_invoice_new' if request.args.get('from') == 'new' else 'invoices_bp.view_invoice', invoice_id=invoice.invoice_id) if editing else (url_for('projects_bp.view_project', project_id=project.project_id) if project else url_for('invoices_bp.list_invoices', type=t.key if t.key in ('quote', 'proforma') else None)) }}"
    class="btn btn-ghost"><span class="btn-label">Cancel</span><i data-lucide="x" class="show-mobile-icon"></i></a>
 <button type="submit" form="docForm" class="btn btn-primary"><i data-lucide="check"></i><span class="btn-label">{{ 'Save the correction' if correcting else ('Save' if editing else 'Create') }}</span></button>
 {% endblock %}

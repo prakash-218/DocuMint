@@ -934,6 +934,19 @@ def list_org_payments(conn, org_id, since):
                             ORDER BY p.payment_date DESC""", o=org_id, s=since)]
 
 
+@proc('sp_list_customer_payments')
+def list_customer_payments(conn, org_id, customer_ids):
+    """Every payment from these customers, once each: on the document it counts on now (an advance on its proforma
+    until it's applied, then on the invoice), with the proforma an applied advance came in on."""
+    return [_rows(conn, f"""SELECT p.payment_id, p.invoice_id, p.amount, p.payment_date, p.method, p.reference_number,
+                                   p.advance_of, a.doc_number AS advance_number, i.doc_type, i.doc_number, i.status,
+                                   i.customer_id, {CURRENCY} AS currency_code
+                            FROM payment p JOIN invoice i ON p.invoice_id = i.invoice_id {TEMPLATE_JOIN}
+                            LEFT JOIN invoice a ON a.invoice_id = p.advance_of AND p.advance_of <> p.invoice_id
+                            WHERE i.org_id = :o AND i.customer_id = ANY(CAST(:c AS uuid[]))
+                            ORDER BY p.payment_date, p.payment_id""", o=org_id, c=[str(i) for i in customer_ids])]
+
+
 @proc('sp_get_revenue_timeseries')
 def get_revenue_timeseries(conn, org_id):
     return [_rows(conn, """SELECT to_char(COALESCE(issue_date, current_date), 'YYYY-MM') AS month,
@@ -1228,6 +1241,17 @@ def get_notification(conn, notification_id, user_id):
     return [_rows(conn, """SELECT n.notification_id, e.org_id, e.link FROM notification n JOIN event e ON e.event_id = n.event_id
                            WHERE n.notification_id = CAST(:n AS uuid) AND n.user_id = :u""",
                   n=_as_uuid(notification_id), u=user_id)]
+
+
+@proc('sp_list_recent_events')
+def list_recent_events(conn, org_id, limit):
+    """What happened lately across the organization, newest first, with the project it was on."""
+    return [_rows(conn, """SELECT e.event_id, e.kind, e.title, e.link, e.created_at, u.email AS actor_email,
+                                  e.project_id, p.title AS project_title
+                           FROM event e LEFT JOIN users u ON u.user_id = e.actor_user_id
+                           LEFT JOIN project p ON p.project_id = e.project_id
+                           WHERE e.org_id = :o AND e.kind <> 'note' ORDER BY e.created_at DESC LIMIT :l""",
+                  o=org_id, l=limit or 10)]
 
 
 @proc('sp_list_project_events')

@@ -6,6 +6,7 @@
 {% block page_description %}<p class="header-description">{{ session.get('org_name', '') }}</p>{% endblock %}
 
 {% block header_actions %}
+<a href="{{ url_for('dashboard_bp.index_new') }}" class="btn btn-ghost"><i data-lucide="sparkles"></i><span class="btn-label">Try the new home</span></a>
 {% if current_org_role in ('owner', 'admin', 'member') %}
 {% set with_project = true %}{% include "_new_menu.html" %}
 {% endif %}

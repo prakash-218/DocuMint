@@ -151,7 +151,7 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
     f = facts(docs)
     edit, sales = can.get('edit'), can.get('sales')
     no = lambda d: display_number(d) or 'draft'  # noqa: E731
-    view = lambda d: url('invoices_bp.view_invoice', invoice_id=d['invoice_id'])  # noqa: E731
+    view = lambda d: url('invoices_bp.view_invoice_new', invoice_id=d['invoice_id'])  # noqa: E731
     edit_doc = lambda d, kind: _link(f'Edit {kind}', url('invoices_bp.edit_invoice', invoice_id=d['invoice_id']), True)  # noqa: E731
     convert = lambda label, source, target, primary=False: _post(  # noqa: E731
         label, url('invoices_bp.convert', invoice_id=source['invoice_id']), {'target': target}, primary)
@@ -234,13 +234,14 @@ def documents(docs: List[Dict], url: Callable) -> List[Dict]:
     for d in docs:
         kind = get_type(d.get('doc_type'))
         out.append({'invoice_id': d['invoice_id'], 'doc_type': kind.key, 'kind': kind.label, 'number': display_number(d) or 'Draft',
+                    'customer_id': d.get('customer_id'), 'site': d.get('customer_site'), 'project_id': d.get('project_id'),
                     'status': d.get('status') or 'draft', 'issue_date': d.get('issue_date'), 'currency': d.get('currency_code'),
                     'total': float(d.get('total_amount') or 0), 'paid': float(d.get('paid_amount') or 0),
-                    'balance': balance_of(d) if kind.takes_payments else None, 'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id']),
+                    'balance': balance_of(d) if kind.takes_payments else None, 'url': url('invoices_bp.view_invoice_new', invoice_id=d['invoice_id']),
                     'pdf': url('invoices_bp.export_pdf', invoice_id=d['invoice_id']),
                     'versions': [{'invoice_id': v['invoice_id'], 'number': display_number(v), 'issue_date': v.get('issue_date'),
                                   'total': float(v.get('total_amount') or 0),
-                                  'url': url('invoices_bp.view_invoice', invoice_id=v['invoice_id'])} for v in d.get('versions') or []]})
+                                  'url': url('invoices_bp.view_invoice_new', invoice_id=v['invoice_id'])} for v in d.get('versions') or []]})
     return out
 
 
@@ -257,6 +258,16 @@ def money(docs: List[Dict], files: List[Dict], quoted_only: bool = False) -> Lis
                        advance_held=float(m['advances'].get(c, 0)), due=float(m['due'].get(c, 0)))
         rows.append(row)
     return rows
+
+
+def file_row(f: Dict, url: Callable) -> Dict:
+    """A file kept for the customer (attachment), as the project and customer pages list it."""
+    import projects
+    return {'id': f['attachment_id'], 'name': f.get('file_name'), 'kind': f.get('kind'),
+            'kind_label': projects.DOCUMENT_KINDS.get(f.get('kind'), 'File'), 'title': f.get('title'),
+            'reference_no': f.get('reference_no'), 'date': f.get('doc_date') or f.get('created_at'),
+            'size': projects.human_size(f.get('file_size') or 0), 'from_email': bool(f.get('email_thread_id')),
+            'url': url('projects_bp.download_file', attachment_id=f['attachment_id'])}
 
 
 SALES_EVENTS = ('project_created', 'project_status', 'file_uploaded', 'note')
@@ -300,7 +311,7 @@ def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date]
                     'created_at': project.get('created_at'),
                     'customer': {'id': project['customer_id'], 'name': project.get('customer_name'),
                                  'site': project.get('customer_site'),
-                                 'url': url('customers_bp.view_customer', customer_id=project['customer_id'])},
+                                 'url': url('customers_bp.view_customer_new', customer_id=project['customer_id'])},
                     'po': {'number': po.get('reference_no'), 'date': po.get('doc_date'), 'amount': po.get('amount'),
                            'currency': po.get('currency')} if po else None,
                     'classic_url': url('projects_bp.view_project', project_id=project_id)},
@@ -320,11 +331,7 @@ def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date]
                   'phones': [{'contact_id': p['contact_id'], 'name': p['name'], 'phone': p['phone'], 'value': p['value'],
                               'replaces': p.get('replaces')} for p in found['phones']]},
         'gets': contacts.GETS, 'usually': contacts.USUALLY,
-        'files': [{'id': f['attachment_id'], 'name': f.get('file_name'), 'kind': f.get('kind'),
-                   'kind_label': projects.DOCUMENT_KINDS.get(f.get('kind'), 'File'), 'title': f.get('title'),
-                   'reference_no': f.get('reference_no'), 'date': f.get('doc_date') or f.get('created_at'),
-                   'size': projects.human_size(f.get('file_size') or 0), 'from_email': bool(f.get('email_thread_id')),
-                   'url': url('projects_bp.download_file', attachment_id=f['attachment_id'])} for f in files],
+        'files': [file_row(f, url) for f in files],
         'upload': {'action': url('projects_bp.upload_file'), 'kinds': kinds} if can['edit'] else None,
         'costings': [{'id': k['costing_id'], 'title': k.get('title') or 'Costing', 'currency': k.get('currency'),
                       'cost': float(k.get('total_cost') or 0), 'price': float(k.get('total_price') or 0),
@@ -374,6 +381,8 @@ def projects_list(org_id, role: str, url: Callable, today: Optional[date] = None
             'tone': nxt['tone'], 'currency': currency,
             'quoted': float((f['quote'] or {}).get('total_amount') or 0),
             'due': None if sales else f['due'],
+            'advance': None if sales else sum(float(d.get('total_amount') or 0) for d in f['sent_proformas']
+                                              if float(d.get('paid_amount') or 0) <= 0 and d.get('status') == 'sent'),
             'last_activity': max(filter(None, [str(p.get('updated_at') or ''), str(p.get('last_issue_date') or '')]), default=None),
             'numbers': [x for d in docs for x in [d.get('doc_number'), *[v.get('doc_number') for v in d.get('versions') or []]] if x],
         })
