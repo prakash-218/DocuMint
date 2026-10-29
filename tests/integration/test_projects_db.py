@@ -7,6 +7,7 @@ import re
 from tests.integration.test_documents_db import (_create, _customer, _template, app, client,  # noqa: F401
                                                     gst_org)
 from tests.integration.test_app_db import VIEWER, login, pytestmark  # noqa: F401
+from tests.spa import document, document_text
 
 PDF = b'%PDF-1.4\n% customer purchase order\n'
 
@@ -34,7 +35,7 @@ def test_quote_to_invoice_builds_a_project_with_the_po(client, gst_org):
     quote_id, _ = _create(client, org_id, 'quote', 'Quotation', customer,
                           [{'description': 'Drill jig', 'price': 40000, 'qty': 1}],
                           tax_mode='none', detail_subject='Drill jig for bracket', project_id=new_project)
-    page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
+    page = document_text(client, f'/quotes/{quote_id}')
     assert 'Drill jig for bracket' in page and 'PRJ-' in page
     client.post(f'/invoices/{quote_id}/finalize')
     # ...and can't be saved without one
@@ -187,7 +188,7 @@ def test_project_year_the_picker_and_finding_projects(client, gst_org):
     # A document's page offers the picker, fed by its customer's projects
     invoice_id, _ = _create(client, org_id, 'invoice', 'Tax Invoice', customer,
                             [{'description': 'Drop set', 'rate': 15000, 'qty': 1}], project_id=tool)
-    page = client.get(f'/invoices/{invoice_id}').get_data(as_text=True)
-    assert 'data-project-picker' in page and f'customer_id={customer}' in page and 'Move to another project' in page
+    card = document(client, f'/invoices/{invoice_id}')['project']
+    assert card['project'] and f'customer_id={customer}' in card['change']['options']     # move it to another project
     client.post(f'/projects/for-document/{invoice_id}', data={'project_id': spindle})
     assert projects.project_of(invoice_id, org_id) == spindle

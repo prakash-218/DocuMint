@@ -3,7 +3,7 @@
 import type { ComponentType } from 'react';
 import { matchRoutes } from 'react-router';
 import type { SkeletonKind } from '../Skeleton';
-import { CustomerScreen, HomeScreen, ListScreen, ProjectScreen, ProjectsScreen } from './screens';
+import { CustomerScreen, DocumentScreen, HomeScreen, ListScreen, ProjectScreen, ProjectsScreen } from './screens';
 
 export interface AppRoute {
   path: string;
@@ -21,6 +21,9 @@ export const ROUTES: AppRoute[] = [
   { path: '/proformas', screen: ListScreen, skeleton: 'list', label: 'Proforma invoices' },
   { path: '/invoices', screen: ListScreen, skeleton: 'list', label: 'Invoices' },
   { path: '/customers/:customerId', screen: CustomerScreen, skeleton: 'page', label: 'Customer', ids: ['customerId'] },
+  { path: '/quotes/:invoiceId', screen: DocumentScreen, skeleton: 'doc', label: 'Quotation', ids: ['invoiceId'] },
+  { path: '/proformas/:invoiceId', screen: DocumentScreen, skeleton: 'doc', label: 'Proforma', ids: ['invoiceId'] },
+  { path: '/invoices/:invoiceId', screen: DocumentScreen, skeleton: 'doc', label: 'Invoice', ids: ['invoiceId'] },
 ];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

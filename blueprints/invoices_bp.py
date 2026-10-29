@@ -304,8 +304,19 @@ def view_invoice_new(invoice_id):
 @invoices_bp.route('/<invoice_id>')
 @require_org
 def view_invoice(invoice_id):
-    """A document: its state, what to do next and its money (document_view), the document, and beside it the project's
-    documents, who gets it and what happened."""
+    """A document, in the React app (frontend/src/islands/document/), fed by GET /api/document/<id>."""
+    header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    if not header:
+        flash('Invoice not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+    import nav
+    from documents import display_number
+    return nav.spa(display_number(header) or get_type(header.get('doc_type')).label, 'doc')
+
+
+def page_context(invoice_id):
+    """What a document's page shows: its state, what to do next and its money (document_view), the document, and
+    beside it the project's documents, who gets it and what happened. A redirect when it can't be shown."""
     context = _view_context(invoice_id)
     if not isinstance(context, dict):
         return context
@@ -319,9 +330,7 @@ def view_invoice(invoice_id):
                                                   url_for, context['convert_defaults'], can_email=bool(project),
                                                   usual_days=usual_days(load_json(invoice.get('organization_profile'))))
     context['doc_steps'] = document_view.steps(invoice, summary, context['advance_received'])
-    # As the prototype draws it: its state, the money, and beside it the project's documents, who gets it, what happened
     advance_received = context['advance_received']
-    doc_pill = document_view.pill(invoice, summary, advance_received)
     people, events = [], []
     if project:
         import contacts
@@ -330,12 +339,12 @@ def view_invoice(invoice_id):
     if role == SALES:                                   # their files: not the POs, invoices and the like
         context['files'] = [f for f in context['files'] if f.get('kind') not in projects.NOT_QUOTATIONS]
     context.update(
-        doc_pill=doc_pill,
+        doc_pill=document_view.pill(invoice, summary, advance_received),
         doc_money=document_view.money_strip(invoice, summary, context['payments'], advance_received),
         doc_chain=document_view.chain(context['project_docs'], invoice_id, url_for) if project else [],
         doc_people=[] if role == SALES and invoice.get('doc_type') != 'quote' else document_view.who_gets_it(invoice, people),
         doc_activity=document_view.activity(events, invoice_id, (invoice.get('customer_name'), invoice.get('customer_site'))))
-    return render_template('invoices/new_view.html', **context)
+    return context
 
 
 def _back(invoice_id):

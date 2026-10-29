@@ -95,6 +95,21 @@ def home():
     return jsonify(home_view.build(g.current_org_id, get_current_org_role(), url_for, email=session.get('email')))
 
 
+@api_bp.route('/document/<invoice_id>')
+@require_org
+def document_page(invoice_id):
+    """A document's page (document_page.py): its state, what's next, its money, payments, the document and beside it
+    its project, people, activity and files."""
+    from access import get_org_invoice
+    from blueprints.invoices_bp import page_context
+    import document_page as page
+    header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    context = page_context(invoice_id) if header else None
+    if not isinstance(context, dict):
+        return jsonify(error='That document is not in this organization'), 404
+    return jsonify(page.build(context, get_current_org_role(), url_for))
+
+
 @api_bp.route('/documents/<any(quotes, proformas, invoices):group>')
 @require_org
 def documents(group):

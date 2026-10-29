@@ -8,6 +8,7 @@ const ProjectsBoard = lazy(() => import('../islands/board/ProjectsBoard'));
 const ProjectPage = lazy(() => import('../islands/project/ProjectPage'));
 const DocumentList = lazy(() => import('../islands/documents/DocumentList'));
 const CustomerPage = lazy(() => import('../islands/customer/CustomerPage'));
+const DocumentPage = lazy(() => import('../islands/document/DocumentPage'));
 
 export function HomeScreen() {
   return <Home />;
@@ -34,4 +35,9 @@ export function ListScreen() {
 export function CustomerScreen() {
   const { customerId = '' } = useParams();
   return <CustomerPage key={customerId} customerId={customerId} />;
+}
+
+export function DocumentScreen() {
+  const { invoiceId = '' } = useParams();
+  return <DocumentPage key={invoiceId} invoiceId={invoiceId} />;
 }

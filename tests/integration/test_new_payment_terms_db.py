@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from tests.integration.test_app_db import login, pytestmark  # noqa: F401
 from tests.integration.test_documents_db import _create, app, client, gst_org  # noqa: F401
 from tests.integration.test_sites_db import _created_id
+from tests.spa import document_text
 
 
 def test_terms_make_an_invoice_overdue_everywhere(client, gst_org):
@@ -44,8 +45,7 @@ def test_terms_make_an_invoice_overdue_everywhere(client, gst_org):
     assert late == sorted(late, reverse=True)                                     # the most late first
     assert any(i['url'] == f'/invoices/{invoice_id}' and '10 days late' in i['sub'] for i in overdue['items']) or late[-1] >= 10
     assert overdue['more_url'] == '/invoices/?status=overdue'
-    page = client.get(f'/invoices/{invoice_id}').get_data(as_text=True)
-    assert '10 days late: it was due on' in page
+    assert '10 days late: it was due on' in document_text(client, f'/invoices/{invoice_id}')
     from access import fetch_invoice
     assert fetch_invoice(invoice_id)[0]['due_date'] is None                       # nothing written on the invoice
 

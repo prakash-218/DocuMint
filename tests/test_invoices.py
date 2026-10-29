@@ -1,16 +1,17 @@
 import pytest
 
 from tests.fakedb import ORG_A, ORG_B
+from tests.spa import document
 
 
 def test_view_computes_without_writing(client, login_as, fake_db):
     login_as('U-A', ORG_A)
-    response = client.get('/invoices/INV-A')
-    assert response.status_code == 200
+    assert client.get('/invoices/INV-A').status_code == 200                 # the app's page
+    page = document(client, '/invoices/INV-A')['document_html']
     assert fake_db.written() == []
     # stale stored values (999) are replaced by fresh results: 2*10 + 3*5 = 35, +10% tax
-    assert b'999' not in response.data
-    assert b'$38.50' in response.data
+    assert '999' not in page
+    assert '$38.50' in page
 
 
 def test_viewer_role_can_view_without_writing(client, login_as, fake_db):

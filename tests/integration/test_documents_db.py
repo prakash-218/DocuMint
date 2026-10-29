@@ -10,6 +10,7 @@ from datetime import date
 import pytest
 
 from tests.integration.test_app_db import OWNER, login, org_of, pytestmark  # noqa: F401  (shared skip marker)
+from tests.spa import document, document_text
 
 
 @pytest.fixture(scope='module')
@@ -110,7 +111,7 @@ def test_quote_to_proforma_to_invoice(client, app, gst_org):
     header, s = _summary(quote_id)
     assert header['doc_type'] == 'quote' and header['doc_number'] == number
     assert s['total'] == 11800
-    page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
+    page = document_text(client, f'/quotes/{quote_id}')
     assert '₹11,800.00' in page and 'Mr. Krishnamoorthi' in page and 'Offer validity' in page
 
     # Quotes never count as revenue, even once sent
@@ -267,12 +268,12 @@ def test_quote_revisions(client, gst_org):
     rev2 = re.search(r'/(?:quotes|proformas|invoices)/([0-9a-f-]{36})', response.headers['Location']).group(1)
     assert _summary(rev2)[0]['doc_number'] == rev2_number
     # The latest version's page: every version, and what changed from the one before (nothing: it's a copy)
-    page = client.get(f'/quotes/{rev2}').get_data(as_text=True)
+    page = document_text(client, f'/quotes/{rev2}')
     assert 'class="version-bar"' in page and 'Revision 2' in page and rev1_number in page
     assert f'What changed from {rev1_number}' in page and 'Nothing changed in the items, prices or terms' in page
     assert 'This is an earlier version' not in page
     # An earlier version says so, and links to the latest
-    page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
+    page = document_text(client, f'/quotes/{quote_id}')
     assert 'This is an earlier version' in page and f'/quotes/{rev2}' in page
     # The list shows the quotation once, as its latest version; searching the original number finds it
     rows = client.get('/api/documents/quotes').get_json()['rows']
@@ -306,8 +307,8 @@ def test_copies_packing_list_and_foreign_payment(client, gst_org):
     assert header['status'] == 'paid'
     payment = db.execute_proc('sp_get_invoice_payments', (export_id,))[0]
     assert float(payment['received_amount']) == 25000 and payment['received_currency'] == 'INR'
-    page = client.get(f'/invoices/{export_id}').get_data(as_text=True)
-    assert 'Credited ₹25,000.00' in page and '@ 83.33' in page
+    [row] = document(client, f'/invoices/{export_id}')['payments']['rows']
+    assert row['credited'] == {'amount': 25000, 'currency': 'INR', 'rate': '83.33'}
 
 
 def test_packing_by_box(client, gst_org):
@@ -372,7 +373,7 @@ def test_quote_cost_breakup(client, gst_org):
     assert s['total'] == 62000                       # break-ups don't add to the total
     [group] = s['breakups']
     assert group['total'] == 62000 and group['matches'] and len(group['parts']) == 3
-    page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
+    page = document_text(client, f'/quotes/{quote_id}')
     assert 'Cost break-up' in page and 'Mechanical work' in page and "adds up to" not in page
     assert client.get(f'/quotes/{quote_id}/pdf').status_code == 200
 
@@ -425,9 +426,10 @@ def test_template_pages_and_custom_fields(client, gst_org):
 
         invoice_id, _ = _create(client, org_id, 'invoice', 'Tax Invoice', customer,
                                 [{'description': 'Fixture plate', 'rate': 1000, 'qty': 4}])
-        page = client.get(f'/invoices/{invoice_id}').get_data(as_text=True)
-        assert f'/invoices/{invoice_id}/packing' in page and 'page=packing' in page and 'Shipping list' in page
-        assert 'page=terms_of_supply' not in page          # printed with the document, no separate button
+        pdf = document(client, f'/invoices/{invoice_id}')['pdf']
+        assert pdf['packing'] == f'/invoices/{invoice_id}/packing'
+        assert any('page=packing' in link['href'] and link['label'] == 'Shipping list' for link in pdf['links'])
+        assert not any('page=terms_of_supply' in link['href'] for link in pdf['links'])   # printed with the document
 
         editor_page = client.get(f'/invoices/{invoice_id}/packing').get_data(as_text=True)
         assert 'Pallet no.' in editor_page and 'Gross' not in editor_page
@@ -557,8 +559,8 @@ def test_pdf_with_or_without_seal(client, gst_org, monkeypatch):
         assert stamp in rendered[-1]
         assert client.get(f'/quotes/{quote_id}/pdf?seal=0').status_code == 200
         assert stamp not in rendered[-1] and 'Seal check' in rendered[-1]
-        page = client.get(f'/invoices/{quote_id}', follow_redirects=True).get_data(as_text=True)
-        assert 'Print with seal' in page and 'data-pdf' in page
+        pdf = document(client, f'/quotes/{quote_id}')['pdf']
+        assert pdf['seal'] and pdf['links']                                    # "Print with seal" in the PDF menu
     finally:
         save_org_profile(org_id, profile)
-    assert 'Print with seal' not in client.get(f'/invoices/{quote_id}', follow_redirects=True).get_data(as_text=True)
+    assert not document(client, f'/quotes/{quote_id}')['pdf']['seal']
