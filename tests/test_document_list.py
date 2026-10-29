@@ -56,6 +56,17 @@ def test_where_each_document_stands(d, tab, tag, note):
     assert (got['tab'], (got['tag']['text'], got['tag']['tone']), got['note']) == (tab, tag, note)
 
 
+def test_payment_terms_make_an_invoice_due():
+    theirs = doc('invoice', 'pending', issue='2026-09-01', payment_days=30)               # due 1 Oct
+    assert L.state(theirs, TODAY)['note'] == '19 days late' and L.state(theirs, TODAY)['tab'] == 'overdue'
+    usual = doc('invoice', 'pending', issue='2026-10-14')
+    assert L.state(usual, TODAY)['note'] == '' and L.state(usual, TODAY, usual_days=30)['note'] == 'Due in 24 days'
+    [row] = L.rows([usual], url, TODAY, usual_days=30)
+    assert row['until'] == date(2026, 11, 13)                                               # the list's Due column
+    quote = doc('quote', 'sent', payment_days=30, due='2026-11-13')
+    assert L.rows([quote], url, TODAY)[0]['until'] == '2026-11-13'                          # a quotation: valid until
+
+
 def test_a_list_has_its_own_kind_and_a_revised_document_once():
     original = doc('quote', 'revised', issue='2026-10-01')
     revision = doc('quote', 'sent', issue='2026-10-10', source_invoice_id=original['invoice_id'], doc_number='TF/001R1',

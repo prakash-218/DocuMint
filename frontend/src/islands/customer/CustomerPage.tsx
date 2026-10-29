@@ -217,6 +217,7 @@ function Overview({ data }: { data: CustomerData }) {
             <div><dt>GSTIN</dt><dd className="mono">{c.tax_id || '—'}</dd></div>
             {c.address.length > 0 && <div><dt>Address</dt><dd>{c.address.join('\n')}</dd></div>}
             {c.email_domains && <div><dt>Email domains</dt><dd>{c.email_domains}</dd></div>}
+            <div><dt>Payment terms</dt><dd>{c.payment_terms || 'Not set: invoices count as due only when they have a due date'}</dd></div>
             {c.custom.map((f) => <div key={f.label}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}
           </dl>
           {data.portal && <Portal portal={data.portal} />}

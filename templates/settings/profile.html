@@ -100,6 +100,12 @@
                         <option value="total" {% if profile.advance_basis == 'total' %}selected{% endif %}>Total including tax</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label for="payment_days" class="form-label">Usual payment terms (days)</label>
+                    <input type="number" id="payment_days" name="payment_days" class="form-input" min="0" max="365" step="1" inputmode="numeric"
+                           value="{{ profile.payment_days if profile.payment_days is not none else '' }}" placeholder="30">
+                    <p class="form-text">Days after the invoice date customers pay, unless a customer has their own. Sets when invoices count as overdue; not printed.</p>
+                </div>
             </div>
 
             <h3 style="margin: var(--spacing-md) 0 var(--spacing-sm);">Numbering</h3>

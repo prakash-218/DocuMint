@@ -218,6 +218,8 @@ def count_audit_log(conn, org_id, table_name):
 
 # How a site is told apart from its siblings: its site name, else its city
 CUSTOMER_SITE = "COALESCE(c.site_name, CASE WHEN c.parent_id IS NOT NULL THEN c.city END)"
+# A customer's payment terms in days: its own, else its parent's (payment_terms.py adds the organization's usual ones)
+PAYMENT_DAYS = "COALESCE(c.payment_days, (SELECT pc.payment_days FROM customer pc WHERE pc.customer_id = c.parent_id))"
 
 
 @proc('sp_list_customers')
@@ -247,7 +249,8 @@ def get_customer_details(conn, customer_id):
     customer = _rows(conn, f"""SELECT c.customer_id, c.org_id, c.name, c.tax_id, c.street_address, c.city, c.state,
                                       c.zip_code, c.country, c.custom, c.email_domains, c.is_archived, c.created_at,
                                       c.parent_id, c.site_name, {CUSTOMER_SITE} AS site, parent.name AS parent_name,
-                                      parent.email_domains AS parent_email_domains
+                                      parent.email_domains AS parent_email_domains, c.payment_days,
+                                      parent.payment_days AS parent_payment_days
                                FROM customer c LEFT JOIN customer parent ON parent.customer_id = c.parent_id
                                WHERE c.customer_id = :c""", c=customer_id)
     contacts = _rows(conn, f"SELECT {CONTACT_COLUMNS} FROM contact ct WHERE ct.customer_id = :c ORDER BY lower(ct.name)",
@@ -300,6 +303,15 @@ def update_customer_custom(conn, customer_id, org_id, custom):
     _require(conn, "SELECT 1 FROM customer WHERE customer_id = :c AND org_id = :o", 'Customer does not exist',
              c=customer_id, o=org_id)
     _exec(conn, "UPDATE customer SET custom = CAST(:j AS jsonb) WHERE customer_id = :c", c=customer_id, j=_json(custom) or '{}')
+    return []
+
+
+@proc('sp_update_customer_payment_days')
+def update_customer_payment_days(conn, customer_id, org_id, days):
+    """Days after the invoice date they pay; None to use their parent's terms, else the organization's usual ones."""
+    _require(conn, "SELECT 1 FROM customer WHERE customer_id = :c AND org_id = :o", 'Customer does not exist',
+             c=customer_id, o=org_id)
+    _exec(conn, "UPDATE customer SET payment_days = :d WHERE customer_id = :c", c=customer_id, d=days)
     return []
 
 
@@ -725,7 +737,7 @@ def get_invoice_details(conn, invoice_id):
                                     i.customer_id, c.name AS customer_name, c.tax_id AS customer_tax_id,
                                     c.custom AS customer_custom, c.street_address AS customer_street_address,
                                     c.city AS customer_city, c.state AS customer_state, c.zip_code AS customer_zip_code,
-                                    c.country AS customer_country,
+                                    c.country AS customer_country, {PAYMENT_DAYS} AS payment_days,
                                     i.template_id, i.template_version, t.name AS template_name,
                                     {CURRENCY} AS currency_code, i.issue_date, i.due_date, i.status
                              FROM invoice i JOIN organization o ON i.org_id = o.org_id
@@ -764,7 +776,8 @@ DOC_LIST = f"""SELECT i.invoice_id, i.doc_type, i.doc_number, i.source_invoice_i
                       i.template_id, t.name AS template_name, {CURRENCY} AS currency_code, i.issue_date, i.due_date,
                       i.status, {PAID} AS paid_amount, i.total_amount, i.project_id,
                       i.details->>'subject' AS subject, i.details->>'buyer_order_no' AS buyer_order_no,
-                      p.project_no, p.title AS project_title
+                      p.project_no, p.title AS project_title,
+                      {PAYMENT_DAYS} AS payment_days
                FROM invoice i JOIN customer c ON i.customer_id = c.customer_id {TEMPLATE_JOIN}
                LEFT JOIN project p ON p.project_id = i.project_id"""
 

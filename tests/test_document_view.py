@@ -93,6 +93,14 @@ def test_an_invoice_waits_for_payment_and_takes_advances_first():
     assert labels(nxt) == ['Record payment*', 'Email a reminder']
     assert states(doc('invoice', 'pending'), summary)[2] == ('paid', 'now', '₹18,000 of ₹1,18,000')
 
+    # With payment terms: when it's due, or how late it is
+    terms = {**doc('invoice', 'pending', number='058'), 'payment_days': 30}
+    assert look(terms, summary)['sub'] == 'Due on 13 Nov. ₹18,000 received so far. Sent on 14 Oct.'
+    late = D.next_step({**terms, 'issue_date': '2026-09-01'}, summary, 0, [], EDITOR, url, None, True, TODAY)
+    assert late['tone'] == 'late' and late['sub'].startswith('19 days late: it was due on 1 Oct.')
+    today = D.next_step({**terms, 'payment_days': None}, summary, 0, [], EDITOR, url, None, True, TODAY, usual_days=6)
+    assert today['tone'] == 'wait' and today['sub'].startswith('Due today.')
+
     advance = look(doc('invoice', 'pending'), summary, open_advances=[{'proforma_number': 'PI/007', 'amount': 40000}])
     assert labels(advance) == ['Apply the advance on PI/007*', 'Record payment', 'Email a reminder']
     assert advance['actions'][0]['href'] == '#advances'

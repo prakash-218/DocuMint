@@ -61,6 +61,29 @@ def test_money_to_receive_by_the_invoices_age_and_customer():
     assert r['advances'] == {'count': 1, 'total': {'INR': 40000}}
 
 
+def test_with_payment_terms_money_owed_goes_by_how_late_it_is():
+    invoices = [{**inv('gear', '2026-10-10', 10000), 'payment_days': 30},                  # due 9 Nov: not yet
+                {**inv('gear', '2026-09-01', 5000, paid=1000), 'payment_days': 30},        # due 1 Oct: 19 days late
+                {**inv('axle', '2026-07-01', 8000), 'due_date': '2026-08-10'},             # typed on it: 71 days late
+                {**inv('axle', '2026-09-10', 6000)}]                                       # the usual 30 days: 10 days late
+    r = H.to_receive(invoices, [], TODAY, usual=30)
+    assert r['aged_by'] == 'due' and r['overdue'] == {'count': 3, 'total': {'INR': 18000}}
+    assert [(a['label'], a['count'], a['total']) for a in r['ages']] == [
+        ('Not due yet', 1, {'INR': 10000}), ('1–30 days late', 2, {'INR': 10000}), ('31–60 days late', 0, {}),
+        ('Over 60 days late', 1, {'INR': 8000})]
+    # While some have no due date at all, by the invoices' age as before
+    mixed = H.to_receive(invoices, [], TODAY)
+    assert mixed['aged_by'] == 'date' and mixed['ages'][0]['label'] == '0–30 days' and mixed['overdue']['count'] == 2
+
+
+def test_overdue_invoices_come_first():
+    overdue = [{'label': 'Tax Invoice 058', 'sub': 'Hosur plant · 12 days late', 'total': 60000, 'currency': 'INR', 'url': '/invoices/I-58'}]
+    groups = H.attention([row('Press tool', 'invoiced', 'To invoice', quoted=5000)], [], overdue)
+    assert [g['key'] for g in groups] == ['overdue', 'invoice']
+    assert groups[0]['label'] == '1 invoice past its due date' and groups[0]['total'] == {'INR': 60000}
+    assert groups[0]['items'][0]['action'] == 'Send a reminder'
+
+
 def test_rows_say_how_many_and_which_and_the_greeting_uses_a_first_name():
     rows = [row(f'Job {n}', 'paid', 'Waiting for payment', due=1000 * n) for n in range(1, 7)]
     [group] = H.attention(rows, [])
