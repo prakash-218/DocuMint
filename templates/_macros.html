@@ -1,3 +1,4 @@
+{% from "_skeletons.html" import skeleton as skeleton_shapes %}
 {% macro flash_messages() %}
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -119,7 +120,10 @@
 {% endif %}
 {% endmacro %}
 
-{# A React screen (frontend/src/islands.ts) mounted here, with these props; nothing shows until the script runs #}
-{% macro island(name, props={}, label='') %}
-<div data-island="{{ name }}" data-props="{{ props | tojson | forceescape }}"{% if label %} aria-label="{{ label }}"{% endif %}></div>
+{# A React screen (frontend/src/islands.ts) mounted here, with these props. skeleton (list, page, home, doc): the grey
+   shapes of what it will show (_skeletons.html), there until the script replaces them #}
+{% macro island(name, props={}, label='', skeleton=None) %}
+<div data-island="{{ name }}" data-props="{{ props | tojson | forceescape }}"{% if label %} aria-label="{{ label }}"{% endif %}>
+    {%- if skeleton %}{{ skeleton_shapes(skeleton, label) }}{% endif -%}
+</div>
 {% endmacro %}

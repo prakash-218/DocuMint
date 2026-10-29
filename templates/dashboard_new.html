@@ -13,6 +13,6 @@
 {% endblock %}
 
 {% block content %}
-{{ island('home', {}, label='Home') }}
+{{ island('home', {}, label='Home', skeleton='home') }}
 <noscript><p>This page needs JavaScript. The <a href="{{ url_for('dashboard_bp.index_classic') }}">classic dashboard</a> works without it.</p></noscript>
 {% endblock %}

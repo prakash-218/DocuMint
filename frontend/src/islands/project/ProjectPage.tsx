@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../api';
+import { Skeleton } from '../../Skeleton';
 import { Composer } from '../EmailComposer';
 import { Documents } from './Documents';
 import { MoneyStrip, NextStep, Tracker } from './Overview';
@@ -45,7 +46,7 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
   }
 
   if (!page) {
-    return <div className="ui">{error ? <p className="error" role="alert">{error}</p> : <p className="loading">Loading the project…</p>}</div>;
+    return error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="page" label="Loading the project…" />;
   }
 
   const { can, project } = page;

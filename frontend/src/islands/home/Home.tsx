@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../api';
 import { money, totals, when } from '../../format';
 import { Icon, type IconName } from '../../icons';
+import { Skeleton } from '../../Skeleton';
 import type { Tone } from '../project/types';
 
 // Home, as the prototype draws it: a greeting and the three numbers that matter, what needs doing (one row a
@@ -74,7 +75,7 @@ export default function Home() {
       .catch((e) => setError(e instanceof ApiError ? e.message : "Couldn't load the home page. Check your connection."));
   }, []);
 
-  if (!data) return <div className="ui">{error ? <p className="error" role="alert">{error}</p> : <p className="loading">Loading…</p>}</div>;
+  if (!data) return error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="home" label="Loading the home page…" />;
 
   const r = data.to_receive;
   const old = r.ages[r.ages.length - 1];

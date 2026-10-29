@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { api, ApiError } from '../api';
 import { Icon } from '../icons';
+import { Skeleton } from '../Skeleton';
 import './EmailComposer.css';
 
 // An "Email" button that opens the email form for a project: who it goes to (the project's people), the
@@ -180,7 +181,7 @@ export function Composer({ projectId, invoiceId, threadId, endpoints, onClose }:
 
           <div className="k-dialog-body">
             {loadError && <p className="dm-error" role="alert">{loadError}</p>}
-            {!context && !loadError && <p className="text-tertiary">Loading…</p>}
+            {!context && !loadError && <Skeleton kind="form" label="Loading the email form…" ui={false} />}
 
             {context && sent && (
               <div className="dm-sent">

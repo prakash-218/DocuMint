@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../api';
 import { day, money, totals } from '../../format';
 import { Icon } from '../../icons';
+import { Skeleton } from '../../Skeleton';
 import { status } from '../project/Documents';
 import type { ContactFields } from '../project/People';
 import { ACCEPT, FileForm } from '../project/Side';
@@ -64,7 +65,7 @@ export default function CustomerPage({ customerId }: { customerId: string }) {
   }
 
   if (!data) {
-    return <div className="ui">{error ? <p className="error" role="alert">{error}</p> : <p className="loading">Loading the customer…</p>}</div>;
+    return error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="page" label="Loading the customer…" />;
   }
 
   const { customer, can } = data;

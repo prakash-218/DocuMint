@@ -10,6 +10,6 @@
 {% endblock %}
 
 {% block content %}
-{{ island('project-page', {'projectId': project.project_id}, label='Project') }}
+{{ island('project-page', {'projectId': project.project_id}, label='Project', skeleton='page') }}
 <noscript><p>This page needs JavaScript. The <a href="{{ url_for('projects_bp.view_project_classic', project_id=project.project_id) }}">classic page</a> works without it.</p></noscript>
 {% endblock %}

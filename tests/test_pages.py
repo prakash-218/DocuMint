@@ -46,6 +46,19 @@ def test_draft_invoice_edit_page_renders(client, login_as, fake_db):
     assert client.get('/templates/T-A/edit').status_code == 200
 
 
+def test_screens_show_their_shapes_until_the_script_replaces_them(app, client, login_as, fake_db):
+    from flask import render_template_string
+    with app.test_request_context():
+        page = render_template_string("{% from '_macros.html' import island %}{{ island('home', {}, label='Home', skeleton='home') }}")
+        bare = render_template_string("{% from '_macros.html' import island %}{{ island('email-composer', {'projectId': 'P-1'}) }}")
+    assert page.strip().startswith('<div data-island="home"') and 'class="ui skeleton" aria-busy="true" role="status"' in page
+    assert 'Home: loading…' in page and 'class="stats"' in page and 'aria-hidden="true"' in page
+    assert 'skeleton' not in bare and bare.strip().endswith('></div>')
+    login_as('U-A', ORG_A, 'alice@a.com')
+    html = client.get('/projects/').get_data(as_text=True)
+    assert 'data-island="projects-board"' in html and 'Projects: loading…' in html and '<style>.skeleton { display: none; }</style>' in html
+
+
 def test_logo_and_tab_icons(client, login_as):
     login_as('U-A', ORG_A, 'alice@a.com')
     html = client.get('/dashboard/classic').get_data(as_text=True)

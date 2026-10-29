@@ -10,6 +10,6 @@
 {% endblock %}
 
 {% block content %}
-{{ island('projects-board', {}, label='Projects') }}
+{{ island('projects-board', {}, label='Projects', skeleton='list') }}
 <noscript><p>This page needs JavaScript. The <a href="{{ url_for('projects_bp.list_projects_classic') }}">classic list</a> works without it.</p></noscript>
 {% endblock %}

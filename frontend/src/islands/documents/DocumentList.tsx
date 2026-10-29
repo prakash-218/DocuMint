@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../../api';
 import { day, money, totals } from '../../format';
 import { Icon } from '../../icons';
+import { Skeleton } from '../../Skeleton';
 import type { Tone } from '../project/types';
 
 // Quotations, proformas or invoices, as the prototype's list draws them: tabs with how many and how much, one
@@ -106,7 +107,7 @@ export default function DocumentList({ group, tab: firstTab = 'all', query: firs
     (!customer || r.customer.id === customer) && (!year || fiscalYear(r.date) === year) && (!query.trim() || matches(r, query))),
   [data, customer, year, query]);
 
-  if (!data) return <div className="ui">{error ? <p className="error" role="alert">{error}</p> : <p className="loading">Loading the list…</p>}</div>;
+  if (!data) return error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="list" label="Loading the list…" />;
 
   const inTab = (key: string) => filtered.filter((r) => key === 'all' || r.tab === key);
   const shown = inTab(tab);

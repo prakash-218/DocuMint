@@ -1,0 +1,62 @@
+{# Grey shapes where a React screen's content will be, drawn into the page so they show before the JavaScript
+   arrives; the screen replaces them (and shows frontend/src/Skeleton.tsx's, the same shapes, while it loads its
+   data). kind: list, page, home or doc. Keep the two alike. #}
+{% macro bone(w='100%', h=12, style='') -%}
+<span class="sk" style="width: {{ w }}{{ 'px' if w is number }}; height: {{ h }}px;{{ ' ' ~ style if style }}"></span>
+{%- endmacro %}
+
+{% macro _head(title=220, button=true) -%}
+<div class="head">
+    <div style="display: grid; gap: 10px;">{{ bone(title, 26) }}{{ bone(150, 12) }}</div>
+    {% if button %}{{ bone(128, 34, 'border-radius: 8px;') }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro _card(lines=3, title=120) -%}
+<section class="card">
+    <div class="card-h">{{ bone(title, 14) }}</div>
+    <div class="card-b"><div style="display: grid; gap: 12px;">
+        {% for w in ['62%', '48%', '71%', '55%', '66%', '44%', '58%', '69%'][:lines] %}{{ bone(w) }}{% endfor %}
+    </div></div>
+</section>
+{%- endmacro %}
+
+{% macro _doc() -%}
+{{ _head(240, false) }}
+{{ bone('100%', 56, 'margin-top: 16px; border-radius: 10px;') }}
+<div class="stats" style="margin-top: 12px;">{% for i in range(3) %}{{ bone('100%', 64, 'border-radius: 10px;') }}{% endfor %}</div>
+{%- endmacro %}
+
+{% macro skeleton(kind, label='') -%}
+<div class="ui skeleton" aria-busy="true" role="status">
+    <span class="sr-only">{{ label ~ ': loading…' if label else 'Loading…' }}</span>
+    <div aria-hidden="true">
+    {% if kind == 'list' %}
+        {{ _head() }}
+        <div class="tabs" style="padding-bottom: 10px;">{% for w in [64, 58, 70, 76, 60] %}{{ bone(w, 30) }}{% endfor %}</div>
+        <div class="toolbar">{{ bone('auto', 34, 'flex: 1 1 200px;') }}{{ bone(150, 34) }}{{ bone(110, 34) }}</div>
+        <div class="rows">
+            <div class="rh">{{ bone('30%', 10) }}</div>
+            {% for w in ['62%', '48%', '71%', '55%', '66%', '44%', '58%', '69%'] %}
+            <div class="rr" style="grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) 80px 110px;">
+                <div style="display: grid; gap: 6px;">{{ bone(w, 13) }}{{ bone('40%', 10) }}</div>
+                {{ bone('70%', 11) }}{{ bone(56, 18, 'border-radius: 10px;') }}{{ bone(84, 13, 'justify-self: end;') }}
+            </div>
+            {% endfor %}
+        </div>
+    {% elif kind == 'home' %}
+        {{ _head(260) }}
+        <div class="stats">{% for i in range(3) %}{{ bone('100%', 86, 'border-radius: 10px;') }}{% endfor %}</div>
+        <div class="home-cols">{{ _card(6, 130) }}<div class="col-side">{{ _card(4, 90) }}{{ _card(3, 110) }}</div></div>
+    {% elif kind == 'doc' %}
+        {{ _doc() }}
+    {% else %}
+        {{ _doc() }}
+        <div class="cols">
+            <div class="col-main">{{ _card(5, 140) }}{{ _card(3) }}</div>
+            <div class="col-side">{{ _card(4, 90) }}{{ _card(2, 70) }}</div>
+        </div>
+    {% endif %}
+    </div>
+</div>
+{%- endmacro %}
