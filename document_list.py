@@ -106,5 +106,4 @@ def build(group: str, docs: List[Dict], url: Callable, can_create: bool, today: 
             'tabs': [{'key': k, 'label': label} for k, label in info['tabs']],
             'rows': rows(mine, url, today, usual_days),
             'new_url': url('invoices_bp.create_invoice', doc_type=info['new_type']) if can_create else None,
-            'new_label': f"New {get_type(info['new_type']).short.lower()}",
-            'classic_url': url('invoices_bp.list_invoices_classic', doc_path=group)})
+            'new_label': f"New {get_type(info['new_type']).short.lower()}"})

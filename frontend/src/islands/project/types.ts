@@ -96,7 +96,6 @@ export interface Page {
     created_at: string | null;
     customer: { id: string; name: string; site: string | null; url: string };
     po: { number: string; date: string | null; amount: number | null; currency: string | null } | null;
-    classic_url: string;
   };
   can: { edit: boolean; manage: boolean; read_mail: boolean; sales: boolean };
   stage: { steps: Step[]; current: string | null; pill: { text: string; tone: Tone } };

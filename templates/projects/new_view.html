@@ -5,11 +5,7 @@
 {% block title %}{{ project.title }} · {{ project | project_label }}{% endblock %}
 {% block header_title %}<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('projects_bp.list_projects') }}">Projects</a><span aria-hidden="true">/</span><b>{{ project | project_label }} {{ project.title }}</b></nav>{% endblock %}
 
-{% block header_actions %}
-<a href="{{ url_for('projects_bp.view_project_classic', project_id=project.project_id) }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic page</span></a>
-{% endblock %}
-
 {% block content %}
 {{ island('project-page', {'projectId': project.project_id}, label='Project', skeleton='page') }}
-<noscript><p>This page needs JavaScript. The <a href="{{ url_for('projects_bp.view_project_classic', project_id=project.project_id) }}">classic page</a> works without it.</p></noscript>
+<noscript><p>This page needs JavaScript.</p></noscript>
 {% endblock %}

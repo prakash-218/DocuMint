@@ -10,10 +10,9 @@
 {% if nav_role in customer_editor_roles %}
 <a href="{{ url_for('customers_bp.edit_customer', customer_id=customer.customer_id) }}" class="btn btn-secondary"><i data-lucide="pencil"></i><span class="btn-label">Edit</span></a>
 {% endif %}
-<a href="{{ url_for('customers_bp.view_customer_classic', customer_id=customer.customer_id) }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic page</span></a>
 {% endblock %}
 
 {% block content %}
 {{ island('customer-page', {'customerId': customer.customer_id}, label='Customer', skeleton='page') }}
-<noscript><p>This page needs JavaScript. The <a href="{{ url_for('customers_bp.view_customer_classic', customer_id=customer.customer_id) }}">classic page</a> works without it.</p></noscript>
+<noscript><p>This page needs JavaScript.</p></noscript>
 {% endblock %}

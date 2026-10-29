@@ -95,13 +95,3 @@ def safe_referrer(fallback_endpoint, **kwargs):
         if not parsed.netloc or parsed.netloc == request.host:
             return ref
     return url_for(fallback_endpoint, **kwargs)
-
-
-def back_to_page(endpoint, **kwargs):
-    """The page a form goes back to (a project, customer or document): its classic version when that's where the form
-    was sent from, else the page."""
-    page = url_for(endpoint, **kwargs)
-    ref = urlparse(request.referrer or '')
-    if (not ref.netloc or ref.netloc == request.host) and ref.path.rstrip('/') == f'{page}/classic':
-        return url_for(f'{endpoint}_classic', **kwargs)
-    return page

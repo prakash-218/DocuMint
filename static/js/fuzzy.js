@@ -1,7 +1,7 @@
 // Forgiving matching for searches people type: the project picker and the Ctrl+K search.
 // wordScore(token, words) is how well one typed word matches the best of a thing's words: exactly (10),
 // as its start (8), inside it (5), with one typo (4), or as an abbreviation such as 'trq' for torque (3);
-// 0 when it doesn't. The same rules run in Python (projects._word_score): keep them alike.
+// 0 when it doesn't.
 (function (root) {
     function words(text) {
         return String(text || '').normalize('NFKD').replace(/[^\x00-\x7f]/g, '').toLowerCase().match(/[a-z0-9]+/g) || [];

@@ -328,8 +328,7 @@ def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date]
                                  'site': project.get('customer_site'),
                                  'url': url('customers_bp.view_customer', customer_id=project['customer_id'])},
                     'po': {'number': po.get('reference_no'), 'date': po.get('doc_date'), 'amount': po.get('amount'),
-                           'currency': po.get('currency')} if po else None,
-                    'classic_url': url('projects_bp.view_project_classic', project_id=project_id)},
+                           'currency': po.get('currency')} if po else None},
         'can': can,
         'stage': st,
         'next': next_step(docs, st, project, can, url, today),
@@ -413,8 +412,7 @@ def projects_list(org_id, role: str, url: Callable, today: Optional[date] = None
     customers = sorted({(r['customer']['id'], r['customer']['name']) for r in rows}, key=lambda c: (c[1] or '').lower())
     return _plain({'can': can, 'projects': rows, 'board': [{'key': k, 'label': label} for k, label in BOARD],
                    'years': years, 'customers': [{'id': i, 'name': n} for i, n in customers],
-                   'new_project': url('projects_bp.create_project') if can['edit'] else None,
-                   'classic_url': url('projects_bp.list_projects_classic')})
+                   'new_project': url('projects_bp.create_project') if can['edit'] else None})
 
 
 def _plain(value):

@@ -61,7 +61,7 @@ def test_screens_show_their_shapes_until_the_script_replaces_them(app, client, l
 
 def test_logo_and_tab_icons(client, login_as):
     login_as('U-A', ORG_A, 'alice@a.com')
-    html = client.get('/dashboard/classic').get_data(as_text=True)
+    html = client.get('/dashboard/').get_data(as_text=True)
     assert 'img/documint-icon.svg' in html and 'img/favicon.svg' in html and 'img/apple-touch-icon.png' in html
     assert '>DM</span>' not in html
     for name in ('documint-icon.svg', 'documint-mark.svg', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'):
@@ -141,20 +141,3 @@ def test_long_quote_repeats_letterhead_and_keeps_sign_off_together(app, fake_db)
         assert 'LETTERHEAD WORKS' in text and f'Page {n} of {len(pages)}' in text
     signed = [t for t in pages if 'Signatory Name' in t]
     assert len(signed) == 1 and 'Thanks & regards' in signed[0] and 'We hope you will find' in signed[0]
-
-
-def test_dashboard_numbers(client, login_as, fake_db):
-    from datetime import date, timedelta
-    today = date.today()
-    last_month = today.replace(day=1) - timedelta(days=1)
-    fake_db.invoices['INV-A']['issue_date'] = today.isoformat()
-    fake_db.invoices['INV-B'] = {**fake_db.invoices['INV-A'], 'invoice_id': 'INV-B', 'status': 'paid',
-                                 'issue_date': last_month.isoformat(), 'total_amount': 20, 'paid_amount': 20}
-    # Quotes never count as revenue
-    fake_db.invoices['Q-1'] = {**fake_db.invoices['INV-A'], 'invoice_id': 'Q-1', 'doc_type': 'quote',
-                               'status': 'sent', 'issue_date': today.isoformat(), 'total_amount': 5000}
-    login_as('U-A', ORG_A, 'alice@a.com')
-    html = client.get('/dashboard/classic').get_data(as_text=True)
-    assert '$28.50' in html        # outstanding = 38.50 total - 10 paid
-    assert '+92.5% vs last month' in html
-    assert 'Open quotes' in html and '$5,000.00' in html

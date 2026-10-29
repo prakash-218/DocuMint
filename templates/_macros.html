@@ -104,22 +104,6 @@
 </div>
 {% endmacro %}
 
-{# Under a quotation in a list: the versions its latest revision replaced (revisions.collapse), folded away #}
-{% macro earlier_versions(d) %}
-{% if d.versions %}
-<details class="versions">
-    <summary>{{ d.versions | length }} earlier version{{ 's' if d.versions | length > 1 }}</summary>
-    <ul>
-        {% for v in d.versions %}
-        <li><a href="{{ url_for('invoices_bp.view_invoice', invoice_id=v.invoice_id) }}">{{ v | doc_number }}</a>
-            <span>{{ v.issue_date | date or 'no date' }}</span>
-            <span class="num">{{ v.total_amount | currency(v.currency_code) }}</span></li>
-        {% endfor %}
-    </ul>
-</details>
-{% endif %}
-{% endmacro %}
-
 {# A React screen (frontend/src/islands.ts) mounted here, with these props. skeleton (list, page, home, doc): the grey
    shapes of what it will show (_skeletons.html), there until the script replaces them #}
 {% macro island(name, props={}, label='', skeleton=None) %}

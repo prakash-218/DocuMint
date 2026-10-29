@@ -9,15 +9,12 @@ import re
 
 from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
-from access import back_to_page, get_org_customer, get_org_invoice, safe_referrer
-from auth import MAIL_READERS, can_delete_project, can_edit_invoice, get_current_org_role, quotations_only, require_org
+from access import get_org_customer, get_org_invoice, safe_referrer
+from auth import can_delete_project, can_edit_invoice, quotations_only, require_org
 from db import DatabaseError, db
-from document_service import get_org_profile
 import projects as J
 import activity
 import contacts
-import costing
-import revisions
 
 logger = logging.getLogger(__name__)
 
@@ -48,40 +45,6 @@ def _need_editor(back):
     return redirect(back)
 
 
-@projects_bp.route('/classic')
-@require_org
-def list_projects_classic():
-    org_id = g.current_org_id
-    status = request.args.get('status', 'open')
-    status = status if status in J.PROJECT_STATUSES or status == 'all' else 'open'
-    customer_id = request.args.get('customer_id') or None
-    fy = _fiscal_year(request.args.get('fy')) or ''
-    query = (request.args.get('q') or '').strip()
-    try:
-        found = J.list_projects(org_id, customer_id, None)
-        years = sorted({r['fiscal_year'] for r in found if r.get('fiscal_year')}, reverse=True)
-        if fy:
-            found = [r for r in found if r.get('fiscal_year') == fy]
-        if query:
-            found = J.search_projects(found, query)
-        counts = {}
-        for r in found:
-            counts[r['status']] = counts.get(r['status'], 0) + 1
-        rows = [r for r in found if status == 'all' or r['status'] == status]
-        ungrouped = J.ungrouped_families(org_id)
-        customers = db.execute_proc('sp_list_customers', (org_id, False)) or []
-    except DatabaseError:
-        logger.exception("Failed to list projects")
-        flash('Could not load projects', 'error')
-        rows, counts, ungrouped, customers, years = [], {}, 0, [], []
-    from pagination import paginate
-    page = paginate(rows)
-    return render_template('projects/list.html', projects=page.items, page=page, status=status, counts=counts,
-                           customers=customers, years=years, fy=fy, query=query,
-                           customer_id=customer_id, ungrouped=ungrouped, statuses=J.PROJECT_STATUSES,
-                           current_org_role=get_current_org_role())
-
-
 @projects_bp.route('/options')
 @require_org
 def picker_options():
@@ -95,30 +58,11 @@ def picker_options():
     return jsonify(projects=J.picker_rows(rows), this_year=J.current_fiscal_year(g.current_org_id))
 
 
-@projects_bp.route('/group-linked', methods=['POST'])
-@require_org
-def group_linked():
-    """Start projects for documents that are already linked (converted / revised) but not grouped."""
-    back = url_for('projects_bp.list_projects_classic')
-    denied = _need_editor(back)
-    if denied:
-        return denied
-    try:
-        created = J.group_all(g.current_org_id, _user_id())
-    except DatabaseError:
-        logger.exception("Grouping linked documents failed")
-        flash('Could not group the documents', 'error')
-        return redirect(back)
-    flash(f'Grouped linked documents into {created} new project{"" if created == 1 else "s"}.' if created
-          else 'Everything linked is already in a project.', 'success')
-    return redirect(back)
-
-
 @projects_bp.route('/new', methods=['GET', 'POST'])
 @require_org
 def create_project():
     org_id = g.current_org_id
-    back = url_for('projects_bp.list_projects_classic')
+    back = url_for('projects_bp.list_projects')
     denied = _need_editor(back)
     if denied:
         return denied
@@ -158,40 +102,6 @@ def create_project():
     customers = db.execute_proc('sp_list_customers', (org_id, False)) or []
     return render_template('projects/create.html', customers=customers, customer_id=request.args.get('customer_id'),
                            years=J.recent_fiscal_years(org_id))
-
-
-@projects_bp.route('/<project_id>/classic')
-@require_org
-def view_project_classic(project_id):
-    org_id = g.current_org_id
-    project = _project_or_404(project_id)
-    docs = J.project_documents(project_id, org_id)
-    all_files = J.list_attachments(org_id, project_id=project_id)
-    other_files = [f for f in J.list_attachments(org_id, customer_id=project['customer_id']) if not f.get('project_id')]
-    addable = J.unassigned_documents(org_id, project['customer_id'])
-    events = db.execute_proc('sp_list_project_events', (project_id, org_id, 30)) or []
-    sales = quotations_only()
-    if sales:                       # Sales: the quotations, and nothing about proformas, invoices or payments
-        docs, addable = [d for d in docs if d.get('doc_type') == 'quote'], [d for d in addable if d.get('doc_type') == 'quote']
-        all_files, other_files = [[f for f in fs if f.get('kind') not in J.NOT_QUOTATIONS] for fs in (all_files, other_files)]
-        events = [e for e in events if e.get('kind') in ('project_created', 'project_status', 'file_uploaded')
-                  or '/quotes/' in (e.get('link') or '')]
-    stages = [s for s in J.project_stages(revisions.collapse(docs), all_files) if not sales or s['key'] == 'quote']
-    files = [f for f in all_files if f.get('kind') not in J.EARLIER_KINDS]       # earlier documents show in the stages
-    reads_mail = get_current_org_role() in MAIL_READERS
-    people = contacts.for_project(org_id, project_id)
-    found = contacts.project_suggestions(org_id, project, people, get_org_profile(org_id)[1].get('phone') or '') \
-        if reads_mail else {'people': [], 'phones': []}
-    return render_template('projects/view.html', project=project, docs=docs, money=J.project_money(docs, all_files),
-                           people=people, found=found, contact_gets=contacts.GETS, usually=contacts.USUALLY,
-                           stages=stages, files=files, other_files=other_files, addable=addable,
-                           statuses=J.PROJECT_STATUSES, kinds=J.DOCUMENT_KINDS, po=J.latest_purchase_order(org_id, project_id),
-                           years=J.recent_fiscal_years(org_id),
-                           events=events,
-                           threads=db.execute_proc('sp_list_email_threads', (org_id, project_id, None, False, 50)) or []
-                           if reads_mail else [],
-                           costings=costing.list_for(org_id, project_id) if get_current_org_role() in ('owner', 'admin') else [],
-                           current_org_role=get_current_org_role())
 
 
 @projects_bp.route('/')
@@ -284,13 +194,12 @@ def delete_project(project_id):
         flash('Could not delete the project', 'error')
         return redirect(_project_page(project_id))
     flash('Project deleted. Its documents and files are kept, just no longer grouped.', 'success')
-    from_classic = _project_page(project_id).endswith('/classic')
-    return redirect(url_for('projects_bp.list_projects_classic' if from_classic else 'projects_bp.list_projects'))
+    return redirect(url_for('projects_bp.list_projects'))
 
 
 def _project_page(project_id):
-    """The project's page to go back to: the classic one when that's where the form was sent from, else the page."""
-    return back_to_page('projects_bp.view_project', project_id=project_id)
+    """The project's page to go back to."""
+    return url_for('projects_bp.view_project', project_id=project_id)
 
 
 @projects_bp.route('/<project_id>/documents', methods=['POST'])
@@ -326,7 +235,7 @@ def project_document(project_id):
 def document_project(invoice_id):
     """From a document page: put it in an existing project of the customer, or take it out."""
     org_id = g.current_org_id
-    back = back_to_page('invoices_bp.view_invoice', invoice_id=invoice_id)
+    back = url_for('invoices_bp.view_invoice', invoice_id=invoice_id)
     denied = _need_editor(back)
     if denied:
         return denied

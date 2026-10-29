@@ -1,6 +1,6 @@
 """
 The quotation, proforma and invoice lists against real PostgreSQL (same opt-in as test_app_db.py): each list's rows
-from GET /api/documents/<group>, a link from elsewhere opening a tab, the classic list, and Sales on quotations only.
+from GET /api/documents/<group>, a link from elsewhere opening a tab, and Sales on quotations only.
 """
 
 import html
@@ -37,12 +37,10 @@ def test_each_list_with_where_its_documents_stand(client, gst_org):
     invoice = _rows(client, 'invoices')[invoice_id]
     assert (invoice['tab'], invoice['tag']['text'], invoice['balance']) == ('draft', 'Draft', None)
 
-    # A link from elsewhere (Home, the classic dashboard) opens its tab; the classic list is a click away
+    # A link from elsewhere (Home) opens its tab
     page = client.get('/invoices/?status=overdue&q=spline').get_data(as_text=True)
     props = json.loads(html.unescape(re.search(r'data-island="document-list" data-props="([^"]*)"', page).group(1)))
-    assert props == {'group': 'invoices', 'tab': 'overdue', 'query': 'spline'} and 'href="/invoices/classic"' in page
-    classic = client.get('/quotes/classic').get_data(as_text=True)
-    assert quote_no in classic and 'href="/quotes/"' in classic                         # and back to the new list
+    assert props == {'group': 'invoices', 'tab': 'overdue', 'query': 'spline'}
 
     # Sales: the quotations list, not the others
     _set_role(client, VIEWER, 'sales')

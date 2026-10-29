@@ -15,7 +15,6 @@ Attachments of the email threads in a project are copied into its files, once ea
 import logging
 import os
 import re
-import unicodedata
 from datetime import date
 from typing import Dict, Iterable, List, Optional, Set
 
@@ -193,33 +192,6 @@ def group_family(invoice_id, org_id, user_id=None, title=None) -> str:
     return project_id
 
 
-def group_all(org_id, user_id=None) -> int:
-    """Start projects for every family of linked documents (2 or more) that isn't fully in a project. Returns projects created."""
-    rows = _links(org_id)
-    by_id = {r['invoice_id']: r for r in rows}
-    created = 0
-    for family in document_families(rows):
-        members = [by_id[i] for i in family]
-        if len(members) < 2 or all(m.get('project_id') for m in members):
-            continue
-        project_id = next((m['project_id'] for m in members if m.get('project_id')), None)
-        if not project_id:
-            project_id = create_project(org_id, members[0]['customer_id'], suggest_title(members), user_id=user_id,
-                                        fiscal_year=fiscal_year_of(members))
-            created += 1
-        for m in members:
-            if not m.get('project_id'):
-                set_project(m['invoice_id'], org_id, project_id)
-    return created
-
-
-def ungrouped_families(org_id) -> int:
-    """How many sets of linked documents (2 or more) still have a document outside a project."""
-    rows = _links(org_id)
-    in_project = {r['invoice_id'] for r in rows if r.get('project_id')}
-    return sum(1 for f in document_families(rows) if len(f) > 1 and f - in_project)
-
-
 def follow_source(source: Dict, new_id: str, org_id) -> Optional[str]:
     """A converted / revised document joins its source's project; one is started if the source had none."""
     try:
@@ -280,84 +252,6 @@ def unassigned_documents(org_id, customer_id) -> List[Dict]:
 
 def list_projects(org_id, customer_id=None, status=None) -> List[Dict]:
     return db.execute_proc('sp_list_projects', (org_id, customer_id, status)) or []
-
-
-# ---------------------------------------------------------------- Finding a project
-# The same matching runs in the browser, in static/js/fuzzy.js and project-picker.js: keep them alike.
-
-def _words(text) -> List[str]:
-    plain = unicodedata.normalize('NFKD', str(text or '')).encode('ascii', 'ignore').decode().lower()
-    return re.findall(r'[a-z0-9]+', plain)
-
-
-def _one_edit_apart(a: str, b: str) -> bool:
-    """a and b differ by one letter added, dropped, changed, or two neighbours swapped."""
-    if a == b or abs(len(a) - len(b)) > 1:
-        return a == b
-    if len(a) == len(b):
-        diff = [i for i in range(len(a)) if a[i] != b[i]]
-        return len(diff) == 1 or (len(diff) == 2 and diff[1] == diff[0] + 1
-                                  and a[diff[0]] == b[diff[1]] and a[diff[1]] == b[diff[0]])
-    short, long_ = (a, b) if len(a) < len(b) else (b, a)
-    i = next((i for i in range(len(short)) if short[i] != long_[i]), len(short))
-    return short[i:] == long_[i + 1:]
-
-
-def _in_order(token: str, word: str) -> bool:
-    """'trq' in 'torque': the letters appear in order."""
-    it = iter(word)
-    return all(ch in it for ch in token)
-
-
-def _word_score(token: str, words: List[str]) -> int:
-    best = 0
-    for w in words:
-        if w == token:
-            return 10
-        if w.startswith(token):
-            score = 8
-        elif token in w:
-            score = 5
-        elif len(token) >= 4 and (_one_edit_apart(token, w) or _one_edit_apart(token, w[:len(token)])):
-            score = 4
-        elif len(token) >= 2 and w[:1] == token[:1] and _in_order(token, w):
-            score = 3
-        else:
-            continue
-        best = max(best, score)
-    return best
-
-
-def match_score(project: Dict, query: str) -> Optional[int]:
-    """How well a project matches a search such as 'piston torqe', 'prj 47' or 'hydro a22'; None when it
-    doesn't. Each word of the search has to match a word of the project's name, number, customer, site or
-    reference: exactly, as its start, inside it, with one typo, or as an abbreviation ('trq' for torque).
-    The project's own number ('47', 'PRJ-047') counts most, then matches in the name."""
-    tokens = _words(query)
-    if not tokens:
-        return 0
-    no = int(project.get('project_no') or 0)
-    title = _words(project.get('title'))
-    other = _words(' '.join(str(project.get(k) or '') for k in ('customer_name', 'customer_site', 'reference'))) + ['prj']
-    total = 0
-    for token in tokens:
-        if token.removeprefix('prj').lstrip('0') == str(no) and token.removeprefix('prj').isdigit():
-            total += 15
-            continue
-        in_title = _word_score(token, title)
-        score = max(in_title + 2 if in_title else 0, _word_score(token, other))
-        if not score:
-            return None
-        total += score
-    return total
-
-
-def search_projects(projects: List[Dict], query: str) -> List[Dict]:
-    """The projects that match, best first (open ones, then the most recent, on a tie)."""
-    scored = [(match_score(p, query), p) for p in projects]
-    hits = [(s, p) for s, p in scored if s is not None]
-    hits.sort(key=lambda sp: (-sp[0], sp[1].get('status') != 'open', -(sp[1].get('project_no') or 0)))
-    return [p for _, p in hits]
 
 
 def picker_rows(projects: List[Dict]) -> List[Dict]:

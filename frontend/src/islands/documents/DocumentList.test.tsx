@@ -22,7 +22,7 @@ const INVOICES: DocList = {
     row('56', '056', { tab: 'paid', tag: { text: 'Paid', tone: 'done' }, balance: null, date: '2026-03-30',
                        customer: { id: 'C-2', name: 'Axle Works', site: null } }),
   ],
-  new_url: '/invoices/create?doc_type=invoice', new_label: 'New invoice', classic_url: '/invoices/classic',
+  new_url: '/invoices/create?doc_type=invoice', new_label: 'New invoice',
 };
 
 function serve(data: DocList) {

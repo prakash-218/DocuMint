@@ -277,8 +277,6 @@ def test_quote_revisions(client, gst_org):
     rows = client.get('/api/documents/quotes').get_json()['rows']
     found = [r for r in rows if number in (r['number'], *r['search'])]
     assert [r['number'] for r in found] == [rev2_number] and len(found[0]['versions']) == 2
-    listed = client.get(f'/quotes/classic?q={number}').get_data(as_text=True)               # the classic list too
-    assert listed.count('class="cell-primary"') == 1 and rev2_number in listed and '2 earlier versions' in listed
 
 
 def _pages(pdf_bytes):
@@ -309,11 +307,6 @@ def test_copies_packing_list_and_foreign_payment(client, gst_org):
     assert float(payment['received_amount']) == 25000 and payment['received_currency'] == 'INR'
     page = client.get(f'/invoices/{export_id}').get_data(as_text=True)
     assert 'Credited ₹25,000.00' in page and '@ 83.33' in page
-
-    inr = client.get('/dashboard/classic?currency=INR').get_data(as_text=True)
-    assert 'Received in INR this month' in inr and 'Includes $300.00 at credited rates' in inr
-    usd = client.get('/dashboard/classic?currency=USD').get_data(as_text=True)
-    assert 'Collected this month' in usd and '$300.00' in usd
 
 
 def test_packing_by_box(client, gst_org):

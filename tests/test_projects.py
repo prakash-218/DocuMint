@@ -76,22 +76,6 @@ def _project(no, title, customer='Hydro Parts Private Limited', site='', status=
             'status': status, 'fiscal_year': fy, 'reference': reference}
 
 
-def test_finding_a_project_forgives_typos_and_abbreviations():
-    from projects import match_score, search_projects
-    rows = [_project(47, 'Piston torque fix', site='A22'), _project(49, 'Burnishing shaft Ø47 (PO 11223344)', site='A22'),
-            _project(51, 'Piston torqueing attachment', site='C1', status='completed'),
-            _project(62, 'Checking gauges', customer='Farm Gear Works Limited', site='Madurai plant')]
-    found = lambda q: [p['project_no'] for p in search_projects(rows, q)]
-    assert found('piston') == [47, 51]                    # open first on a tie
-    assert found('pistn torqe') == [47, 51]               # a typo in each word
-    assert found('trq') == [47, 51]                       # an abbreviation
-    assert found('guage') == [62] and found('fgw madurai') == []   # every word must match
-    assert found('farm madurai') == [62]
-    assert found('47')[0] == 47 and found('PRJ-047') == [47] and found('prj047') == [47]   # the number beats "Ø47"
-    assert found('hydro a22') == [49, 47]
-    assert match_score(rows[0], '') == 0 and match_score(rows[0], 'xyzzy') is None
-
-
 def test_project_year_is_its_earliest_document():
     from projects import fiscal_year_of
     assert fiscal_year_of([{'fiscal_year': '26-27', 'issue_date': '2026-04-02'},

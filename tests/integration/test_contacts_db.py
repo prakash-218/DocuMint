@@ -3,7 +3,6 @@ Contacts against real PostgreSQL (same opt-in as test_app_db.py): a customer's c
 project at one of its sites, and the people found in the project's emails.
 """
 
-import re
 import uuid
 from email.message import EmailMessage
 
@@ -40,12 +39,13 @@ def test_contacts_people_on_a_project_and_who_the_emails_suggest(client, gst_org
     db.execute_proc('sp_set_customer_parent', (site, org_id, parent, 'Hosur plant'), fetch=False)
     project_id = projects.create_project(org_id, site, 'Hob arbor set')
     project_page = f'/projects/{project_id}'
-    from_classic = {'Referer': f'/customers/{parent}/classic'}
+    api = lambda path: client.get(f'/api{path}').get_json()
 
     # Contacts on the parent company; one email address once per customer
-    page = client.post(f'/customers/{parent}/contacts', follow_redirects=True, headers=from_classic, data={
+    page = client.post(f'/customers/{parent}/contacts', follow_redirects=True, data={
         'name': 'Ravi Kumar', 'email': f'Ravi.K@{domain}', 'role': 'Purchase', 'gets': 'all'}).get_data(as_text=True)
-    assert 'Ravi Kumar added to the contacts' in page and f'ravi.k@{domain}' in page
+    assert 'Ravi Kumar added to the contacts' in page
+    assert f'ravi.k@{domain}' in [p['email'] for p in api(f'/customers/{parent}')['people']]
     page = client.post(f'/customers/{parent}/contacts', data={'name': 'Again', 'email': f'ravi.k@{domain}'},
                        follow_redirects=True).get_data(as_text=True)
     assert 'is already a contact here' in page
@@ -60,7 +60,8 @@ def test_contacts_people_on_a_project_and_who_the_emails_suggest(client, gst_org
     assert response.headers['Location'].endswith(f'{project_page}#people')
     people = {c['name']: c['project_gets'] for c in db.execute_proc('sp_list_project_contacts', (project_id, org_id))}
     assert people['Divya'] == 'none' and _contact(org_id, parent, f'accounts@{domain}')['gets'] == 'billing'
-    assert 'Usually gets: proformas and invoices' in client.get(f'/customers/{parent}/classic').get_data(as_text=True)
+    customer = api(f'/customers/{parent}')
+    assert customer['usually'][{p['name']: p['gets'] for p in customer['people']}['Divya']] == 'Proformas and invoices'
 
     # Mail on the project: Ravi (a phone in his signature, copying Arun), and Meera, who isn't a contact yet
     label = projects.project_label(projects.get_project(project_id, org_id))
@@ -70,10 +71,10 @@ def test_contacts_people_on_a_project_and_who_the_emails_suggest(client, gst_org
                       cc=f'arun.s@{domain}, md@techflow.com'),
                 _mail(f'Re: {label} PO for hob arbors', f'Meera Iyer <meera@{domain}>', 'Inspection on Friday.', f'<i.{tag}@{domain}>')):
         linker.store(account['account_id'], emailsync.parse_message(raw, org_domains={'techflow.com'}))
-    page = client.get(f'{project_page}/classic').get_data(as_text=True)
-    found = page.split("Found in this project's emails")[1].split('Add a contact</summary>')[0]
-    assert 'Phone for Ravi Kumar' in found and '+91 98765 43210' in found
-    assert 'Meera Iyer' in found and 'Arun S' in found and 'md@techflow.com' not in found
+    found = api(f'/projects/{project_id}')['found']
+    assert [(p['name'], p['phone']) for p in found['phones']] == [('Ravi Kumar', '+91 98765 43210')]
+    assert {'Meera Iyer', 'Arun S'} <= {p['name'] for p in found['people']}
+    assert 'md@techflow.com' not in [p['email'] for p in found['people']]
 
     # Ignore one; add another from the suggestion (back to the project); save the phone to Ravi
     client.post(f'/customers/{site}/ignore-suggestion', data={'value': f'arun.s@{domain}', 'project_id': project_id})
@@ -84,14 +85,15 @@ def test_contacts_people_on_a_project_and_who_the_emails_suggest(client, gst_org
         'name': 'Ravi Kumar', 'email': ravi['email'], 'role': 'Purchase', 'gets': 'all', 'phone': '+91 98765 43210',
         'project_id': project_id})
     assert _contact(org_id, parent, f'ravi.k@{domain}')['phone'] == '+91 98765 43210'
-    page = client.get(f'{project_page}/classic').get_data(as_text=True)
-    assert "Found in this project's emails" not in page
-    assert re.search(r'Meera Iyer.{0,80}Quality', page, re.S)
+    project = api(f'/projects/{project_id}')
+    assert project['found'] == {'people': [], 'phones': []}
+    assert {p['name']: p['role'] for p in project['people']}['Meera Iyer'] == 'Quality'
 
     # Viewers see the people but change nothing and see nothing from the mailbox; Sales change people, no mailbox
     login(client, VIEWER)
-    page = client.get(f'{project_page}/classic').get_data(as_text=True)
-    assert 'Ravi Kumar' in page and 'data-autosubmit' not in page
+    project = api(f'/projects/{project_id}')
+    assert 'Ravi Kumar' in [p['name'] for p in project['people']]
+    assert not project['can']['edit'] and not project['can']['read_mail'] and project['found'] == {'people': [], 'phones': []}
     client.post(f'/customers/{parent}/contacts', data={'name': 'Not added', 'email': f'no@{domain}'})
     assert not [c for c in db.execute_proc('sp_list_contacts', (org_id, [parent])) if c['name'] == 'Not added']
     login(client, OWNER)
@@ -102,12 +104,13 @@ def test_contacts_people_on_a_project_and_who_the_emails_suggest(client, gst_org
         linker.store(account['account_id'], emailsync.parse_message(
             _mail(f'Re: {label} PO for hob arbors', f'Kumar <kumar@{domain}>', 'Noted.', f'<k.{tag}@{domain}>'),
             org_domains={'techflow.com'}))
-        page = client.get(f'{project_page}/classic').get_data(as_text=True)
-        assert 'Sundar' in page and 'data-autosubmit' in page and "Found in this project's emails" not in page
+        project = api(f'/projects/{project_id}')
+        assert 'Sundar' in [p['name'] for p in project['people']] and project['can']['edit']
+        assert project['found'] == {'people': [], 'phones': []}
     finally:
         login(client, OWNER)
         _set_role(client, VIEWER, 'viewer')
-    assert "Found in this project's emails" in client.get(f'{project_page}/classic').get_data(as_text=True)    # Kumar, for the owner
+    assert api(f'/projects/{project_id}')['found']['people']        # Kumar, for the owner
 
     # Another organization's ids get nowhere; removing a contact takes them off the project
     try:

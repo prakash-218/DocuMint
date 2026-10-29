@@ -84,7 +84,6 @@ def test_a_list_has_its_own_kind_and_a_revised_document_once():
     assert row['customer'] == {'id': 'C-1', 'name': 'Gear Cutters Ltd', 'site': 'Hosur plant'} and row['balance'] is None
     assert [t['key'] for t in quotes['tabs']] == ['all', 'draft', 'sent', 'accepted', 'declined', 'converted']
     assert quotes['new_url'] == '/invoices_bp.create_invoice/doc_type=quote' and quotes['until'] == 'Valid until'
-    assert quotes['classic_url'] == '/invoices_bp.list_invoices_classic/doc_path=quotes'
 
     invoices = L.build('invoices', every, url, can_create=False, today=TODAY)
     assert [(r['id'], r['tab'], r['balance'], r['note']) for r in invoices['rows']] == [

@@ -46,7 +46,6 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
     assert _labels(props) == ['Mark as sent*', 'Edit'] and props['head']['pill'] == {'text': 'Draft', 'tone': 'draft'}
     assert props['head']['number'] == quote_no and props['money'] is None                       # no money strip on a quotation
     assert props['next']['actions'][1]['href'].endswith(f'/quotes/{quote_id}/edit')
-    assert f'href="/quotes/{quote_id}/classic"' in text                                # the classic page is a click away
     # the project page's documents open the new page
     doc = client.get(f'/api/projects/{project_id}').get_json()['documents'][0]
     assert doc['url'] == quote
@@ -80,9 +79,6 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
     client.post(f'/invoices/{invoice_id}/finalize')
     props, _ = _page(client, invoice)
     assert _labels(props) == ['Record payment*', 'Email a reminder'] and props['next']['text'].endswith(' due.')
-    # a form sent from the classic page goes back to the classic page
-    assert client.post(f'/invoices/{invoice_id}/payment', data={'amount': '1', 'method': 'Cash'},
-                       headers={'Referer': f'http://localhost{invoice}/classic'}).headers['Location'] == f'{invoice}/classic'
 
     # Sales open the quotation's new page, not the proforma's; viewers see it all and can do nothing
     _set_role(client, VIEWER, 'sales')

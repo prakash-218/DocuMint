@@ -6,8 +6,7 @@ import logging
 from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, make_response
 from db import db, DatabaseError
 from auth import require_org, get_current_org_role, can_create_invoice, can_edit_invoice, can_delete_invoice, can_finalize_invoice
-from access import back_to_page, get_org_invoice, get_org_template
-from app_helpers import invoice_is_overdue
+from access import get_org_invoice, get_org_template
 from documents import CHOOSABLE, DOC_TYPES, TAX_MODES, get_type, invoice_kind, load_json
 from document_service import (REVISABLE, DocumentError, apply_document_form, convert_document, customer_tax_hints,
                               form_defaults, get_org_profile, next_revision_number, preview_number, revise_document)
@@ -35,89 +34,6 @@ def list_invoices():
     fed by GET /api/documents/<doc_path>. ?status= opens a tab and ?q= a search, as links from elsewhere ask."""
     return render_template('invoices/lists.html', group=g.doc_path, tab=request.args.get('status') or 'all',
                            query=(request.args.get('q') or '').strip())
-
-
-@invoices_bp.route('/classic')
-@require_org
-def list_invoices_classic():
-    """The classic list."""
-    org_id = g.current_org_id
-    group = {'quotes': 'quote', 'proformas': 'proforma'}.get(g.doc_path, 'invoices')
-    status_filter = request.args.get('status') or 'all'
-    query = (request.args.get('q') or '').strip()
-
-    try:
-        documents = db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []
-    except DatabaseError:
-        logger.exception("Failed to list documents for org %s", org_id)
-        flash('Error loading documents', 'error')
-        documents = []
-
-    types = LIST_GROUPS[group]['types']
-    documents = [d for d in documents if (d.get('doc_type') or 'invoice') in types]
-    if group in ('quote', 'proforma'):
-        documents = revisions.collapse(documents)          # a revised document once, as its latest version
-    if query:
-        q = query.lower()
-        documents = [d for d in documents if revisions.matches(d, lambda v: q in (v.get('customer_name') or '').lower()
-                                                               or q in (v.get('doc_number') or '').lower()
-                                                               or q in (v.get('invoice_id') or '').lower())]
-
-    tabs = LIST_GROUPS[group]['tabs']
-    if status_filter not in tabs:
-        status_filter = 'all'
-    counts = {name: sum(1 for d in documents if match(d)) for name, (_, match) in tabs.items()}
-    from pagination import paginate
-    page = paginate([d for d in documents if tabs[status_filter][1](d)])
-
-    return render_template('invoices/list.html',
-                           invoices=page.items,
-                           page=page,
-                           counts=counts,
-                           tabs=[(k, label) for k, (label, _) in tabs.items()],
-                           group=group,
-                           group_info=LIST_GROUPS[group],
-                           status_filter=status_filter,
-                           query=query,
-                           current_org_role=get_current_org_role())
-
-
-def _status_is(*statuses):
-    return lambda d: (d.get('status') or 'draft') in statuses
-
-
-LIST_GROUPS = {
-    'invoices': {
-        'title': 'Invoices', 'types': ('invoice', 'export_invoice'), 'new_type': 'invoice',
-        'tabs': {
-            'all': ('All', lambda d: True),
-            'draft': ('Draft', _status_is('draft')),
-            'pending': ('Pending', lambda d: d.get('status') == 'pending' and not invoice_is_overdue(d)),
-            'overdue': ('Overdue', invoice_is_overdue),
-            'paid': ('Paid', _status_is('paid')),
-        },
-    },
-    'quote': {
-        'title': 'Quotations', 'types': ('quote',), 'new_type': 'quote',
-        'tabs': {
-            'all': ('All', lambda d: True),
-            'draft': ('Draft', _status_is('draft')),
-            'sent': ('Sent', _status_is('sent')),
-            'accepted': ('Accepted', _status_is('accepted')),
-            'declined': ('Declined', _status_is('declined')),
-            'converted': ('Converted', _status_is('converted')),
-        },
-    },
-    'proforma': {
-        'title': 'Proforma invoices', 'types': ('proforma',), 'new_type': 'proforma',
-        'tabs': {
-            'all': ('All', lambda d: True),
-            'draft': ('Draft', _status_is('draft')),
-            'sent': ('Sent', _status_is('sent')),
-            'converted': ('Converted', _status_is('converted')),
-        },
-    },
-}
 
 
 @invoices_bp.route('/create', methods=['GET', 'POST'])
@@ -378,16 +294,6 @@ def _create_form(org_id, doc_type):
                            today=date.today().isoformat())
 
 
-@invoices_bp.route('/<invoice_id>/classic')
-@require_org
-def view_invoice_classic(invoice_id):
-    """The classic document page (read-only: formulas are computed, never saved here)"""
-    context = _view_context(invoice_id)
-    if not isinstance(context, dict):
-        return context
-    return render_template('invoices/view.html', **context)
-
-
 @invoices_bp.route('/<invoice_id>/new')
 @require_org
 def view_invoice_new(invoice_id):
@@ -433,8 +339,8 @@ def view_invoice(invoice_id):
 
 
 def _back(invoice_id):
-    """Where a form on a document page goes back to: the classic page when that's the one it was sent from, else the page."""
-    return back_to_page('invoices_bp.view_invoice', invoice_id=invoice_id)
+    """Where a form on a document page goes back to: the page."""
+    return url_for('invoices_bp.view_invoice', invoice_id=invoice_id)
 
 
 def _editor(invoice_id, from_id):
@@ -443,7 +349,7 @@ def _editor(invoice_id, from_id):
 
 
 def _view_context(invoice_id):
-    """What a document page shows (both of them), or a redirect when the document can't be shown."""
+    """What a document page shows, or a redirect when the document can't be shown."""
     invoice_header, invoice_values = get_org_invoice(invoice_id, g.current_org_id)
     if not invoice_header:
         flash('Invoice not found', 'error')

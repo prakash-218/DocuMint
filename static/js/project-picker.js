@@ -7,7 +7,7 @@
 // data-current marks the project the thing is in now; data-prefer (a customer id) lists that
 // customer's projects first.
 //
-// The matching (fuzzy.js) is the same as projects.match_score in Python (the projects page): keep them alike.
+// The matching is fuzzy.js's.
 (function () {
     var SHOWN = 8;
     var FY_KEY = 'documint.pickerFy';
