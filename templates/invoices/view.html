@@ -8,31 +8,7 @@
 
 {% block header_actions %}
 {% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in editor_roles %}
-<details class="menu">
-    <summary class="btn btn-secondary"><i data-lucide="download"></i><span class="btn-label">PDF</span><i data-lucide="chevron-down" class="hide-mobile"></i></summary>
-    <div class="menu-items" data-pdf-menu>
-        {% if has_seal %}
-        <label class="menu-check"><input type="checkbox" data-seal checked><span>Print with seal</span></label>
-        <hr>
-        {% endif %}
-        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id) }}" target="_blank" rel="noopener" data-pdf><i data-lucide="file-down"></i>{{ 'All copies' if t.takes_payments else 'Download PDF' }}</a>
-        {% if t.takes_payments %}
-        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id, copies=1) }}" target="_blank" rel="noopener" data-pdf><i data-lucide="file"></i>Original only</a>
-        {% endif %}
-        {% for pg in extra_pages %}
-        <a href="{{ url_for('invoices_bp.export_pdf', invoice_id=invoice.invoice_id, page=pg.key) }}" target="_blank" rel="noopener" data-pdf><i data-lucide="{{ 'package' if pg.kind == 'packing' else 'file-plus' }}"></i>{{ pg.title or 'Extra page' }}</a>
-        {% endfor %}
-        {% if has_packing and can_edit %}
-        <hr><a href="{{ url_for('invoices_bp.packing', invoice_id=invoice.invoice_id) }}"><i data-lucide="package-open"></i>Edit packing</a>
-        {% endif %}
-        {% if status == 'draft' and can_delete_invoice(invoice) %}
-        <hr>
-        <form method="POST" action="{{ url_for('invoices_bp.delete_invoice', invoice_id=invoice.invoice_id) }}" data-confirm="Delete this draft? This can't be undone.">
-            <button type="submit" class="danger"><i data-lucide="trash-2"></i>Delete draft</button>
-        </form>
-        {% endif %}
-    </div>
-</details>
+{% include "invoices/_pdf_menu.html" %}
 {% if status != 'draft' and can_edit and project %}
 {{ island('email-composer', {'projectId': project.project_id, 'invoiceId': invoice.invoice_id}) }}
 {% endif %}
@@ -91,30 +67,7 @@
             <div class="card-header"><h2 class="card-title">Next step</h2></div>
             <div class="card-body">
                 {% if status == 'converted' %}<p class="text-tertiary">Already converted. You can convert it again if needed.</p>{% endif %}
-                <form method="POST" action="{{ url_for('invoices_bp.convert', invoice_id=invoice.invoice_id) }}">
-                    <div class="form-group">
-                        <label for="target" class="form-label">Convert to</label>
-                        <select id="target" name="target" class="form-select">
-                            {% for key in t.converts_to %}<option value="{{ key }}" data-template="{{ convert_defaults.get(key, '') }}">{{ doc_type_info(key).short }}</option>{% endfor %}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="convert_template" class="form-label">Using template</label>
-                        <select id="convert_template" name="template_id" class="form-select">
-                            {% for tpl in templates %}
-                            <option value="{{ tpl.template_id }}" {% if tpl.template_id == convert_defaults.get(t.converts_to[0]) %}selected{% endif %}>{{ tpl.name }}</option>
-                            {% endfor %}
-                        </select>
-                        
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-block"><i data-lucide="arrow-right-left"></i>Convert</button>
-                </form>
-                <script>
-                document.getElementById('target').addEventListener('change', function () {
-                    var tpl = this.selectedOptions[0].dataset.template;
-                    if (tpl) document.getElementById('convert_template').value = tpl;
-                });
-                </script>
+                {% include "invoices/_convert_form.html" %}
             </div>
         </div>
         {% endif %}
@@ -123,17 +76,7 @@
         <div class="card">
             <div class="card-header"><h2 class="card-title">Apply an advance</h2></div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('invoices_bp.apply_advances', invoice_id=invoice.invoice_id) }}">
-                    <p class="form-text" style="margin-top: 0;">Received on {{ invoice.customer_name }}'s proformas and not on an invoice yet.</p>
-                    {% for a in open_advances %}
-                    <label class="advance-pick">
-                        <input type="checkbox" name="payment_id" value="{{ a.payment_id }}" {% if project and a.project_id == project.project_id %}checked{% endif %}>
-                        <span><strong>{{ a.amount | currency(invoice.currency_code) }}</strong> on {{ a.proforma_number }}
-                            <span class="text-tertiary">· {{ a.payment_date | date }}{% if a.reference_number %} · {{ a.reference_number }}{% endif %}</span></span>
-                    </label>
-                    {% endfor %}
-                    <button type="submit" class="btn btn-secondary btn-block" style="margin-top: var(--spacing-sm);"><i data-lucide="corner-down-right"></i>Apply to {{ invoice | doc_number }}</button>
-                </form>
+                {% include "invoices/_apply_advances.html" %}
             </div>
         </div>
         {% endif %}
@@ -148,55 +91,7 @@
         <div class="card">
             <div class="card-header"><h2 class="card-title">{{ 'Record an advance' if takes_advance else 'Record a payment' }}</h2></div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('invoices_bp.add_payment', invoice_id=invoice.invoice_id) }}">
-                    {% if takes_advance %}
-                    <p class="form-text" style="margin-top: 0;">Money received against this proforma. It moves to the invoice when the proforma is converted.</p>
-                    {% endif %}
-                    <div class="form-group">
-                        <label for="amount" class="form-label">Amount ({{ invoice.currency_code }})</label>
-                        <input type="number" step="0.01" min="0.01" id="amount" name="amount" class="form-input"
-                               value="{{ '%.2f' | format(suggested) if suggested and suggested > 0 }}" required>
-                    </div>
-                    {% if invoice.currency_code != base_currency %}
-                    <div class="form-group">
-                        <label for="received_amount" class="form-label">Credited to your bank ({{ base_currency }}) <span class="text-tertiary">(optional)</span></label>
-                        <input type="number" step="0.01" min="0" id="received_amount" name="received_amount" class="form-input" placeholder="e.g. from the bank advice / FIRC">
-                        <p class="form-text" id="fx_hint"></p>
-                    </div>
-                    <script>
-                    (function () {
-                        var amt = document.getElementById('amount'), rec = document.getElementById('received_amount'), hint = document.getElementById('fx_hint');
-                        function upd() {
-                            var a = parseFloat(amt.value), r = parseFloat(rec.value);
-                            if (a > 0 && r > 0) hint.textContent = 'Exchange rate: 1 {{ invoice.currency_code }} = ' + (r / a).toFixed(2) + ' {{ base_currency }}';
-                        }
-                        amt.addEventListener('input', upd); rec.addEventListener('input', upd);
-                    })();
-                    </script>
-                    {% endif %}
-                    <div class="form-group">
-                        <label for="payment_date" class="form-label">Received on</label>
-                        <input type="date" id="payment_date" name="payment_date" class="form-input" value="{{ today }}" max="{{ today }}">
-                    </div>
-                    <div class="form-group">
-                        <label for="method" class="form-label">Method</label>
-                        <select id="method" name="method" class="form-select">
-                            <option>Bank transfer</option>
-                            <option>NEFT / RTGS</option>
-                            <option>SWIFT (foreign remittance)</option>
-                            <option>UPI</option>
-                            <option>Card</option>
-                            <option>Cheque</option>
-                            <option>Cash</option>
-                            <option>Other</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="reference_number" class="form-label">Reference <span class="text-tertiary">(optional)</span></label>
-                        <input type="text" id="reference_number" name="reference_number" class="form-input">
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-block">{{ 'Record advance' if takes_advance else 'Record payment' }}</button>
-                </form>
+                {% include "invoices/_payment_form.html" %}
             </div>
         </div>
         {% endif %}

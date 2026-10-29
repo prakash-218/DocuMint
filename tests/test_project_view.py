@@ -93,7 +93,7 @@ def test_a_proforma_waits_for_the_advance():
     assert states(st)[2] == ('advance', 'now', 'Requested') and st['pill']['text'] == 'Waiting for advance'
     assert nxt['text'] == f"Proforma {pi['doc_number']} sent on 16 Oct." and nxt['sub'] == "The advance hasn't arrived (4 days)."
     assert nxt['actions'][0] == {'label': 'Record the advance', 'kind': 'link', 'primary': True,
-                                 'href': f"/invoices_bp.view_invoice/invoice_id={pi['invoice_id']}#payment"}
+                                 'href': f"/invoices_bp.view_invoice_new/invoice_id={pi['invoice_id']}#payment"}
 
 
 def test_with_the_advance_in_the_invoice_is_raised():

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../api';
-import { money, when } from '../../format';
+import { money, totals, when } from '../../format';
 import { Icon, type IconName } from '../../icons';
 import './home.css';
 
@@ -22,7 +22,7 @@ export interface HomeData {
     total: Totals;
     count: number;
     ages: { label: string; count: number; total: Totals }[];
-    customers: { id: string; name: string; count: number; total: Totals }[];
+    customers: { id: string; name: string; count: number; total: Totals; url?: string }[];
     advances: { count: number; total: Totals };
   };
   month: { label: string; invoiced: Totals; received: Totals };
@@ -36,10 +36,7 @@ const ICONS: Record<string, IconName> = {
 };
 
 /** ₹65,69,390 + $8,701: each currency's total, biggest first. */
-export function totals(t: Totals): string {
-  const parts = Object.entries(t).sort((a, b) => b[1] - a[1]).map(([c, v]) => money(v, c));
-  return parts.length ? parts.join(' + ') : money(0);
-}
+export { totals };
 
 export default function Home() {
   const [data, setData] = useState<HomeData | null>(null);
@@ -121,7 +118,7 @@ export default function Home() {
                   <h3 className="hm-sub">Who owes the most</h3>
                   <ul className="hm-customers">
                     {r.customers.map((c) => (
-                      <li key={c.id}><span>{c.name}</span><span className="hm-age-total">{totals(c.total)}</span></li>
+                      <li key={c.id}>{c.url ? <a href={c.url}>{c.name}</a> : <span>{c.name}</span>}<span className="hm-age-total">{totals(c.total)}</span></li>
                     ))}
                   </ul>
                 </>

@@ -183,6 +183,20 @@ def view_customer(customer_id):
         return redirect(url_for('customers_bp.list_customers'))
 
 
+@customers_bp.route('/<customer_id>/new')
+@require_org
+def view_customer_new(customer_id):
+    """The new customer page: the React screen in frontend/src/islands/customer/ (GET /api/customers/<id>)."""
+    try:
+        customer, _ = get_org_customer(customer_id, g.current_org_id)
+    except DatabaseError:
+        customer = None
+    if not customer:
+        flash('Customer not found', 'error')
+        return redirect(url_for('customers_bp.list_customers'))
+    return render_template('customers/new_view.html', customer=customer)
+
+
 def _contact_back(customer_id):
     """Back to the project the form was on, when it's this organization's; else to the customer."""
     project_id = request.form.get('project_id')

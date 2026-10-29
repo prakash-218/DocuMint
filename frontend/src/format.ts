@@ -11,6 +11,12 @@ export function money(amount: number | null | undefined, currency: string | null
   }
 }
 
+/** Amounts in more than one currency, largest first: '₹4,95,600 + $1,200'. */
+export function totals(t: Record<string, number>): string {
+  const parts = Object.entries(t).sort((a, b) => b[1] - a[1]).map(([c, v]) => money(v, c));
+  return parts.length ? parts.join(' + ') : money(0);
+}
+
 export function day(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);

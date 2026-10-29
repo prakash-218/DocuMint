@@ -1,0 +1,2 @@
+/* The top of the new document page; the tracker and next step come from the project page (project.css). */
+.doc-next-notice { margin: 0; color: var(--good-ink); font-size: var(--font-size-sm); }

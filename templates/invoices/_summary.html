@@ -83,7 +83,7 @@
                     <div class="when">Credited {{ a.received_amount | currency(a.received_currency) }}{% if a.amount %} @ {{ '%.2f' | format(a.received_amount / a.amount) }}{% endif %}</div>
                     {% endif %}
                     {% if a.applied %}
-                    <div class="when">Applied to <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=a.applied_to) }}">{{ a.applied_number or 'a draft invoice' }}</a></div>
+                    <div class="when">Applied to <a href="{{ url_for(doc_endpoint | default('invoices_bp.view_invoice'), invoice_id=a.applied_to) }}">{{ a.applied_number or 'a draft invoice' }}</a></div>
                     {% else %}
                     <div class="when">Goes to the invoice when this proforma is converted</div>
                     {% endif %}

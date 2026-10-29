@@ -1,0 +1,12 @@
+{# Apply advances received on the customer's proformas to this invoice. Expects invoice, open_advances, project #}
+<form method="POST" action="{{ url_for('invoices_bp.apply_advances', invoice_id=invoice.invoice_id) }}">
+    <p class="form-text" style="margin-top: 0;">Received on {{ invoice.customer_name }}'s proformas and not on an invoice yet.</p>
+    {% for a in open_advances %}
+    <label class="advance-pick">
+        <input type="checkbox" name="payment_id" value="{{ a.payment_id }}" {% if project and a.project_id == project.project_id %}checked{% endif %}>
+        <span><strong>{{ a.amount | currency(invoice.currency_code) }}</strong> on {{ a.proforma_number }}
+            <span class="text-tertiary">· {{ a.payment_date | date }}{% if a.reference_number %} · {{ a.reference_number }}{% endif %}</span></span>
+    </label>
+    {% endfor %}
+    <button type="submit" class="btn btn-secondary btn-block" style="margin-top: var(--spacing-sm);"><i data-lucide="corner-down-right"></i>Apply to {{ invoice | doc_number }}</button>
+</form>

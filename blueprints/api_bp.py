@@ -215,3 +215,63 @@ def ignore_person(project_id):
         return jsonify(error='Nothing to ignore.'), 400
     db.execute_proc('sp_ignore_contact_suggestion', (g.current_org_id, found['customer_id'], value), fetch=False)
     return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------- The customer page
+
+def _customer(customer_id, editing=False):
+    """(customer, None), or (None, a JSON refusal) when it isn't this organization's or the role can't change it."""
+    import uuid
+    from access import get_org_customer
+    if editing and get_current_org_role() not in EDITORS:
+        return None, (jsonify(error='Viewers can look at contacts but not change them'), 403)
+    try:
+        found = get_org_customer(str(uuid.UUID(str(customer_id))), g.current_org_id)[0]
+    except (ValueError, DatabaseError):
+        found = None
+    if not found:
+        return None, (jsonify(error='Not found'), 404)
+    return found, None
+
+
+@api_bp.route('/customers/<customer_id>')
+@require_org
+def customer(customer_id):
+    """Everything the customer page shows (customer_view.build), for this role."""
+    import customer_view
+    found, refused = _customer(customer_id)
+    if refused:
+        return refused
+    return jsonify(customer_view.build(g.current_org_id, found, get_current_org_role(), url_for))
+
+
+@api_bp.route('/customers/<customer_id>/contacts', methods=['POST'])
+@api_bp.route('/customers/<customer_id>/contacts/<contact_id>', methods=['POST'])
+@require_org
+def save_customer_contact(customer_id, contact_id=None):
+    """Add a contact to the customer, or change one of theirs: {name, email, phone, role, gets}."""
+    found, refused = _customer(customer_id, editing=True)
+    if refused:
+        return refused
+    fields, problem = contacts.fields_from(_body())
+    if problem:
+        return jsonify(error=problem), 400
+    try:
+        row = db.execute_proc_single('sp_save_contact', (g.current_org_id, contact_id, found['customer_id'], *fields))
+    except DatabaseError as e:
+        return jsonify(error=f'{fields[1]} is already a contact here.' if 'uq_contact_customer_email' in str(e)
+                       else 'Could not save the contact.'), 400
+    return jsonify(contact_id=(row or {}).get('contact_id') or contact_id), 200 if contact_id else 201
+
+
+@api_bp.route('/customers/<customer_id>/contacts/<contact_id>', methods=['DELETE'])
+@require_org
+def delete_customer_contact(customer_id, contact_id):
+    found, refused = _customer(customer_id, editing=True)
+    if refused:
+        return refused
+    try:
+        db.execute_proc('sp_delete_contact', (g.current_org_id, found['customer_id'], contact_id), fetch=False)
+    except DatabaseError:
+        return jsonify(error="That isn't one of this customer's contacts."), 404
+    return jsonify(ok=True)

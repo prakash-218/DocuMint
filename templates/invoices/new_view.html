@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "projects/_files.html" import files_card with context %}
+{% from "_macros.html" import island %}
+{# The new document page: where the document is and what to do next (the React screen in
+   frontend/src/islands/document/), then the document, with its money and forms beside it #}
+
+{% block title %}{{ invoice | doc_number }}{% endblock %}
+{% block page_title %}{{ invoice | doc_number }}{% endblock %}
+{% block page_description %}<p class="header-description">{{ doc_type_info(invoice.doc_type).label }} · <a href="{{ url_for('customers_bp.view_customer_new', customer_id=invoice.customer_id) }}">{{ invoice | customer_label }}</a>{% if project %} · <a href="{{ url_for('projects_bp.view_project_new', project_id=project.project_id) }}">{{ project.title }}</a>{% endif %}</p>{% endblock %}
+
+{% block header_actions %}
+{% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in editor_roles %}
+{% include "invoices/_pdf_menu.html" %}
+{% if status != 'draft' and can_edit %}
+<button type="button" class="btn btn-secondary" data-open-dialog="change-dialog"><i data-lucide="pencil"></i><span class="btn-label">Change</span></button>
+{% endif %}
+<a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}" class="btn btn-ghost"><i data-lucide="undo-2"></i><span class="btn-label">Classic page</span></a>
+{% endblock %}
+
+{% block content %}
+{% set t = doc_type_info(invoice.doc_type) %}{% set status = invoice.status or 'draft' %}{% set can_edit = current_org_role in editor_roles %}
+{% if status != 'draft' and can_edit %}{% include "invoices/_change.html" %}{% endif %}
+{{ island('document-next', {'next': doc_next, 'steps': doc_steps, 'invoiceId': invoice.invoice_id,
+                            'projectId': project.project_id if project else none}, label='Where this document is') }}
+<noscript><p>What to do next needs JavaScript. The <a href="{{ url_for('invoices_bp.view_invoice', invoice_id=invoice.invoice_id) }}">classic page</a> works without it.</p></noscript>
+
+<div class="invoice-layout doc-new">
+    <div>
+        {% if versions %}{% include "invoices/_versions.html" %}{% endif %}
+        {% include "invoices/_document.html" %}
+    </div>
+
+    <aside>
+        {% include "invoices/_summary.html" %}
+
+        {% if can_edit and t.takes_payments and open_advances %}
+        <details class="card fold-card" id="advances" open>
+            <summary class="card-header"><h2 class="card-title">Apply an advance</h2><i data-lucide="chevron-down" class="fold-toggle"></i></summary>
+            <div class="card-body">{% include "invoices/_apply_advances.html" %}</div>
+        </details>
+        {% endif %}
+
+        {% set takes_advance = t.takes_advances and status in ('sent', 'converted') %}
+        {% if can_edit and ((t.takes_payments and status == 'pending') or takes_advance) %}
+        {% if takes_advance %}
+        {% set suggested = (summary.advance.amount - advance_received) if summary.advance else (summary.total - advance_received) %}
+        {% else %}
+        {% set suggested = summary.balance %}
+        {% endif %}
+        <details class="card fold-card" id="payment">
+            <summary class="card-header"><h2 class="card-title">{{ 'Record an advance' if takes_advance else 'Record a payment' }}</h2><i data-lucide="chevron-down" class="fold-toggle"></i></summary>
+            <div class="card-body">{% include "invoices/_payment_form.html" %}</div>
+        </details>
+        {% endif %}
+
+        {% if can_edit and t.converts_to and status not in ('draft', 'declined', 'revised') and not quotations_only %}
+        <details class="card fold-card" id="convert">
+            <summary class="card-header"><h2 class="card-title">{{ 'Convert again' if status == 'converted' else 'Convert, choosing the template' }}</h2><i data-lucide="chevron-down" class="fold-toggle"></i></summary>
+            <div class="card-body">{% include "invoices/_convert_form.html" %}</div>
+        </details>
+        {% endif %}
+
+        {% include "projects/_project_card.html" %}
+
+        {{ files_card(files, {'invoice_id': invoice.invoice_id}, file_kinds, can_edit, title='Customer documents', po_hint=project is not none) }}
+    </aside>
+</div>
+{% endblock %}

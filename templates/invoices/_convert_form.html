@@ -1,0 +1,25 @@
+{# Convert a quotation or proforma to another type, with the template to use. Expects invoice, t, templates, convert_defaults #}
+<form method="POST" action="{{ url_for('invoices_bp.convert', invoice_id=invoice.invoice_id) }}">
+    <div class="form-group">
+        <label for="target" class="form-label">Convert to</label>
+        <select id="target" name="target" class="form-select">
+            {% for key in t.converts_to %}<option value="{{ key }}" data-template="{{ convert_defaults.get(key, '') }}">{{ doc_type_info(key).short }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="convert_template" class="form-label">Using template</label>
+        <select id="convert_template" name="template_id" class="form-select">
+            {% for tpl in templates %}
+            <option value="{{ tpl.template_id }}" {% if tpl.template_id == convert_defaults.get(t.converts_to[0]) %}selected{% endif %}>{{ tpl.name }}</option>
+            {% endfor %}
+        </select>
+        
+    </div>
+    <button type="submit" class="btn btn-primary btn-block"><i data-lucide="arrow-right-left"></i>Convert</button>
+</form>
+<script>
+document.getElementById('target').addEventListener('change', function () {
+    var tpl = this.selectedOptions[0].dataset.template;
+    if (tpl) document.getElementById('convert_template').value = tpl;
+});
+</script>

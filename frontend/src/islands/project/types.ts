@@ -14,7 +14,8 @@ export type Action =
   | { kind: 'link'; label: string; href: string; primary: boolean }
   | { kind: 'post'; label: string; action: string; fields: Record<string, string>; primary: boolean; confirm: string | null }
   | { kind: 'email'; label: string; invoice_id: string | null; primary: boolean }
-  | { kind: 'status'; label: string; status: string; primary: boolean };
+  | { kind: 'status'; label: string; status: string; primary: boolean }
+  | { kind: 'dialog'; label: string; dialog: string; primary: boolean };
 
 export interface Doc {
   invoice_id: string;

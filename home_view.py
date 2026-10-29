@@ -126,10 +126,13 @@ def build(org_id, role: str, url: Callable, today: Optional[date] = None) -> Dic
     if role in MAIL_READERS:
         unfiled = (db.execute_proc_single('sp_count_email_threads', (org_id, None, None, True)) or {}).get('n') or 0
     events = db.execute_proc('sp_list_recent_events', (org_id, 8)) or []
+    receive = to_receive(invoices, [r for r in rows if _group_of(r) == 'advance'], today)
+    for c in receive['customers']:
+        c['url'] = url('customers_bp.view_customer_new', customer_id=c['id'])
     return project_view._plain({
         'attention': attention(rows, drafts),
         'unfiled_emails': {'count': unfiled, 'url': url('emails_bp.inbox')} if unfiled else None,
-        'to_receive': to_receive(invoices, [r for r in rows if _group_of(r) == 'advance'], today),
+        'to_receive': receive,
         'month': {'label': f'{today:%B}', 'invoiced': _totals(month_invoiced, lambda d: d.get('total_amount')),
                   'received': _totals([{'currency': p.get('currency_code'), 'amount': p.get('amount')} for p in payments],
                                       lambda p: p['amount'])},

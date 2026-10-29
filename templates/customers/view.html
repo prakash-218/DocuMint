@@ -9,6 +9,7 @@
 {% block page_description %}<p class="header-description">{% if customer.parent_id %}Site of <a href="{{ url_for('customers_bp.view_customer', customer_id=customer.parent_id) }}">{{ customer.parent_name }}</a> · {% endif %}{{ [customer.city, customer.country] | select | join(', ') }}{% if customer.is_archived %} · Archived{% endif %}</p>{% endblock %}
 
 {% block header_actions %}
+<a href="{{ url_for('customers_bp.view_customer_new', customer_id=customer.customer_id) }}" class="btn btn-ghost"><i data-lucide="sparkles"></i><span class="btn-label">Try the new page</span></a>
 {% if can_edit and not customer.is_archived %}
 <a href="{{ url_for('projects_bp.create_project', customer_id=customer.customer_id) }}" class="btn btn-secondary"><i data-lucide="briefcase"></i><span class="btn-label">New project</span></a>
 {% endif %}
