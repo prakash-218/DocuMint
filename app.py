@@ -104,7 +104,8 @@ def create_app(config_name=None):
                    'quote_accepted': 'circle-check', 'quote_declined': 'circle-x', 'quote_revised': 'file-diff',
                    'document_corrected': 'pencil', 'document_reopened': 'undo-2',
                    'payment': 'banknote', 'file_uploaded': 'paperclip', 'email_received': 'mail',
-                   'email_sent': 'mail-check', 'project_created': 'briefcase', 'project_status': 'flag'}
+                   'email_sent': 'mail-check', 'project_created': 'briefcase', 'project_status': 'flag',
+                   'note': 'sticky-note'}
     app.add_template_global(lambda kind: EVENT_ICONS.get(kind, 'bell'), 'event_icon')
 
     @app.template_filter('when')

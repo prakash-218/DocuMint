@@ -194,6 +194,13 @@ def view_project(project_id):
                            current_org_role=get_current_org_role())
 
 
+@projects_bp.route('/<project_id>/new')
+@require_org
+def view_project_new(project_id):
+    """The new project page (React, frontend/src/islands/project/): opt-in while it settles in."""
+    return render_template('projects/new_view.html', project=_project_or_404(project_id))
+
+
 @projects_bp.route('/<project_id>/edit', methods=['POST'])
 @require_org
 def edit_project(project_id):

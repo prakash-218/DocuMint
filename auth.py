@@ -176,7 +176,7 @@ SALES_PAGES = {
                     'revise', 'edit_invoice', 'reopen', 'delete_invoice'},
     'customers_bp': {'list_customers', 'view_customer', 'create_customer', 'edit_customer', 'save_contact', 'delete_contact'},
     'search_bp': None,
-    'api_bp': {'me', 'compose', 'send_email'},
+    'api_bp': {'me', 'compose', 'send_email', 'project', 'update_project', 'add_note', 'set_person', 'save_person'},
     'settings_bp': {'index', 'select_org'},
 }
 
