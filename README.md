@@ -145,10 +145,10 @@ One project in one region (Singapore, `asia-southeast1`), with:
 
 1. **Postgres** (Railway template).
 2. **Bucket** for files.
-3. **Web**: this repo, `railway.json` (Dockerfile build, migrations as the pre-deploy step, health check
-   on `/healthz`). Variables: `DATABASE_URL`, `SECRET_KEY`, `FLASK_ENV=production`, the five `S3_*`
+3. **Web**: this repo, set up by `.railway/railway.ts` (Dockerfile build, migrations as the pre-deploy step,
+   health check on `/healthz`), applied with `railway config apply` (see `.railway/README.md`). Variables: `DATABASE_URL`, `SECRET_KEY`, `FLASK_ENV=production`, the five `S3_*`
    references. Custom domain `app.kkrengineering.com`: add the CNAME record Railway shows at your DNS host.
-4. **Worker**: same repo, config file `railway.worker.json` (cron every 5 minutes, `python worker.py --once`).
+4. **Worker**: same repo, set in its Railway settings (cron every 5 minutes, start command `python worker.py --once`).
    Variables: `DATABASE_URL`, the `S3_*` references, `EMAIL_ACCOUNTS` and each mailbox's `*_IMAP_*`.
 
 Monitoring: each service's Metrics tab (CPU, memory, network, HTTP status and latency) and the Log
