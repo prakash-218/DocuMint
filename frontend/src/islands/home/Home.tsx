@@ -21,11 +21,17 @@ export interface HomeData {
     total: Totals;
     items: { title: string; sub: string; amount: number | null; currency: string; url: string; action: string | null }[];
     more: number;
+    /** Where the rest are, when not on the projects list (overdue invoices: the invoices list). */
+    more_url?: string;
+    more_label?: string;
   }[];
   unfiled_emails: { count: number; url: string } | null;
   to_receive: {
     total: Totals;
     count: number;
+    /** 'due': by how late (every unpaid invoice has a due date); 'date': by how long ago it was sent. */
+    aged_by: 'due' | 'date';
+    overdue: { count: number; total: Totals };
     ages: { label: string; count: number; total: Totals }[];
     customers: { id: string; name: string; count: number; total: Totals; url?: string }[];
     advances: { count: number; total: Totals };
@@ -38,6 +44,7 @@ export interface HomeData {
 
 // Each kind of thing to do: its icon and tone, as in the prototype
 const KINDS: Record<string, { icon: IconName; tone: Tone }> = {
+  overdue: { icon: 'alert', tone: 'late' },
   follow_up: { icon: 'clock', tone: 'action' },
   accepted: { icon: 'done', tone: 'action' },
   advance: { icon: 'rupee', tone: 'wait' },
@@ -90,8 +97,13 @@ export default function Home() {
       <div className="stats">
         <div className="stat"><small>To receive</small><b>{r.count ? totals(r.total) : money(0)}</b>
           <span className="cap">{plural(r.count, 'invoice', 'invoices')}</span></div>
-        <div className={`stat${old?.count ? ' late' : ''}`}><small>Over 90 days old</small><b>{old?.count ? totals(old.total) : money(0)}</b>
-          <span className="cap">{plural(old?.count ?? 0, 'invoice', 'invoices')}</span></div>
+        {r.aged_by === 'due' ? (
+          <div className={`stat${r.overdue.count ? ' late' : ''}`}><small>Overdue</small><b>{r.overdue.count ? totals(r.overdue.total) : money(0)}</b>
+            <span className="cap">{plural(r.overdue.count, 'invoice', 'invoices')} past the due date</span></div>
+        ) : (
+          <div className={`stat${old?.count ? ' late' : ''}`}><small>Over 90 days old</small><b>{old?.count ? totals(old.total) : money(0)}</b>
+            <span className="cap">{plural(old?.count ?? 0, 'invoice', 'invoices')}</span></div>
+        )}
         <div className="stat"><small>Open quotations</small><b>{data.open_quotes?.count ? totals(data.open_quotes.total) : money(0)}</b>
           <span className="cap">{plural(data.open_quotes?.count ?? 0, 'quotation', 'quotations')} not answered yet</span></div>
       </div>
@@ -127,7 +139,7 @@ export default function Home() {
                             </a>
                           </li>
                         ))}
-                        {g.more > 0 && <li><a href={data.links.projects} className="attn-more">and {g.more} more on the projects list</a></li>}
+                        {g.more > 0 && <li><a href={g.more_url ?? data.links.projects} className="attn-more">and {g.more} more {g.more_label ?? 'on the projects list'}</a></li>}
                       </ul>
                     </details>
                   </li>
@@ -157,7 +169,7 @@ export default function Home() {
                   {r.ages.map((a, i) => ageWidth[i] > 0 && <span key={a.label} className={`g-${i}`} style={{ flex: ageWidth[i] }} title={`${a.label}: ${totals(a.total)}`} />)}
                 </div>
               )}
-              <ul className="agetiles" aria-label="By how long ago each invoice was sent">
+              <ul className="agetiles" aria-label={r.aged_by === 'due' ? 'By how late each invoice is' : 'By how long ago each invoice was sent'}>
                 {r.ages.map((a, i) => (
                   <li key={a.label}>
                     <small><i className={`g-${i}`} />{a.label}</small>

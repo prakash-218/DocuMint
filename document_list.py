@@ -11,6 +11,7 @@ from typing import Callable, Dict, List, Optional
 from app_helpers import to_date
 from document_view import FOLLOW_UP_AFTER, pill
 from documents import balance_of, display_number, get_type
+from payment_terms import due_on
 import revisions
 
 GROUPS = {
@@ -37,8 +38,9 @@ def short_subject(subject: Optional[str]) -> str:
     return text[:1].upper() + text[1:]
 
 
-def state(doc: Dict, today: date) -> Dict:
-    """{tab, tag {text, tone}, note}: the tab it's under, its state in a word and, under it, what that means today."""
+def state(doc: Dict, today: date, usual_days: Optional[int] = None) -> Dict:
+    """{tab, tag {text, tone}, note}: the tab it's under, its state in a word and, under it, what that means today.
+    An invoice is due on its own due date, else after the customer's payment terms (or usual_days, the usual ones)."""
     kind = get_type(doc.get('doc_type'))
     status = doc.get('status') or 'draft'
     paid, balance = float(doc.get('paid_amount') or 0), balance_of(doc)
@@ -59,14 +61,14 @@ def state(doc: Dict, today: date) -> Dict:
         return {'tab': 'converted' if status == 'converted' else 'sent', 'tag': tag, 'note': ''}
     if status == 'paid' or balance <= 0.005:
         return {'tab': 'paid', 'tag': {'text': 'Paid', 'tone': 'done'}, 'note': ''}
-    due = to_date(doc.get('due_date'))
+    due = due_on(doc, usual_days)
     if due and due < today:
         return {'tab': 'overdue', 'tag': {'text': 'Overdue', 'tone': 'late'}, 'note': f'{_days((today - due).days)} late'}
     note = '' if not due else 'Due today' if due == today else f'Due in {_days((due - today).days)}'
     return {'tab': 'pending', 'tag': tag, 'note': note}
 
 
-def rows(docs: List[Dict], url: Callable, today: Optional[date] = None) -> List[Dict]:
+def rows(docs: List[Dict], url: Callable, today: Optional[date] = None, usual_days: Optional[int] = None) -> List[Dict]:
     """The list's rows, newest first as the documents come; docs are one group's, revisions already collapsed."""
     import projects
     today = today or date.today()
@@ -79,8 +81,9 @@ def rows(docs: List[Dict], url: Callable, today: Optional[date] = None) -> List[
         out.append({
             'id': d['invoice_id'], 'number': display_number(d) or 'Draft', 'kind': kind.label, 'subject': short_subject(d.get('subject')),
             'project': project, 'customer': {'id': d.get('customer_id'), 'name': d.get('customer_name') or '', 'site': d.get('customer_site')},
-            'date': d.get('issue_date'), 'until': d.get('due_date') if kind.key != 'proforma' else None,
-            **state(d, today),
+            'date': d.get('issue_date'),
+            'until': due_on(d, usual_days) if kind.takes_payments else d.get('due_date') if kind.key == 'quote' else None,
+            **state(d, today, usual_days),
             'currency': d.get('currency_code') or 'INR', 'total': float(d.get('total_amount') or 0),
             'balance': balance_of(d) if kind.takes_payments and (d.get('status') or 'draft') not in ('draft', 'paid') else None,
             'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id']),
@@ -91,7 +94,8 @@ def rows(docs: List[Dict], url: Callable, today: Optional[date] = None) -> List[
     return out
 
 
-def build(group: str, docs: List[Dict], url: Callable, can_create: bool, today: Optional[date] = None) -> Dict:
+def build(group: str, docs: List[Dict], url: Callable, can_create: bool, today: Optional[date] = None,
+          usual_days: Optional[int] = None) -> Dict:
     """Everything the list screen draws for /quotes/, /proformas/ or /invoices/."""
     import project_view
     info = GROUPS[group]
@@ -100,7 +104,7 @@ def build(group: str, docs: List[Dict], url: Callable, can_create: bool, today: 
         mine = revisions.collapse(mine)
     return project_view._plain({'group': group, 'title': info['title'], 'until': info['until'],
             'tabs': [{'key': k, 'label': label} for k, label in info['tabs']],
-            'rows': rows(mine, url, today),
+            'rows': rows(mine, url, today, usual_days),
             'new_url': url('invoices_bp.create_invoice', doc_type=info['new_type']) if can_create else None,
             'new_label': f"New {get_type(info['new_type']).short.lower()}",
             'classic_url': url('invoices_bp.list_invoices_classic', doc_path=group)})

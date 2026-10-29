@@ -3,7 +3,8 @@ The new home page (frontend/src/islands/home/): what needs doing, and the money 
 JSON (GET /api/home). What needs doing comes from where each project is (project_view.projects_list), so
 it says the same as the projects list and the project pages.
 
-Until customers have payment terms, money owed is aged by the invoice's date (as Tally can), not a due date.
+Money owed is aged by how late it is once every unpaid invoice has a due date (its own, or from payment terms:
+payment_terms.py); until then by the invoice's date, as Tally can.
 """
 
 from datetime import date, datetime
@@ -12,12 +13,15 @@ from typing import Callable, Dict, List, Optional
 from app_helpers import to_date
 from document_service import get_org_profile
 from documents import balance_of, display_number, fiscal_year, fy_start_month, get_type
+from payment_terms import due_on, usual_days
 
-AGES = ((30, '0–30 days'), (60, '31–60 days'), (90, '61–90 days'), (None, 'Over 90 days'))
+AGES = ((30, '0–30 days'), (60, '31–60 days'), (90, '61–90 days'), (None, 'Over 90 days'))      # since the invoice date
+LATE = ((0, 'Not due yet'), (30, '1–30 days late'), (60, '31–60 days late'), (None, 'Over 60 days late'))   # past due
 SHOWN = 5
 
 # Where a project is -> the heading it needs attention under (in this order), and what moves it on
 ATTENTION = (
+    ('overdue', 'Invoices past their due date'),
     ('follow_up', 'Quotations with no answer for over two weeks'),
     ('accepted', 'Accepted, advance not asked for'),
     ('advance', "Advances that haven't arrived"),
@@ -30,6 +34,7 @@ ATTENTION = (
 
 # How many, in words, for the row on Home: "3 projects ready to invoice"
 COUNTED = {
+    'overdue': ('invoice past its due date', 'invoices past their due date'),
     'follow_up': ('quotation with no answer after 14 days', 'quotations with no answer after 14 days'),
     'accepted': ('quotation accepted, advance not asked for', 'quotations accepted, advance not asked for'),
     'advance': ('advance requested, not received', 'advances requested, not received'),
@@ -68,8 +73,9 @@ def _totals(rows: List[Dict], amount) -> Dict[str, float]:
     return out
 
 
-def attention(rows: List[Dict], drafts: List[Dict]) -> List[Dict]:
-    """The headings with something under them: count, total where it's money, and the first few."""
+def attention(rows: List[Dict], drafts: List[Dict], overdue: Optional[List[Dict]] = None) -> List[Dict]:
+    """The headings with something under them: count, total where it's money, and the first few. drafts and overdue
+    are documents (overdue: the most late first), the rest projects."""
     groups: Dict[str, List[Dict]] = {key: [] for key, _ in ATTENTION}
     for r in rows:
         key = _group_of(r)
@@ -77,10 +83,11 @@ def attention(rows: List[Dict], drafts: List[Dict]) -> List[Dict]:
             groups[key].append(r)
     out = []
     for key, title in ATTENTION:
-        if key == 'drafts':
+        if key in ('drafts', 'overdue'):
+            docs = drafts if key == 'drafts' else overdue or []
             items = [{'title': d['label'], 'sub': d['sub'], 'amount': d['total'], 'currency': d['currency'], 'url': d['url'],
-                      'action': 'Finish it'} for d in drafts]
-            total = _totals(drafts, lambda d: d['total'])
+                      'action': 'Finish it' if key == 'drafts' else 'Send a reminder'} for d in docs]
+            total = _totals(docs, lambda d: d['total'])
         else:
             amount = {'payment': lambda r: r['due'], 'advance': lambda r: r['advance']}.get(key, lambda r: r['quoted'])
             members = sorted(groups[key], key=lambda r: -(amount(r) or 0)) if key in ('payment', 'advance') else groups[key]
@@ -96,17 +103,29 @@ def attention(rows: List[Dict], drafts: List[Dict]) -> List[Dict]:
     return out
 
 
-def to_receive(invoices: List[Dict], waiting_for_advance: List[Dict], today: date) -> Dict:
-    """Money owed on sent tax invoices, by the invoices' age and by customer; and the advances asked for on the
-    projects still waiting for one (projects_list rows)."""
-    owed = [d for d in invoices if d.get('status') != 'draft' and balance_of(d) > 0.005]
+def owed_invoices(invoices: List[Dict]) -> List[Dict]:
+    """Sent tax invoices with something still to come in."""
+    return [d for d in invoices if d.get('status') != 'draft' and balance_of(d) > 0.005]
+
+
+def to_receive(invoices: List[Dict], waiting_for_advance: List[Dict], today: date, usual: Optional[int] = None) -> Dict:
+    """Money owed on sent tax invoices, by how late it is (or, while some have no due date, by the invoices' age)
+    and by customer; and the advances asked for on the projects still waiting for one (projects_list rows)."""
+    owed = owed_invoices(invoices)
+    dues = {id(d): due_on(d, usual) for d in owed}
+    by_due = bool(owed) and all(dues.values())
+
+    def age(d):              # days late, or days since the invoice date; None when it has no date at all
+        start = dues[id(d)] if by_due else to_date(d.get('issue_date'))
+        return (today - start).days if start else None
+
     ages = []
-    for limit, label in AGES:
-        lower = ages[-1]['limit'] if ages else -1
-        bucket = [d for d in owed if (to_date(d.get('issue_date')) and lower < (today - to_date(d['issue_date'])).days
-                                      and (limit is None or (today - to_date(d['issue_date'])).days <= limit))]
+    for limit, label in LATE if by_due else AGES:
+        lower = ages[-1]['limit'] if ages else -10 ** 6
+        bucket = [d for d in owed if age(d) is not None and lower < age(d) and (limit is None or age(d) <= limit)]
         ages.append({'label': label, 'limit': limit if limit is not None else 10 ** 6, 'count': len(bucket),
                      'total': _totals(bucket, balance_of)})
+    late = [d for d in owed if dues[id(d)] and dues[id(d)] < today]
     by_customer: Dict[str, Dict] = {}
     for d in owed:
         name = ' · '.join(filter(None, [d.get('customer_name'), d.get('customer_site')]))
@@ -115,7 +134,8 @@ def to_receive(invoices: List[Dict], waiting_for_advance: List[Dict], today: dat
         cur = d.get('currency_code') or 'INR'
         c['total'][cur] = c['total'].get(cur, 0) + balance_of(d)
     customers = sorted(by_customer.items(), key=lambda kv: -sum(kv[1]['total'].values()))[:SHOWN]
-    return {'total': _totals(owed, balance_of), 'count': len(owed),
+    return {'total': _totals(owed, balance_of), 'count': len(owed), 'aged_by': 'due' if by_due else 'date',
+            'overdue': {'count': len(late), 'total': _totals(late, balance_of)},
             'ages': [{k: v for k, v in a.items() if k != 'limit'} for a in ages],
             'customers': [{'id': cid, **c} for cid, c in customers],
             'advances': {'count': len(waiting_for_advance), 'total': _totals(waiting_for_advance, lambda r: r['advance'])}}
@@ -149,11 +169,20 @@ def build(org_id, role: str, url: Callable, today: Optional[date] = None, email:
     if role in MAIL_READERS:
         unfiled = (db.execute_proc_single('sp_count_email_threads', (org_id, None, None, True)) or {}).get('n') or 0
     events = db.execute_proc('sp_list_recent_events', (org_id, 8)) or []
-    receive = to_receive(invoices, [r for r in rows if _group_of(r) == 'advance'], today)
+    usual = usual_days(get_org_profile(org_id)[1])
+    receive = to_receive(invoices, [r for r in rows if _group_of(r) == 'advance'], today, usual)
+    overdue = sorted(((due_on(d, usual), d) for d in owed_invoices(invoices) if due_on(d, usual) and due_on(d, usual) < today),
+                     key=lambda pair: pair[0])
+    overdue_docs = [{'label': f"{get_type(d.get('doc_type')).label} {display_number(d)}",
+                     'sub': ' · '.join(filter(None, [d.get('customer_site') or d.get('customer_name'),
+                                                     f"{(today - due).days} day{'' if (today - due).days == 1 else 's'} late"])),
+                     'total': balance_of(d), 'currency': d.get('currency_code') or 'INR',
+                     'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id'])} for due, d in overdue]
     for c in receive['customers']:
         c['url'] = url('customers_bp.view_customer', customer_id=c['id'])
     return project_view._plain({
-        'attention': attention(rows, drafts),
+        'attention': [dict(a, more_url=url('invoices_bp.list_invoices', status='overdue'), more_label='on the invoices list')
+                      if a['key'] == 'overdue' else a for a in attention(rows, drafts, overdue_docs)],
         'unfiled_emails': {'count': unfiled, 'url': url('emails_bp.inbox')} if unfiled else None,
         'to_receive': receive,
         'hello': {'name': first_name(email), 'today': today, 'fy': fiscal_year(today, fy_start_month(get_org_profile(org_id)[1])),

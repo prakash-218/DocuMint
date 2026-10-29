@@ -10,6 +10,7 @@ from typing import Callable, Dict, List, Optional
 from app_helpers import to_date
 from documents import display_number, get_type
 from money import format_money
+from payment_terms import due_on
 
 FOLLOW_UP_AFTER = 14
 
@@ -88,9 +89,10 @@ def steps(doc: Dict, summary: Dict, advance_received: float = 0, today: Optional
 
 
 def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: List[Dict], can: Dict, url: Callable,
-              convert_defaults: Optional[Dict] = None, can_email: bool = False, today: Optional[date] = None) -> Dict:
+              convert_defaults: Optional[Dict] = None, can_email: bool = False, today: Optional[date] = None,
+              usual_days: Optional[int] = None) -> Dict:
     """{'tone', 'text', 'sub', 'actions'} for one document. can: {'edit', 'sales'}; can_email: it's in a project
-    (the email form goes by the project)."""
+    (the email form goes by the project); usual_days: the organization's usual payment terms (payment_terms.py)."""
     today = today or date.today()
     kind = get_type(doc.get('doc_type'))
     status = doc.get('status') or 'draft'
@@ -158,8 +160,12 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
             out.update(tone='done', text='Paid in full.', sub='')
         else:
             paid = summary.get('paid') or 0
-            out.update(tone='wait', text=f'{money(balance)} due.',
-                       sub=(f'{money(paid)} received so far. ' if paid else '') + (f'Sent on {sent_on}.' if sent_on else ''),
+            due = due_on(doc, usual_days)
+            late = (today - due).days if due else 0
+            when = (f'{late} day{"" if late == 1 else "s"} late: it was due on {_day(due)}. ' if late > 0
+                    else 'Due today. ' if due == today else f'Due on {_day(due)}. ' if due else '')
+            out.update(tone='late' if late > 0 else 'wait', text=f'{money(balance)} due.',
+                       sub=when + (f'{money(paid)} received so far. ' if paid else '') + (f'Sent on {sent_on}.' if sent_on else ''),
                        actions=([_link(f'Apply the advance on {open_advances[0].get("proforma_number")}', '#advances', True)]
                                 if open_advances else [])
                        + [_link('Record payment', '#payment', not open_advances), *email('Email a reminder')])

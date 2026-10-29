@@ -408,8 +408,10 @@ def view_invoice(invoice_id):
     invoice, project, summary = context['invoice'], context['project'], context['summary']
     role = context['current_org_role']
     can = {'edit': can_edit_invoice(), 'sales': role == SALES}
+    from payment_terms import usual_days
     context['doc_next'] = document_view.next_step(invoice, summary, context['advance_received'], context['open_advances'], can,
-                                                  url_for, context['convert_defaults'], can_email=bool(project))
+                                                  url_for, context['convert_defaults'], can_email=bool(project),
+                                                  usual_days=usual_days(load_json(invoice.get('organization_profile'))))
     context['doc_steps'] = document_view.steps(invoice, summary, context['advance_received'])
     # As the prototype draws it: its state, the money, and beside it the project's documents, who gets it, what happened
     advance_received = context['advance_received']

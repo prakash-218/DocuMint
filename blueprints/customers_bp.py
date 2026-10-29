@@ -9,6 +9,7 @@ from db import db, DatabaseError
 from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, require_org, get_current_org_role, quotations_only
 from access import back_to_page, get_org_customer
 from documents import load_json
+from payment_terms import parse_days
 import contacts
 import customers as C
 
@@ -20,8 +21,15 @@ def _form_context(org_id, customer=None, defaults=None):
     everyone = db.execute_proc('sp_list_customers', (org_id, True)) or []
     customer_id = (customer or {}).get('customer_id')
     site_count = sum(1 for c in everyone if customer_id and c.get('parent_id') == customer_id)
+    from document_service import get_org_profile
+    from payment_terms import describe, usual_days
     return {'parents': C.parent_choices(everyone, customer_id), 'site_count': site_count,
-            'defaults': defaults or {}, 'custom_defs': _custom_defs(org_id)}
+            'defaults': defaults or {}, 'custom_defs': _custom_defs(org_id),
+            'usual_terms': describe(usual_days(get_org_profile(org_id)[1]))}
+
+
+def _save_payment_days(customer_id, org_id, days):
+    db.execute_proc('sp_update_customer_payment_days', (customer_id, org_id, days), fetch=False)
 
 
 def _save_parent(customer_id, org_id, form):
@@ -93,8 +101,9 @@ def create_customer():
         zip_code = request.form.get('zip_code')
         country = request.form.get('country')
 
-        if not name:
-            flash('Customer name is required', 'error')
+        days, problem = parse_days(request.form.get('payment_days'))
+        if not name or problem:
+            flash(problem or 'Customer name is required', 'error')
             return render_template('customers/create.html', custom_values={}, **_form_context(org_id, defaults=request.form))
 
         try:
@@ -104,6 +113,7 @@ def create_customer():
                 customer_id = result[0].get('customer_id')
                 _save_email_domains(customer_id, org_id, request.form)
                 _save_parent(customer_id, org_id, request.form)
+                _save_payment_days(customer_id, org_id, days)
                 defs = _custom_defs(org_id)
                 if defs:
                     _save_custom(customer_id, org_id, request.form, defs)
@@ -388,8 +398,9 @@ def edit_customer(customer_id):
         zip_code = request.form.get('zip_code')
         country = request.form.get('country')
 
-        if not name:
-            flash('Customer name is required', 'error')
+        days, problem = parse_days(request.form.get('payment_days'))
+        if not name or problem:
+            flash(problem or 'Customer name is required', 'error')
             return render_template('customers/edit.html', customer=customer, custom_values=load_json(customer.get('custom')),
                                    **_form_context(org_id, customer))
 
@@ -406,6 +417,7 @@ def edit_customer(customer_id):
             ), fetch=False)
             _save_email_domains(customer_id, org_id, request.form)
             _save_parent(customer_id, org_id, request.form)
+            _save_payment_days(customer_id, org_id, days)
             defs = _custom_defs(org_id)
             if defs:
                 _save_custom(customer_id, org_id, request.form, defs)

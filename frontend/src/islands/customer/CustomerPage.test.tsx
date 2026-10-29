@@ -7,7 +7,7 @@ const DATA: CustomerData = {
   customer: {
     id: 'C-1', name: 'Gear Cutters Ltd', site: null, parent: null, tax_id: '33AAACG1234B1Z5', email_domains: 'gearco.example',
     address: ['12 Industrial Estate', 'Ambattur, Tamil Nadu, 600058', 'India'], archived: false, custom: [{ label: 'Vendor code', value: 'V-2231' }],
-    tax_note: 'Tamil Nadu, so CGST + SGST',
+    tax_note: 'Tamil Nadu, so CGST + SGST', payment_terms: '45 days',
     classic_url: '/customers/C-1',
   },
   can: { edit: true, edit_customer: true, manage: true, sales: false },

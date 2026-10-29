@@ -125,6 +125,11 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
     people = contacts.for_customer(org_id, customer)
     values = load_json(customer.get('custom'))
     custom = [{'label': f['label'], 'value': values[f['key']]} for f in custom_field_defs(profile, 'customer') if values.get(f['key'])]
+    from payment_terms import describe, usual_days
+    own, usual = customer.get('payment_days'), usual_days(profile)
+    parent_days = customer.get('parent_payment_days') if customer.get('parent_id') else None
+    terms = (describe(own) if own is not None else f"{describe(parent_days)}, as {customer.get('parent_name')}" if parent_days is not None
+             else f'{describe(usual)} (your usual terms)' if usual is not None else '')
     return project_view._plain({
         'customer': {
             'id': customer_id, 'name': customer['name'], 'site': customer.get('site') if customer.get('parent_id') else None,
@@ -134,7 +139,7 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
             'address': [x for x in [customer.get('street_address'),
                                     ', '.join(filter(None, [customer.get('city'), customer.get('state'), customer.get('zip_code')])),
                                     customer.get('country')] if x],
-            'archived': bool(customer.get('is_archived')), 'custom': custom, 'tax_note': tax_note,
+            'archived': bool(customer.get('is_archived')), 'custom': custom, 'tax_note': tax_note, 'payment_terms': terms,
             'classic_url': url('customers_bp.view_customer_classic', customer_id=customer_id),
         },
         'can': can,

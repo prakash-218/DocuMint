@@ -96,7 +96,10 @@ customer = Table(
     # Each site is billed with its own name, GSTIN and address; email domains of the parent cover its sites.
     _ref('parent_id', 'customer.customer_id', 'RESTRICT', nullable=True),
     Column('site_name', String(100)),       # "Gears Division", "Madurai plant"; defaults to the city
+    # Days after the invoice date they pay; None: the parent's terms, else the organization's usual ones
+    Column('payment_days', Integer),
     _created(),
+    CheckConstraint('payment_days BETWEEN 0 AND 365', name='payment_days'),
 )
 
 CONTACT_GETS = ('all', 'billing', 'none')     # every document / proformas and invoices / nothing unless chosen

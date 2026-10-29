@@ -570,6 +570,15 @@ def business_profile():
         except ValueError:
             flash('GST rate and financial-year month must be numbers', 'error')
             return redirect(url_for('settings_bp.business_profile'))
+        from payment_terms import parse_days
+        days, problem = parse_days(request.form.get('payment_days'))
+        if problem:
+            flash(problem, 'error')
+            return redirect(url_for('settings_bp.business_profile'))
+        if days is None:
+            profile.pop('payment_days', None)
+        else:
+            profile['payment_days'] = days
         profile['advance_basis'] = 'total' if request.form.get('advance_basis') == 'total' else 'pre_tax'
         profile['separate_export_series'] = bool(request.form.get('separate_export_series'))
         # The quotation letterhead (templates/pdf/quote.html)

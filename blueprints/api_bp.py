@@ -108,7 +108,10 @@ def documents(group):
     except DatabaseError:
         logger.exception("Failed to list documents for org %s", g.current_org_id)
         return jsonify(error="Couldn't load the documents. Try again in a moment."), 500
-    return jsonify(document_list.build(group, docs, url_for, can_create=role in EDITORS))
+    from document_service import get_org_profile
+    from payment_terms import usual_days
+    return jsonify(document_list.build(group, docs, url_for, can_create=role in EDITORS,
+                                       usual_days=usual_days(get_org_profile(g.current_org_id)[1])))
 
 
 # ---------------------------------------------------------------- The project page

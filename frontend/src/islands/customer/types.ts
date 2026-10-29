@@ -65,6 +65,8 @@ export interface CustomerData {
     custom: { label: string; value: string }[];
     /** How GST applies to them: 'Tamil Nadu, so CGST + SGST'. */
     tax_note: string;
+    /** When they pay: '30 days', '45 days, as their parent company', '30 days (your usual terms)'; '' when not set. */
+    payment_terms: string;
     classic_url: string;
   };
   can: { edit: boolean; edit_customer: boolean; manage: boolean; sales: boolean };

@@ -16,7 +16,7 @@ const DATA: HomeData = {
   ],
   unfiled_emails: { count: 4, url: '/emails/' },
   to_receive: {
-    total: { INR: 2200000 }, count: 3,
+    total: { INR: 2200000 }, count: 3, aged_by: 'date', overdue: { count: 0, total: {} },
     ages: [{ label: '0–30 days', count: 1, total: { INR: 1000000 } }, { label: '31–60 days', count: 0, total: {} },
            { label: '61–90 days', count: 2, total: { INR: 1200000 } }, { label: 'Over 90 days', count: 0, total: {} }],
     customers: [{ id: 'C-1', name: 'Gear Cutters Ltd · Hosur plant', count: 2, total: { INR: 2000000 } }],
@@ -66,6 +66,29 @@ describe('Home', () => {
     expect(receive.querySelectorAll('.agebar span')).toHaveLength(2);                                 // a coloured part for each age with money
     expect(within(receive).getByText(/Advances requested on proformas:/)).toHaveTextContent('₹1,98,240 (1 project). They count once paid.');
     expect(within(receive).getByText('Gear Cutters Ltd · Hosur plant')).toBeInTheDocument();
+  });
+
+  it('with payment terms: what is overdue first, and the money by how late it is', async () => {
+    const overdue = {
+      key: 'overdue', title: 'Invoices past their due date', label: '1 invoice past its due date', names: 'Tax Invoice 058', count: 1,
+      total: { INR: 60000 }, more: 2, more_url: '/invoices/?status=overdue', more_label: 'on the invoices list',
+      items: [{ title: 'Tax Invoice 058', sub: 'Hosur plant · 12 days late', amount: 60000, currency: 'INR', url: '/invoices/I-58', action: 'Send a reminder' }],
+    };
+    serve({
+      ...DATA, attention: [overdue, ...DATA.attention],
+      to_receive: { ...DATA.to_receive, aged_by: 'due', overdue: { count: 3, total: { INR: 1200000 } },
+                    ages: [{ label: 'Not due yet', count: 1, total: { INR: 1000000 } }, { label: '1–30 days late', count: 3, total: { INR: 1200000 } },
+                           { label: '31–60 days late', count: 0, total: {} }, { label: 'Over 60 days late', count: 0, total: {} }] },
+    });
+    render(<Home />);
+    const late = (await screen.findByText('1 invoice past its due date')).closest('details')!;
+    expect(late.querySelector('.ai')).toHaveClass('tone-late');
+    expect(within(late).getByRole('link', { name: /Tax Invoice 058/ })).toHaveTextContent('Send a reminder →');
+    expect(within(late).getByRole('link', { name: 'and 2 more on the invoices list' })).toHaveAttribute('href', '/invoices/?status=overdue');
+    expect(screen.getByText('Overdue').closest('.stat')).toHaveClass('late');
+    expect(screen.getByText('Overdue').closest('.stat')).toHaveTextContent('₹12,00,000');
+    expect(screen.queryByText('Over 90 days old')).toBeNull();
+    expect(screen.getByRole('list', { name: 'By how late each invoice is' })).toHaveTextContent('1–30 days late₹12,00,0003 invoices');
   });
 
   it("says why when it can't load", async () => {

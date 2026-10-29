@@ -39,6 +39,17 @@
                     {% if c.parent_email_domains %}<p class="form-text">{{ c.parent_name }} has {{ c.parent_email_domains }}; add only this site's own domains.</p>{% endif %}
                 </div>
             </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="payment_days" class="form-label">Payment terms (days)</label>
+                    <input type="number" id="payment_days" name="payment_days" class="form-input" min="0" max="365" step="1" inputmode="numeric"
+                           value="{{ c.payment_days if c.payment_days is not none else '' }}" placeholder="30">
+                    <p class="form-text">How many days after the invoice date they pay; 0 is on receipt. It sets when their invoices count as overdue, and isn't printed.
+                        {% if c.parent_id and c.parent_payment_days is not none %}Empty: {{ c.parent_name }}'s {{ c.parent_payment_days }} days.
+                        {% elif usual_terms %}Empty: your usual terms ({{ usual_terms }}).
+                        {% else %}Empty: no due date unless the invoice has one.{% endif %}</p>
+                </div>
+            </div>
             <div class="form-group">
                 <label for="street_address" class="form-label">Address</label>
                 <input type="text" id="street_address" name="street_address" class="form-input" value="{{ c.street_address or '' }}">
