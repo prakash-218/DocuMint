@@ -213,7 +213,8 @@
 .ui .tabs .tt { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); font-weight: 400; }
 .ui .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .ui .toolbar input[type="search"] { flex: 1 1 200px; min-width: 0; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; background: var(--surface); color: var(--ink); font: inherit; }
-.ui .toolbar select { border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; background: var(--surface); color: var(--ink); max-width: 100%; font: inherit; }
+.ui .toolbar select { border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; background: var(--surface); color: var(--ink); max-width: min(100%, 280px); font: inherit; }
+.ui .nowrap { white-space: nowrap; }
 .ui .seg2 { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
 .ui .seg2 button { border: 0; background: var(--surface); padding: 6px 10px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; color: var(--ink-2); font: inherit; }
 .ui .seg2 button + button { border-left: 1px solid var(--line); }
@@ -227,7 +228,7 @@
 .ui .rr .c-title { font-weight: 500; overflow-wrap: anywhere; }
 .ui .rr .c-sub { color: var(--ink-3); font-size: 12.5px; overflow-wrap: anywhere; }
 .ui .rr .c-num { font-family: var(--mono); font-size: 13.5px; text-align: right; white-space: nowrap; }
-.ui .rr .c-num.late { color: var(--red); }
+.ui .rr .c-num.late, .ui .rr .c-sub.late, .ui .rr .c-date.late { color: var(--red); }
 .ui .rh .c-num { text-align: right; }
 .ui .rr .c-next { font-size: 13px; color: var(--ink-2); min-width: 0; }
 .ui .rr .c-date { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; }

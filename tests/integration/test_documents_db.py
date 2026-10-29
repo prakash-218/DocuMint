@@ -188,8 +188,9 @@ def test_quote_to_proforma_to_invoice(client, app, gst_org):
 
     # Lists are split by type
     assert client.get('/invoices/?type=quote').headers['Location'].endswith('/quotes/')   # old links
-    quotes_page = client.get('/quotes/').get_data(as_text=True)
-    assert number in quotes_page and p_header['doc_number'] not in quotes_page
+    assert 'data-island="document-list"' in client.get('/quotes/').get_data(as_text=True)
+    listed = [r['number'] for r in client.get('/api/documents/quotes').get_json()['rows']]
+    assert number in listed and p_header['doc_number'] not in listed
     assert client.get('/dashboard/').status_code == 200
 
 
@@ -273,7 +274,10 @@ def test_quote_revisions(client, gst_org):
     page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
     assert 'This is an earlier version' in page and f'/quotes/{rev2}' in page
     # The list shows the quotation once, as its latest version; searching the original number finds it
-    listed = client.get(f'/quotes/?q={number}').get_data(as_text=True)
+    rows = client.get('/api/documents/quotes').get_json()['rows']
+    found = [r for r in rows if number in (r['number'], *r['search'])]
+    assert [r['number'] for r in found] == [rev2_number] and len(found[0]['versions']) == 2
+    listed = client.get(f'/quotes/classic?q={number}').get_data(as_text=True)               # the classic list too
     assert listed.count('class="cell-primary"') == 1 and rev2_number in listed and '2 earlier versions' in listed
 
 

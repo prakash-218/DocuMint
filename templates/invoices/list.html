@@ -6,6 +6,7 @@
 {% block page_title %}{{ group_info.title }}{% endblock %}
 
 {% block header_actions %}
+<a href="{{ url_for('invoices_bp.list_invoices', type=None if group == 'invoices' else group) }}" class="btn btn-ghost"><i data-lucide="sparkles"></i><span class="btn-label">New list</span></a>
 {% if current_org_role in editor_roles %}
 <a href="{{ url_for('invoices_bp.create_invoice', doc_type=group_info.new_type) }}" class="btn btn-primary"><i data-lucide="plus"></i><span class="btn-label">New {{ new_type.short | lower }}</span></a>
 {% endif %}
@@ -16,7 +17,7 @@
 <div class="list-header">
     <nav class="segmented" aria-label="Filter by status">
         {% for key, label in tabs %}
-        <a href="{{ url_for('invoices_bp.list_invoices', type=link_type, status=None if key == 'all' else key, q=query or None) }}"
+        <a href="{{ url_for('invoices_bp.list_invoices_classic', type=link_type, status=None if key == 'all' else key, q=query or None) }}"
            class="{{ 'active' if status_filter == key }}" {% if status_filter == key %}aria-current="page"{% endif %}>
             {{ label }} <span class="count">{{ counts[key] }}</span>
         </a>

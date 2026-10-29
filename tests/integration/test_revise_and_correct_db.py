@@ -143,8 +143,8 @@ def test_revising_a_proforma_moves_its_advances(client, gst_org):
     assert [float(a['amount']) for a in advances.on_proforma(revision)] == [50000] and not advances.on_proforma(pi_id)
     assert _summary(pi_id)[0]['status'] == 'revised'
     # The list shows the proforma once; its page shows both versions
-    listed = client.get(f'/proformas/?q={number}').get_data(as_text=True)
-    assert listed.count('class="cell-primary"') == 1 and '1 earlier version' in listed
+    found = [r for r in client.get('/api/documents/proformas').get_json()['rows'] if number in (r['number'], *r['search'])]
+    assert len(found) == 1 and len(found[0]['versions']) == 1
     assert 'class="version-bar"' in client.get(f'/proformas/{revision}').get_data(as_text=True)
 
 

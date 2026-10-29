@@ -762,8 +762,11 @@ def get_document_type(conn, invoice_id):
 DOC_LIST = f"""SELECT i.invoice_id, i.doc_type, i.doc_number, i.source_invoice_id, i.customer_id, c.name AS customer_name,
                      {CUSTOMER_SITE} AS customer_site,
                       i.template_id, t.name AS template_name, {CURRENCY} AS currency_code, i.issue_date, i.due_date,
-                      i.status, {PAID} AS paid_amount, i.total_amount, i.project_id
-               FROM invoice i JOIN customer c ON i.customer_id = c.customer_id {TEMPLATE_JOIN}"""
+                      i.status, {PAID} AS paid_amount, i.total_amount, i.project_id,
+                      i.details->>'subject' AS subject, i.details->>'buyer_order_no' AS buyer_order_no,
+                      p.project_no, p.title AS project_title
+               FROM invoice i JOIN customer c ON i.customer_id = c.customer_id {TEMPLATE_JOIN}
+               LEFT JOIN project p ON p.project_id = i.project_id"""
 
 
 @proc('sp_list_invoices')
