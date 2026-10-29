@@ -133,14 +133,14 @@ def test_ongoing_project_with_earlier_documents(client, gst_org):
     org_id = gst_org
     customer = _customer(org_id, 'Lucas TVS Ltd', 'Tamil Nadu', 'India')
     project_id = projects.create_project(org_id, customer, 'Assembly fixture (ongoing)')
-    for kind, number, amount in (('our_quote', 'KKR/Q/011/26-27', '85,000'), ('our_proforma', 'PI 004(26-27)', '1,00,300')):
+    for kind, number, amount in (('our_quote', 'TF/Q/011/26-27', '85,000'), ('our_proforma', 'PI 004(26-27)', '1,00,300')):
         response = client.post('/projects/files', data={'project_id': project_id, 'kind': kind, 'reference_no': number,
                                                     'doc_date': '2026-06-01', 'amount': amount,
                                                     'file': (io.BytesIO(PDF), f'{number}.pdf')},
                                content_type='multipart/form-data', headers={'Referer': f'http://localhost/projects/{project_id}'})
         assert response.status_code == 302
     page = client.get(f'/projects/{project_id}/classic').get_data(as_text=True)
-    assert 'KKR/Q/011/26-27' in page and 'PI 004(26-27)' in page and 'Uploaded' in page
+    assert 'TF/Q/011/26-27' in page and 'PI 004(26-27)' in page and 'Uploaded' in page
     assert '₹85,000.00' in page                                   # the earlier quote counts as quoted
     stages = projects.project_stages([], projects.list_attachments(org_id, project_id=project_id))
     assert [len(s['uploads']) for s in stages] == [1, 1, 0]

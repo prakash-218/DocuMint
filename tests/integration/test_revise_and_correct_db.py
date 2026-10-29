@@ -49,7 +49,7 @@ def test_correcting_a_sent_invoice_and_taking_sent_back(client, gst_org):
     from document_service import get_org_profile, set_next_number
     org_id = gst_org
     set_next_number(org_id, 'invoice', get_org_profile(org_id)[1], 700)
-    customer = _customer(org_id, 'Tractors and Farm Equipment Limited', 'Tamil Nadu', 'India')
+    customer = _customer(org_id, 'Farm Gear Works Limited', 'Tamil Nadu', 'India')
     invoice_id, number = _create(client, org_id, 'invoice', 'Tax Invoice', customer,
                                  [{'description': 'Conveyor', 'rate': 1000, 'qty': 1}])
     client.post(f'/invoices/{invoice_id}/finalize')
@@ -95,13 +95,13 @@ def test_revising_a_quotation_into_another_template(client, gst_org):
     from document_service import get_org_profile, set_next_number
     org_id = gst_org
     set_next_number(org_id, 'quote', get_org_profile(org_id)[1], 600)
-    customer = _customer(org_id, 'Wipro Enterprises Private Limited', 'Tamil Nadu', 'India')
+    customer = _customer(org_id, 'Hydro Parts Private Limited', 'Tamil Nadu', 'India')
     quote_id, number = _create(client, org_id, 'quote', 'Quotation', customer,
                                [{'description': 'Assembly fixture', 'price': 250000, 'qty': 1}], tax_mode='none')
     client.post(f'/invoices/{quote_id}/finalize')
     page = client.get(f'/quotes/{quote_id}').get_data(as_text=True)
     head, tail = number.rsplit('/', 1)
-    assert f'Make {head}R1/{tail}' in page                       # KKR's way: Q/600/26-27 -> Q/600R1/26-27
+    assert f'Make {head}R1/{tail}' in page                       # the old way: Q/600/26-27 -> Q/600R1/26-27
     breakup = _template(org_id, 'Quotation with cost break-up')
     assert f'value="{breakup["template_id"]}"' in page            # another quotation template to revise into
     assert f'value="{_template(org_id, "Tax Invoice")["template_id"]}"' not in page.split('id="revise_template"')[1].split('</select>')[0]

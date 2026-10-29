@@ -110,7 +110,7 @@ def test_long_quote_repeats_letterhead_and_keeps_sign_off_together(app, fake_db)
     import invoice_service
     from invoice_service import build_sections, invoice_summary, pdf_fonts
 
-    header = {**fake_db.invoices['INV-A'], 'doc_type': 'quote', 'doc_number': 'KKR/Q/016/26-27', 'currency_code': 'INR',
+    header = {**fake_db.invoices['INV-A'], 'doc_type': 'quote', 'doc_number': 'TF/Q/016/26-27', 'currency_code': 'INR',
               'organization_name': 'Letterhead Works', 'details': '{"subject": "Fixtures", "closing": "We hope you will find our offer suitable."}'}
     stamp = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
     with app.test_request_context():

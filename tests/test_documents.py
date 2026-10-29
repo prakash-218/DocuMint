@@ -54,7 +54,7 @@ def test_fiscal_year(on, start, expected):
 
 
 @pytest.mark.parametrize('pattern,expected', [
-    ('KKR/Q/{num:03}/{fy}', 'KKR/Q/027/26-27'),
+    ('TF/Q/{num:03}/{fy}', 'TF/Q/027/26-27'),
     ('PI {num:03}({fy})', 'PI 027(26-27)'),
     ('{num:03}', '027'),
     ('INV-{yyyy}-{num:4}', 'INV-2026-0027'),
@@ -100,11 +100,11 @@ def test_details_from_form_keeps_only_type_fields():
 
 
 @pytest.mark.parametrize('number,details,expected', [
-    ('KKR/Q/029/26-27', {}, 'KKR/Q/029R1/26-27'),          # the way KKR numbered revisions before DocuMint
-    ('KKR/Q/029R1/26-27', {}, 'KKR/Q/029R2/26-27'),
-    ('KKR/Q/023A/26-27', {}, 'KKR/Q/023AR1/26-27'),        # an alternative offer, revised
+    ('TF/Q/029/26-27', {}, 'TF/Q/029R1/26-27'),          # the way revisions were numbered before DocuMint
+    ('TF/Q/029R1/26-27', {}, 'TF/Q/029R2/26-27'),
+    ('TF/Q/023A/26-27', {}, 'TF/Q/023AR1/26-27'),        # an alternative offer, revised
     ('PI 007(26-27)', {}, 'PI 007R1(26-27)'),
-    ('KKR-PI-005', {}, 'KKR-PI-005 Rev.1'),                 # no year at the end: " Rev.N"
+    ('TF-PI-005', {}, 'TF-PI-005 Rev.1'),                 # no year at the end: " Rev.N"
     ('Q/027/26-27 Rev.1', {'base_number': 'Q/027/26-27', 'revision': 1}, 'Q/027/26-27 Rev.2'),   # revised that way before
 ])
 def test_revision_numbers(number, details, expected):
@@ -119,5 +119,5 @@ def test_imported_revisions_keep_their_numbering():
     """Q/029R1 was imported through the app's revise, so its details say base Q/029, revision 1: the number decides."""
     import json
     from document_service import next_revision_number
-    doc = {'doc_number': 'KKR/Q/029R1/26-27', 'details': json.dumps({'base_number': 'KKR/Q/029/26-27', 'revision': 1})}
-    assert next_revision_number(doc)[0] == 'KKR/Q/029R2/26-27'
+    doc = {'doc_number': 'TF/Q/029R1/26-27', 'details': json.dumps({'base_number': 'TF/Q/029/26-27', 'revision': 1})}
+    assert next_revision_number(doc)[0] == 'TF/Q/029R2/26-27'

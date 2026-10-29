@@ -96,7 +96,7 @@ def _summary(invoice_id):
 def test_quote_to_proforma_to_invoice(client, app, gst_org):
     from db import db
     org_id = gst_org
-    customer = _customer(org_id, 'Tractors and Farm Equipment Ltd', 'Tamil Nadu', 'India')
+    customer = _customer(org_id, 'Farm Gear Works Ltd', 'Tamil Nadu', 'India')
 
     # Quotation, numbered from the series we set (27), with default terms
     quote_id, number = _create(client, org_id, 'quote', 'Quotation', customer,
@@ -195,7 +195,7 @@ def test_quote_to_proforma_to_invoice(client, app, gst_org):
 
 def test_duplicate_number_is_rejected(client, gst_org):
     org_id = gst_org
-    customer = _customer(org_id, 'Tractors and Farm Equipment Ltd', 'Tamil Nadu', 'India')
+    customer = _customer(org_id, 'Farm Gear Works Ltd', 'Tamil Nadu', 'India')
     first, number = _create(client, org_id, 'invoice', 'Proforma Invoice', customer,
                             [{'description': 'Bush', 'rate': 100, 'qty': 1}], tax_mode='cgst_sgst', tax_rate='18')
     from db import db
@@ -216,7 +216,7 @@ def test_duplicate_number_is_rejected(client, gst_org):
 
 def test_export_invoice_suggests_lut(client, gst_org):
     org_id = gst_org
-    customer = _customer(org_id, 'Wipro Enterprises Inc', 'Pennsylvania', 'United States of America')
+    customer = _customer(org_id, 'Hydro Parts Inc', 'Pennsylvania', 'United States of America')
     # There's no "export invoice" to pick: an invoice made with the export template is one
     import projects
     project_id = projects.create_project(org_id, customer, 'Export test')
@@ -243,7 +243,7 @@ def test_quote_revisions(client, gst_org):
     # The fixture resets the quote series to 27; move this test to its own range
     from document_service import get_org_profile, set_next_number
     set_next_number(org_id, 'quote', get_org_profile(org_id)[1], 500)
-    customer = _customer(org_id, 'Tractors and Farm Equipment Ltd', 'Tamil Nadu', 'India')
+    customer = _customer(org_id, 'Farm Gear Works Ltd', 'Tamil Nadu', 'India')
     quote_id, number = _create(client, org_id, 'quote', 'Quotation', customer,
                                [{'description': 'Gauge', 'price': 1000, 'qty': 2}], tax_mode='none')
     # A draft can't be revised; it's simply edited
@@ -284,7 +284,7 @@ def _pages(pdf_bytes):
 def test_copies_packing_list_and_foreign_payment(client, gst_org):
     from db import db
     org_id = gst_org
-    customer = _customer(org_id, 'Wipro Enterprises Inc', 'Pennsylvania', 'United States of America')
+    customer = _customer(org_id, 'Hydro Parts Inc', 'Pennsylvania', 'United States of America')
     export_id, _ = _create(client, org_id, 'export_invoice', 'Export Invoice', customer,
                            [{'description': 'Clamp', 'rate': 100, 'qty': 3}], tax_mode='lut',
                            detail_packing_list_no='PL 1', detail_packages='1 box', detail_net_weight='5 kg')
@@ -314,7 +314,7 @@ def test_copies_packing_list_and_foreign_payment(client, gst_org):
 
 def test_packing_by_box(client, gst_org):
     org_id = gst_org
-    customer = _customer(org_id, 'Wipro Enterprises Inc', 'Pennsylvania', 'United States of America')
+    customer = _customer(org_id, 'Hydro Parts Inc', 'Pennsylvania', 'United States of America')
     export_id, _ = _create(client, org_id, 'export_invoice', 'Export Invoice', customer,
                            [{'description': 'Toggle clamp', 'rate': 13, 'qty': 10},
                             {'description': 'Aluminum bracket', 'rate': 15, 'qty': 10},
@@ -326,7 +326,7 @@ def test_packing_by_box(client, gst_org):
     o = [l['ordinal'] for l in lines]
 
     assert client.get(f'/invoices/{export_id}/packing').status_code == 200
-    form = {'box_count': '2', 'packing_list_no': 'PL 900', 'marks': 'WIPRO/1-2',
+    form = {'box_count': '2', 'packing_list_no': 'PL 900', 'marks': 'HYDRO/1-2',
             'box_1_present': '1', 'box_1_dimensions': '60 x 40 x 30 cm', 'box_1_net_weight': '18', 'box_1_gross_weight': '20',
             f'qty_1_{o[0]}': '10', f'qty_1_{o[1]}': '4',
             'box_2_present': '1', 'box_2_dimensions': '40 x 30 x 20 cm', 'box_2_net_weight': '9.5', 'box_2_gross_weight': '11',
@@ -346,7 +346,7 @@ def test_quote_cost_breakup(client, gst_org):
     org_id = gst_org
     from document_service import get_org_profile, set_next_number
     set_next_number(org_id, 'quote', get_org_profile(org_id)[1], 700)
-    customer = _customer(org_id, 'Tractors and Farm Equipment Ltd', 'Tamil Nadu', 'India')
+    customer = _customer(org_id, 'Farm Gear Works Ltd', 'Tamil Nadu', 'India')
     from db import db
     template = _template(org_id, 'Quotation with cost break-up')
     fields = db.execute_proc('sp_get_template_fields', (template['template_id'],))
@@ -511,7 +511,7 @@ def test_export_quotation(client, gst_org):
     org_id = gst_org
     client.post('/settings/profile', data={**PROFILE, 'bank_name': 'Test Bank', 'bank_account': '00112233', 'bank_swift': 'TESTINBB'})
     set_next_number(org_id, 'quote', get_org_profile(org_id)[1], 950)
-    customer = _customer(org_id, 'Givon Tooling USA', 'Washington', 'United States')
+    customer = _customer(org_id, 'Delta Tooling USA', 'Washington', 'United States')
     import projects
     project_id = projects.create_project(org_id, customer, 'Fixture for line 4')
     form_page = client.get(f"/quotes/create?project_id={project_id}&template_id={_template(org_id, 'Export Quotation')['template_id']}")
@@ -546,7 +546,7 @@ def test_pdf_with_or_without_seal(client, gst_org, monkeypatch):
     _, profile = get_org_profile(org_id)
     stamp = 'data:image/png;base64,' + base64.b64encode(b'\x89PNG\r\n\x1a\n' + b'0' * 64).decode()
     save_org_profile(org_id, {**profile, 'stamp': stamp})
-    customer = _customer(org_id, 'Tractors and Farm Equipment Limited, Gears Division', 'Tamil Nadu', 'India')
+    customer = _customer(org_id, 'Farm Gear Works Limited, Gears Division', 'Tamil Nadu', 'India')
     quote_id, _ = _create(client, org_id, 'quote', 'Quotation', customer, [{'description': 'Seal check', 'price': 100, 'qty': 1}])
     rendered = []
     real = invoice_service.render_template

@@ -1,26 +1,26 @@
 """
-Email sync: copy mail from IMAP mailboxes (info@, ramesh@ ...) into threads, and attach
+Email sync: copy mail from IMAP mailboxes (info@, sales@ ...) into threads, and attach
 threads to projects.
 
 Configuration (Railway variables on the worker; passwords never go in the code):
-    EMAIL_ACCOUNTS=INFO,RAMESH              one prefix per mailbox
-    INFO_IMAP_HOST=mail.kkrengineering.com  INFO_IMAP_PORT=993  INFO_IMAP_SSL=1
-    INFO_IMAP_USER=info@kkrengineering.com  INFO_IMAP_PASSWORD=...
+    EMAIL_ACCOUNTS=INFO,SALES               one prefix per mailbox
+    INFO_IMAP_HOST=mail.example.com         INFO_IMAP_PORT=993  INFO_IMAP_SSL=1
+    INFO_IMAP_USER=info@example.com         INFO_IMAP_PASSWORD=...
     INFO_IMAP_FOLDERS=INBOX,INBOX.Sent      optional; default INBOX plus the folder marked \\Sent
-    INFO_IMAP_MATCH=kkrengineering.com      optional; only mail from/to/cc these addresses or domains
-    EMAIL_ORG_DOMAIN=kkrengineering.com     optional; default: the mailbox's own domain
+    INFO_IMAP_MATCH=example.com             optional; only mail from/to/cc these addresses or domains
+    EMAIL_ORG_DOMAIN=example.com            optional; default: the mailbox's own domain
     EMAIL_SYNC_DAYS=90                      how far back the first sync goes
 
 A personal Gmail that collects the company mail (POP "check mail from other accounts"):
     EMAIL_ACCOUNTS=GMAIL  GMAIL_IMAP_HOST=imap.gmail.com  GMAIL_IMAP_USER=you@gmail.com
     GMAIL_IMAP_PASSWORD=<app password>  GMAIL_IMAP_FOLDERS=[Gmail]/All Mail
-    GMAIL_IMAP_MATCH=kkrengineering.com     so personal mail stays out
+    GMAIL_IMAP_MATCH=example.com            so personal mail stays out
 
 Mail is read with BODY.PEEK, so nothing is marked as read on the server, and each
 folder remembers the last message (UID) it copied.
 
 Linking a thread to a project, in order: a project number in the subject ("PRJ-012"),
-a document number in the subject ("KKR/Q/027/26-27"), a reply in a thread that's
+a document number in the subject ("TF/Q/027/26-27"), a reply in a thread that's
 already linked. The sender's domain (customer "email domains", portal logins) picks
 the customer. Anything else waits in the inbox to be linked by hand.
 """
