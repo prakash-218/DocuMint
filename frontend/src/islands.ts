@@ -10,4 +10,5 @@ export const islands: Islands = {
   'email-composer': () => import('./islands/EmailComposer'),
   'project-page': () => import('./islands/project/ProjectPage'),
   'projects-board': () => import('./islands/board/ProjectsBoard'),
+  'home': () => import('./islands/home/Home'),
 };

@@ -21,6 +21,12 @@ def _where(page):
     return page['stage']['current'], [a['label'] for a in page['next']['actions'] if a['primary']]
 
 
+def _home(client, heading):
+    """The projects (by id, from their links) Home lists under a heading."""
+    group = next((g for g in client.get('/api/home').get_json()['attention'] if g['key'] == heading), {'items': []})
+    return ' '.join(i['url'] for i in group['items'])
+
+
 def _run(client, action):
     """Do what a 'post' action on the page does: its form, to its address."""
     response = client.post(action['action'], data=action['fields'])
@@ -53,6 +59,7 @@ def test_a_job_from_quotation_to_paid(client, gst_org):
     _run(client, page['next']['actions'][0])                                   # the customer said yes
     page = _page(client, project_id)
     assert _where(page) == ('advance', ['Raise proforma for the advance'])
+    assert project_id in _home(client, 'accepted')                             # and Home says so
     edit = _run(client, page['next']['actions'][0])                            # proforma from the quotation
     proforma_id = re.search(r'([0-9a-f-]{36})', edit).group(1)
     assert _where(_page(client, project_id)) == ('advance', ['Edit proforma'])
@@ -77,6 +84,7 @@ def test_a_job_from_quotation_to_paid(client, gst_org):
     assert [a['label'] for a in page['next']['actions']] == ['Mark the project completed']
     row = next(r for r in client.get('/api/projects').get_json()['projects'] if r['id'] == project_id)
     assert (row['stage'], row['pill']['text'], row['due']) == (None, 'Paid', 0)
+    assert project_id in _home(client, 'paid_open') and client.get('/dashboard/new').status_code == 200
 
     # The page's own changes: complete it, a note, the details, a contact and what they get
     assert client.patch(f'/api/projects/{project_id}', json={'status': 'completed'}).status_code == 200
@@ -104,6 +112,7 @@ def test_a_job_from_quotation_to_paid(client, gst_org):
         assert {d['doc_type'] for d in page['documents']} == {'quote'} and set(page['money'][0]) == {'currency', 'quoted'}
         assert page['costings'] is None and not page['found']['people']
         assert not any(i['kind'] in ('payment', 'document_converted') for i in page['timeline'])
+        assert client.get('/api/home').status_code == 403                  # their home is the projects
         row = next(r for r in client.get('/api/projects').get_json()['projects'] if r['id'] == project_id)
         assert row['due'] is None and row['stage'] in ('accepted', None) and len(row['numbers']) == 1   # the quotation only
         login(client, OWNER)

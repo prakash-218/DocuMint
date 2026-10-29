@@ -85,6 +85,16 @@ def send_email(project_id):
     return jsonify(sent), 201
 
 
+# ---------------------------------------------------------------- Home
+
+@api_bp.route('/home')
+@require_org
+def home():
+    """What needs doing and the money still to come in (home_view.build). Not for Sales: their home is projects."""
+    import home_view
+    return jsonify(home_view.build(g.current_org_id, get_current_org_role(), url_for))
+
+
 # ---------------------------------------------------------------- The project page
 
 @api_bp.route('/projects')

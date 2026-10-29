@@ -1230,6 +1230,17 @@ def get_notification(conn, notification_id, user_id):
                   n=_as_uuid(notification_id), u=user_id)]
 
 
+@proc('sp_list_recent_events')
+def list_recent_events(conn, org_id, limit):
+    """What happened lately across the organization, newest first, with the project it was on."""
+    return [_rows(conn, """SELECT e.event_id, e.kind, e.title, e.link, e.created_at, u.email AS actor_email,
+                                  e.project_id, p.title AS project_title
+                           FROM event e LEFT JOIN users u ON u.user_id = e.actor_user_id
+                           LEFT JOIN project p ON p.project_id = e.project_id
+                           WHERE e.org_id = :o AND e.kind <> 'note' ORDER BY e.created_at DESC LIMIT :l""",
+                  o=org_id, l=limit or 10)]
+
+
 @proc('sp_list_project_events')
 def list_project_events(conn, project_id, org_id, limit):
     return [_rows(conn, """SELECT e.event_id, e.kind, e.title, e.body, e.link, e.created_at, u.email AS actor_email

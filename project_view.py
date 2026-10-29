@@ -374,6 +374,8 @@ def projects_list(org_id, role: str, url: Callable, today: Optional[date] = None
             'tone': nxt['tone'], 'currency': currency,
             'quoted': float((f['quote'] or {}).get('total_amount') or 0),
             'due': None if sales else f['due'],
+            'advance': None if sales else sum(float(d.get('total_amount') or 0) for d in f['sent_proformas']
+                                              if float(d.get('paid_amount') or 0) <= 0 and d.get('status') == 'sent'),
             'last_activity': max(filter(None, [str(p.get('updated_at') or ''), str(p.get('last_issue_date') or '')]), default=None),
             'numbers': [x for d in docs for x in [d.get('doc_number'), *[v.get('doc_number') for v in d.get('versions') or []]] if x],
         })
