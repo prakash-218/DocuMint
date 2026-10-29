@@ -48,7 +48,8 @@ export interface Contact {
 
 export interface FileGroup {
   project: { id: string; title: string; label: string; url: string | null } | null;
-  files: FileRow[];
+  /** Each file also says whose it is (a company's page lists its sites' too) and where moving it posts. */
+  files: (FileRow & { customer_id?: string; move?: string })[];
 }
 
 export interface CustomerData {
@@ -77,5 +78,8 @@ export interface CustomerData {
   people: Contact[];
   usually: Record<string, string>;
   sites: { id: string; name: string; tax_id: string | null; archived: boolean; documents: number; url: string }[];
-  links: { new_project: string | null; new_quote: string | null; edit: string | null; add_site: string | null };
+  links: { new_project: string | null; new_quote: string | null; edit: string | null; add_site: string | null; archive?: string | null };
+  upload?: { action: string; kinds: Record<string, string> } | null;
+  /** Owners and admins: the customer portal login, or where giving one posts. */
+  portal?: { email: string | null; login_url: string; create: string | null } | null;
 }

@@ -4,7 +4,8 @@
 {% block page_title %}Edit customer{% endblock %}
 
 {% block content %}
-{% set action = url_for('customers_bp.edit_customer', customer_id=customer.customer_id) %}
-{% set cancel_url = url_for('customers_bp.view_customer', customer_id=customer.customer_id) %}
+{% set from_new = request.args.get('from') == 'new' %}
+{% set action = url_for('customers_bp.edit_customer', customer_id=customer.customer_id, **({'from': 'new'} if from_new else {})) %}
+{% set cancel_url = url_for('customers_bp.view_customer_new' if from_new else 'customers_bp.view_customer', customer_id=customer.customer_id) %}
 {% include "customers/_form.html" %}
 {% endblock %}

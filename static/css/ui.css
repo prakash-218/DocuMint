@@ -384,3 +384,9 @@
 .ui .tag-button:hover, .ui .tag-button[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent-ink); }
 .ui .file-form { margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); display: grid; gap: 6px; }
 .ui .file-delete { color: var(--red); }
+
+/* Add one of the customer's documents to the project */
+.ui .add-existing { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 6px; font-size: 13px; }
+.ui .add-existing-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ui .add-existing-row .form-select { flex: 1 1 240px; width: auto; min-width: 0; }
+.ui .fgroup .file-form { max-width: 560px; }

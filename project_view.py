@@ -315,6 +315,9 @@ def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date]
     found = contacts.project_suggestions(org_id, project, people, get_org_profile(org_id)[1].get('phone') or '') \
         if reads_mail else {'people': [], 'phones': []}
     po = projects.latest_purchase_order(org_id, project_id)
+    addable = projects.unassigned_documents(org_id, project['customer_id']) if can['edit'] else []
+    if sales:
+        addable = [d for d in addable if d.get('doc_type') == 'quote']
     kinds = {k: v for k, v in projects.DOCUMENT_KINDS.items() if not (sales and k in projects.NOT_QUOTATIONS)}
     return _plain({
         'project': {'id': project_id, 'label': projects.project_label(project), 'title': project['title'],
@@ -350,6 +353,13 @@ def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date]
                       'profit_on_cost': k.get('profit_on_cost'), 'quote_number': k.get('quote_number'),
                       'url': url('costings_bp.edit', costing_id=k['costing_id'])}
                      for k in costing.list_for(org_id, project_id)] if can['manage'] else None,
+        'addable': [{'invoice_id': d['invoice_id'], 'number': display_number(d), 'kind': get_type(d.get('doc_type')).label,
+                     'total': float(d.get('total_amount') or 0), 'currency': d.get('currency_code') or 'INR'}
+                    for d in revisions.collapse(addable) if d.get('status') != 'revised'],
+        'links': {'documents': url('projects_bp.project_document', project_id=project_id) if can['edit'] else None,
+                  'delete': url('projects_bp.delete_project', project_id=project_id) if can['manage'] or sales else None,
+                  'new_costing': url('costings_bp.create') if can['manage'] else None,
+                  'rates': url('costings_bp.rates') if can['manage'] else None},
         'years': sorted(set(projects.recent_fiscal_years(org_id)) | {project.get('fiscal_year')} - {None}, reverse=True),
         'statuses': projects.PROJECT_STATUSES,
     })

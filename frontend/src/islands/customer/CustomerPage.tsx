@@ -4,6 +4,7 @@ import { day, money, totals } from '../../format';
 import { Icon } from '../../icons';
 import { status } from '../project/Documents';
 import type { ContactFields } from '../project/People';
+import { ACCEPT, FileForm } from '../project/Side';
 import { Contacts } from './Contacts';
 import { Statement } from './Money';
 import type { CustomerData } from './types';
@@ -137,7 +138,9 @@ export default function CustomerPage({ customerId }: { customerId: string }) {
         )}
         {shown === 'documents' && <Documents data={data} />}
         {shown === 'statement' && m && <Statement accounts={m.statement} />}
-        {shown === 'files' && <Files data={data} />}
+        {shown === 'files' && (
+          <Files data={data} onSave={(fileId, kind, referenceNo) => change(() => api.patch(`/api/files/${fileId}`, { kind, reference_no: referenceNo }), 'File saved')} />
+        )}
       </div>
       <p className="sr-only" role="status" aria-live="polite">{notice}</p>
     </div>
@@ -216,7 +219,13 @@ function Overview({ data }: { data: CustomerData }) {
             {c.email_domains && <div><dt>Email domains</dt><dd>{c.email_domains}</dd></div>}
             {c.custom.map((f) => <div key={f.label}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}
           </dl>
-          <p className="muted" style={{ margin: '10px 0 0', fontSize: 12.5 }}>The customer portal and archiving are on the <a href={c.classic_url}>classic page</a>.</p>
+          {data.portal && <Portal portal={data.portal} />}
+          {data.links.archive && (
+            <form method="post" action={data.links.archive} style={{ marginTop: 12 }}
+                  onSubmit={(e) => { if (!c.archived && !window.confirm(`Archive ${c.site || c.name}? They'll be hidden from the lists; their documents are kept.`)) e.preventDefault(); }}>
+              <button type="submit" className="btn btn-ghost btn-xs">{c.archived ? 'Restore the customer' : 'Archive the customer'}</button>
+            </form>
+          )}
         </div>
       </section>
     </>
@@ -268,12 +277,21 @@ function Documents({ data }: { data: CustomerData }) {
   );
 }
 
-function Files({ data }: { data: CustomerData }) {
-  if (!data.files.length) {
-    return <div className="rows"><p className="empty-rows" style={{ borderTop: 0 }}>No files yet. Drawings, POs and email attachments are kept in each project.</p></div>;
-  }
+function Files({ data, onSave }: { data: CustomerData; onSave: (fileId: string, kind: string, referenceNo: string) => Promise<boolean> }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const upload = data.upload;
+  const projects = data.projects.filter((p) => p.status === 'open');
   return (
     <div style={{ marginTop: 14 }}>
+      {upload && (
+        <form className="drop" data-dropzone method="post" action={upload.action} encType="multipart/form-data" style={{ marginBottom: 12 }}>
+          <input type="hidden" name="customer_id" value={data.customer.id} />
+          <input id="cp-file" type="file" name="file" multiple accept={ACCEPT} className="sr-only" />
+          <span data-drop-label>Drop files for {data.customer.site || data.customer.name} here or <label htmlFor="cp-file" className="linkish">choose files</label>.
+            They go in no project; move them into one from their tag.</span>
+        </form>
+      )}
+      {!data.files.length && <div className="rows"><p className="empty-rows" style={{ borderTop: 0 }}>No files yet.</p></div>}
       {data.files.map((g, i) => (
         <details key={g.project?.id ?? 'none'} className="fgroup" open={i === 0}>
           <summary>
@@ -286,12 +304,24 @@ function Files({ data }: { data: CustomerData }) {
             {g.files.map((f) => (
               <li key={f.id}>
                 <span className="fi" aria-hidden="true"><Icon name={f.kind === 'po' ? 'fileCheck' : 'paperclip'} size={15} /></span>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <a href={f.url} className="fn">{f.title || f.name}</a>
                   <div className="fs">
-                    <span className="tag tone-draft">{f.kind_label}</span>{' '}
+                    {upload ? (
+                      <button type="button" className="tag tone-draft tag-button" aria-expanded={editing === f.id}
+                              aria-label={`${f.kind_label}: change what ${f.name} is`} onClick={() => setEditing(editing === f.id ? null : f.id)}>
+                        {f.kind_label}
+                      </button>
+                    ) : <span className="tag tone-draft">{f.kind_label}</span>}{' '}
                     {[f.reference_no && `No. ${f.reference_no}`, f.from_email ? 'From email' : 'Uploaded', day(f.date), f.size].filter(Boolean).join(' · ')}
                   </div>
+                  {editing === f.id && upload && (
+                    <FileForm file={f} kinds={upload.kinds} onCancel={() => setEditing(null)}
+                              onSave={async (kind, ref) => { const ok = await onSave(f.id, kind, ref); if (ok) setEditing(null); return ok; }}
+                              move={f.move ? { action: f.move, current: g.project?.id ?? null,
+                                               projects: projects.filter((p) => !f.customer_id || p.customer.id === f.customer_id)
+                                                 .map((p) => ({ id: p.id, label: p.label, title: p.title })) } : undefined} />
+                  )}
                 </div>
                 <a href={f.url} className="btn btn-ghost btn-xs" aria-label={`Download ${f.name}`}><Icon name="download" size={14} /></a>
               </li>
@@ -301,5 +331,30 @@ function Files({ data }: { data: CustomerData }) {
         </details>
       ))}
     </div>
+  );
+}
+
+/** Owners and admins: who can sign in to the customer portal, or giving someone a login. */
+function Portal({ portal }: { portal: NonNullable<CustomerData['portal']> }) {
+  const [open, setOpen] = useState(false);
+  if (portal.email) {
+    return <p className="muted" style={{ margin: '12px 0 0', fontSize: 13 }}>Customer portal: <b>{portal.email}</b> can sign in at <a href={portal.login_url}>{portal.login_url}</a>.</p>;
+  }
+  if (!portal.create) return null;
+  return open ? (
+    <form method="post" action={portal.create} className="stack-form" style={{ marginTop: 12, maxWidth: 360 }}>
+      <label htmlFor="cp-portal-email" className="form-label">Their email, to sign in to the customer portal</label>
+      <input id="cp-portal-email" type="email" name="email" className="form-input" required />
+      <label htmlFor="cp-portal-password" className="form-label">A password for them <span className="muted">(8 characters or more)</span></label>
+      <input id="cp-portal-password" type="password" name="password" className="form-input" required minLength={8} autoComplete="new-password" />
+      <div className="form-actions-row">
+        <button type="submit" className="btn btn-primary btn-xs">Give portal access</button>
+        <button type="button" className="btn btn-ghost btn-xs" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </form>
+  ) : (
+    <p className="muted" style={{ margin: '12px 0 0', fontSize: 13 }}>
+      No customer portal login. <button type="button" className="linkish" onClick={() => setOpen(true)}>Give them one</button>
+    </p>
   );
 }

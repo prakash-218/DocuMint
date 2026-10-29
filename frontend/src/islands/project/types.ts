@@ -116,6 +116,9 @@ export interface Page {
   upload: { action: string; kinds: Record<string, string> } | null;
   costings: { id: string; title: string; currency: string | null; cost: number; price: number;
               profit_on_cost: number | null; quote_number: string | null; url: string }[] | null;
+  /** The customer's documents in no project, to add to this one. */
+  addable?: { invoice_id: string; number: string; kind: string; total: number; currency: string }[];
+  links?: { documents: string | null; delete: string | null; new_costing: string | null; rates: string | null };
   years: string[];
   statuses: Record<string, string>;
 }

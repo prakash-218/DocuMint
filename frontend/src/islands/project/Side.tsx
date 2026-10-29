@@ -57,10 +57,12 @@ interface FileFormProps {
   kinds: Record<string, string>;
   onSave: (kind: string, referenceNo: string) => Promise<boolean>;
   onCancel: () => void;
+  /** Moving it into one of the customer's projects (projects_bp.link_file), on the customer page. */
+  move?: { action: string; projects: { id: string; label: string; title: string }[]; current: string | null };
 }
 
-/** What a file is and its number (a PO's goes onto the project's documents), or delete it. */
-function FileForm({ file, kinds, onSave, onCancel }: FileFormProps) {
+/** What a file is and its number (a PO's goes onto the project's documents), which project it's in, or delete it. */
+export function FileForm({ file, kinds, onSave, onCancel, move }: FileFormProps) {
   const id = useId();
   const [kind, setKind] = useState(file.kind);
   const [ref, setRef] = useState(file.reference_no ?? '');
@@ -85,6 +87,18 @@ function FileForm({ file, kinds, onSave, onCancel }: FileFormProps) {
           <button type="button" className="btn btn-ghost btn-xs" onClick={onCancel}>Cancel</button>
         </div>
       </form>
+      {move && move.projects.length > 0 && (
+        <form method="post" action={move.action} className="stack-form">
+          <label htmlFor={`${id}-project`} className="form-label">In the project</label>
+          <div className="add-existing-row">
+            <select id={`${id}-project`} name="project_id" className="form-select" defaultValue={move.current ?? ''}>
+              <option value="">Not in a project</option>
+              {move.projects.map((p) => <option key={p.id} value={p.id}>{p.label} {p.title}</option>)}
+            </select>
+            <button type="submit" className="btn btn-secondary btn-xs">Move</button>
+          </div>
+        </form>
+      )}
       {file.delete && (
         <form method="post" action={file.delete} onSubmit={(e) => { if (!window.confirm(`Delete ${file.name}? This can't be undone.`)) e.preventDefault(); }}>
           <button type="submit" className="btn btn-ghost btn-xs file-delete"><Icon name="trash" size={14} />Delete the file</button>
@@ -94,12 +108,12 @@ function FileForm({ file, kinds, onSave, onCancel }: FileFormProps) {
   );
 }
 
-/** Owners and admins: the costing sheets behind the quoted price. */
-export function Costings({ costings }: { costings: NonNullable<Page['costings']> }) {
+/** Owners and admins: the costing sheets behind the quoted price, a new one, and the rates list. */
+export function Costings({ costings, projectId, links }: { costings: NonNullable<Page['costings']>; projectId?: string; links?: Page['links'] }) {
   return (
     <section className="side-sec" aria-labelledby="pp-costings">
       <h2 id="pp-costings">Costing <span className="tag tone-draft">Owners and admins</span></h2>
-      {costings.length === 0 && <p className="muted" style={{ margin: 0 }}>No costing for this project.</p>}
+      {costings.length === 0 && <p className="muted" style={{ margin: 0 }}>No costing for this project. Work out the prices before the quotation.</p>}
       {costings.map((k) => (
         <div key={k.id} className="costing">
           <span className="big">Cost {money(k.cost, k.currency)}</span>
@@ -109,6 +123,17 @@ export function Costings({ costings }: { costings: NonNullable<Page['costings']>
           <div><a className="btn btn-secondary btn-xs" href={k.url}>Open costing</a></div>
         </div>
       ))}
+      {(links?.new_costing || links?.rates) && (
+        <div className="form-actions-row" style={{ marginTop: 0 }}>
+          {links.new_costing && projectId && (
+            <form method="post" action={links.new_costing} className="inline-form">
+              <input type="hidden" name="project_id" value={projectId} />
+              <button type="submit" className="btn btn-secondary btn-xs">New costing</button>
+            </form>
+          )}
+          {links.rates && <a className="btn btn-ghost btn-xs" href={links.rates}>Rates list</a>}
+        </div>
+      )}
     </section>
   );
 }
@@ -187,6 +212,12 @@ export function Details({ page, onSave }: { page: Page; onSave: (fields: DetailF
           )}
           {project.notes && <div><dt>Notes</dt><dd>{project.notes}</dd></div>}
         </dl>
+      )}
+      {!editing && page.links?.delete && (
+        <form method="post" action={page.links.delete}
+              onSubmit={(e) => { if (!window.confirm("Delete this project? Its documents and files are kept; they just won't be grouped any more.")) e.preventDefault(); }}>
+          <button type="submit" className="btn btn-ghost btn-xs file-delete"><Icon name="trash" size={14} />Delete the project</button>
+        </form>
       )}
     </section>
   );

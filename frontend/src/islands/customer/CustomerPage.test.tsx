@@ -44,14 +44,17 @@ const DATA: CustomerData = {
   statuses: { open: 'Open', completed: 'Completed', cancelled: 'Cancelled' },
   files: [{ project: { id: 'P-1', title: 'Hob arbor set', label: 'PRJ-041', url: '/projects/P-1/new' },
             files: [{ id: 'A-1', name: 'arbor.pdf', kind: 'drawing', kind_label: 'Drawing', title: null, reference_no: null, date: '2026-01-10',
-                      size: '2 KB', from_email: true, url: '/projects/files/A-1' }] }],
+                      size: '2 KB', from_email: true, url: '/projects/files/A-1', delete: '/projects/files/A-1/delete',
+                      customer_id: 'C-1', move: '/projects/files/A-1/link' }] }],
   files_count: 1,
   people: [{ contact_id: 'K-1', customer_id: 'C-1', name: 'Ravi Kumar', email: 'ravi@gearco.example', phone: null, role: 'Purchase',
              gets: 'all', initials: 'RK', at_parent: false }],
   usually: { all: 'Everything', billing: 'Invoices and payments', none: 'Nothing' },
   sites: [{ id: 'C-2', name: 'Hosur plant', tax_id: null, archived: false, documents: 3, url: '/customers/C-2/new' }],
   links: { new_project: '/projects/new?customer_id=C-1', new_quote: '/quotes/create?customer_id=C-1', edit: '/customers/C-1/edit',
-           add_site: '/customers/create?parent_id=C-1' },
+           add_site: '/customers/create?parent_id=C-1', archive: '/customers/C-1/archive' },
+  upload: { action: '/projects/files', kinds: { drawing: 'Drawing', po: 'Purchase order', other: 'Other' } },
+  portal: { email: null, login_url: 'https://portal.example/customer/login', create: '/customers/C-1/create-portal-account' },
 };
 
 function serve(data: CustomerData = DATA) {
@@ -140,5 +143,24 @@ describe('CustomerPage', () => {
     fireEvent.change(within(add).getByLabelText('Email'), { target: { value: 'meena@gearco.example' } });
     fireEvent.click(within(add).getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/customers/C-1/contacts', expect.objectContaining({ method: 'POST' })));
+  });
+
+  it('takes files for the customer, moves one into a project, gives a portal login and archives', async () => {
+    serve();
+    render(<CustomerPage customerId="C-1" />);
+    fireEvent.click(await screen.findByRole('tab', { name: /Files/ }));
+    const zone = screen.getByText(/here or/).closest('form')!;
+    expect(zone).toHaveAttribute('data-dropzone');
+    expect(zone.querySelector('input[name=customer_id]')).toHaveValue('C-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Drawing: change what arbor.pdf is' }));
+    const move = screen.getByLabelText('In the project').closest('form')!;
+    expect(move).toHaveAttribute('action', '/projects/files/A-1/link');
+    expect(screen.getByLabelText('In the project')).toHaveValue('P-1');
+    expect(screen.getByRole('button', { name: 'Delete the file' }).closest('form')).toHaveAttribute('action', '/projects/files/A-1/delete');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Give them one' }));
+    expect(screen.getByLabelText(/Their email/).closest('form')).toHaveAttribute('action', '/customers/C-1/create-portal-account');
+    expect(screen.getByRole('button', { name: 'Archive the customer' }).closest('form')).toHaveAttribute('action', '/customers/C-1/archive');
   });
 });

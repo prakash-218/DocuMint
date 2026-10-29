@@ -262,15 +262,25 @@ def delete_project(project_id):
     _project_or_404(project_id)
     if not can_delete_project():
         flash('Only owners can delete projects', 'error')
-        return redirect(url_for('projects_bp.view_project', project_id=project_id))
+        return redirect(_project_page(project_id))
     try:
         db.execute_proc('sp_delete_project', (project_id, g.current_org_id), fetch=False)
     except DatabaseError:
         logger.exception("Failed to delete project %s", project_id)
         flash('Could not delete the project', 'error')
-        return redirect(url_for('projects_bp.view_project', project_id=project_id))
+        return redirect(_project_page(project_id))
     flash('Project deleted. Its documents and files are kept, just no longer grouped.', 'success')
-    return redirect(url_for('projects_bp.list_projects'))
+    from_new = _project_page(project_id).endswith('/new')
+    return redirect(url_for('projects_bp.board' if from_new else 'projects_bp.list_projects'))
+
+
+def _project_page(project_id):
+    """The project's page to go back to: the new one when that's where the form was sent from, else the classic one."""
+    from urllib.parse import urlparse
+    ref = urlparse(request.referrer or '')
+    if (not ref.netloc or ref.netloc == request.host) and ref.path.rstrip('/').endswith(f'/{project_id}/new'):
+        return url_for('projects_bp.view_project_new', project_id=project_id)
+    return url_for('projects_bp.view_project', project_id=project_id)
 
 
 @projects_bp.route('/<project_id>/documents', methods=['POST'])
@@ -279,7 +289,7 @@ def project_document(project_id):
     """Add (or remove) one of the customer's documents to this project."""
     org_id = g.current_org_id
     _project_or_404(project_id)
-    back = url_for('projects_bp.view_project', project_id=project_id)
+    back = _project_page(project_id)
     denied = _need_editor(back)
     if denied:
         return denied
