@@ -1546,6 +1546,16 @@ def get_email_thread(conn, thread_id, org_id):
     return [thread, messages, files]
 
 
+@proc('sp_get_thread_reply_headers')
+def get_thread_reply_headers(conn, thread_id, org_id, project_id):
+    """The latest message of one of the project's threads: what a reply refers to, to stay in the thread."""
+    return [_rows(conn, """SELECT t.thread_id, t.subject, m.message_id_header AS message_id, m.references_header AS references
+                           FROM email_thread t JOIN email_message m ON m.thread_id = t.thread_id
+                           WHERE t.thread_id = CAST(:t AS uuid) AND t.org_id = :o AND t.project_id = :p
+                           ORDER BY m.sent_at DESC NULLS LAST, m.created_at DESC LIMIT 1""",
+                  t=_as_uuid(thread_id), o=org_id, p=project_id)]
+
+
 @proc('sp_match_customers_by_email')
 def match_customers_by_email(conn, org_id, addresses):
     """Customers whose email domains, portal logins or contacts match any of these addresses."""

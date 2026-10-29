@@ -100,6 +100,17 @@ thread. The sender's domain (a customer's **Email domains**) picks the customer.
 under **Emails → Not in a project**, where it can be linked by hand. Attachments are kept with the
 message. Owners and admins are notified of customer mail on projects.
 
+**Email** on a project or a sent document sends from the same mailbox (`mailsend.py`): to the project's
+contacts (whoever gets everything, with Accounts copied on proformas and invoices), its documents
+attached as PDFs, as a reply in one of the project's threads or as a new one with the project number in
+the subject. A copy goes to the mailbox's Sent folder and the email shows on the project at once; replies
+come back into the thread. It needs the mailbox on the web service too, plus its SMTP server:
+`EMAIL_ACCOUNTS`, the mailbox's `*_IMAP_*` (Railway can reference the worker's), `INFO_SMTP_HOST`, and
+`INFO_SMTP_PORT=465` (or `587` with `INFO_SMTP_SSL=0`); `EMAIL_SEND_FROM` picks the mailbox when there's
+more than one. Through Gmail: `GMAIL_SMTP_HOST=smtp.gmail.com` (the same app password), and
+`GMAIL_SMTP_FROM=info@...` when Gmail has that address under "Send mail as"; Gmail keeps the Sent copy
+itself. Until `*_SMTP_HOST` is set, the form says sending isn't set up.
+
 ### Roles
 
 | | Owner | Admin | Member | Viewer |

@@ -6,4 +6,6 @@ import type { ComponentType } from 'react';
 export type Island = ComponentType<any>;
 export type Islands = Record<string, () => Promise<{ default: Island }>>;
 
-export const islands: Islands = {};
+export const islands: Islands = {
+  'email-composer': () => import('./islands/EmailComposer'),
+};

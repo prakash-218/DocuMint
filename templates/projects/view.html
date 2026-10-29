@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge, earlier_versions %}
+{% from "_macros.html" import status_badge, earlier_versions, island %}
 {% from "projects/_files.html" import files_card with context %}
 {% from "customers/_contacts.html" import people_card %}
 
@@ -14,6 +14,7 @@
 <a href="{{ url_for('invoices_bp.create_invoice', doc_type='quote', project_id=project.project_id) }}" class="btn btn-secondary"><i data-lucide="file-pen-line"></i><span class="btn-label">New quotation</span></a>
 {% if not quotations_only %}<a href="{{ url_for('invoices_bp.create_invoice', doc_type='invoice', project_id=project.project_id) }}" class="btn btn-secondary"><i data-lucide="plus"></i><span class="btn-label">New invoice</span></a>{% endif %}
 {% endif %}
+{% if can_edit %}{{ island('email-composer', {'projectId': project.project_id}) }}{% endif %}
 {% endblock %}
 
 {% block content %}
