@@ -16,6 +16,29 @@ logger = logging.getLogger(__name__)
 settings_bp = Blueprint('settings_bp', __name__)
 
 
+# ---------------------------------------------------------------- Choosing, making and joining an organization
+# Pages outside the app (nav.public), as signing in is: they're for people who may not be in an organization yet.
+
+def _select_org_page(orgs):
+    return nav.public('select_org', 'Choose an organization', action=url_for('settings_bp.select_org'),
+                      orgs=[{'id': str(o.get('org_id')), 'name': o.get('name') or '', 'domain': o.get('domain') or '',
+                             'status': o.get('status') or 'active'} for o in orgs or []],
+                      logout=url_for('auth_bp.logout'))
+
+
+def _create_org_page():
+    return nav.public('create_org', 'Create an organization', action=url_for('settings_bp.create_organization'),
+                      cancel=url_for('settings_bp.index'))
+
+
+def _join_org_page(existing_orgs=None, domain='', user_domain=None):
+    return nav.public('join_org', 'Join an organization', action=url_for('settings_bp.join_organization'),
+                      domain=domain or '', user_domain=user_domain or '', cancel=url_for('settings_bp.index'),
+                      create=url_for('settings_bp.create_organization'),
+                      orgs=[{'id': str(o.get('org_id')), 'name': o.get('name') or '', 'domain': o.get('domain') or ''}
+                            for o in existing_orgs or []])
+
+
 @settings_bp.route('/')
 @require_org
 def index():
@@ -107,11 +130,11 @@ def select_org():
         try:
             orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
             logger.info(f"GET request - Loaded {len(orgs) if orgs else 0} organizations")
-            return render_template('settings/select_org.html', organizations=orgs or [])
+            return _select_org_page(orgs or [])
         except DatabaseError as e:
             logger.error(f"Database error in select_org GET: {str(e)}", exc_info=True)
             flash('Error loading organizations', 'error')
-            return render_template('settings/select_org.html', organizations=[])
+            return _select_org_page([])
     except Exception as e:
         logger.error(f"Critical error in select_org: {str(e)}", exc_info=True)
         flash('An unexpected error occurred', 'error')
@@ -135,11 +158,11 @@ def create_organization():
 
         if not org_name:
             flash('Organization name is required', 'error')
-            return render_template('settings/create_org.html')
+            return _create_org_page()
 
         if not org_domain:
             flash('Organization domain is required', 'error')
-            return render_template('settings/create_org.html')
+            return _create_org_page()
 
 
         try:
@@ -148,7 +171,7 @@ def create_organization():
                 for org in existing_orgs:
                     if org.get('name') == org_name or org['name'] == org_name:
                         flash(f'An organization named "{org_name}" with domain "{org_domain}" already exists. Please choose a different name or domain.', 'error')
-                        return render_template('settings/create_org.html')
+                        return _create_org_page()
         except DatabaseError:
             pass
 
@@ -166,14 +189,14 @@ def create_organization():
             ))
             if not org_result or len(org_result) == 0:
                 flash('Failed to create organization', 'error')
-                return render_template('settings/create_org.html')
+                return _create_org_page()
         except DatabaseError as e:
             error_msg = str(e)
             if 'Duplicate entry' in error_msg or '1062' in error_msg:
                 flash(f'An organization with domain "{org_domain}" already exists. Please choose a different domain or join the existing organization.', 'error')
             else:
                 flash(f'Failed to create organization: {error_msg}', 'error')
-            return render_template('settings/create_org.html')
+            return _create_org_page()
 
         new_org_id = org_result[0].get('org_id')
 
@@ -188,7 +211,7 @@ def create_organization():
         flash(f'Organization "{org_name}" created successfully!', 'success')
         return redirect(url_for('settings_bp.index'))
 
-    return render_template('settings/create_org.html')
+    return _create_org_page()
 
 
 @settings_bp.route('/organizations/join', methods=['GET', 'POST'])
@@ -211,14 +234,14 @@ def join_organization():
 
         if not domain:
             flash('Domain is required', 'error')
-            return render_template('settings/join_org.html', existing_orgs=[], user_domain=user_domain)
+            return _join_org_page(existing_orgs=[], user_domain=user_domain)
 
         domain = domain.lower()
 
 
         if user_domain and domain != user_domain:
             flash(f'You can only join organizations with domain "{user_domain}" (your email domain).', 'error')
-            return render_template('settings/join_org.html', existing_orgs=[], domain=domain, user_domain=user_domain)
+            return _join_org_page(existing_orgs=[], domain=domain, user_domain=user_domain)
 
 
         if selected_org_id:
@@ -229,7 +252,7 @@ def join_organization():
 
                 if not org:
                     flash('Selected organization not found', 'error')
-                    return render_template('settings/join_org.html', existing_orgs=orgs or [], domain=domain, user_domain=user_domain)
+                    return _join_org_page(existing_orgs=orgs or [], domain=domain, user_domain=user_domain)
 
 
                 user_orgs = db.execute_proc('sp_get_user_organizations', (user['user_id'],))
@@ -251,15 +274,15 @@ def join_organization():
                 return redirect(url_for('settings_bp.index'))
             except DatabaseError as e:
                 flash(f'Error joining organization: {str(e)}', 'error')
-                return render_template('settings/join_org.html', existing_orgs=[], domain=domain, user_domain=user_domain)
+                return _join_org_page(existing_orgs=[], domain=domain, user_domain=user_domain)
         else:
             flash('Please select an organization to join', 'error')
 
             try:
                 orgs = db.execute_proc('sp_find_organizations_by_domain', (domain,))
-                return render_template('settings/join_org.html', existing_orgs=orgs or [], domain=domain, user_domain=user_domain)
+                return _join_org_page(existing_orgs=orgs or [], domain=domain, user_domain=user_domain)
             except DatabaseError:
-                return render_template('settings/join_org.html', existing_orgs=[], domain=domain, user_domain=user_domain)
+                return _join_org_page(existing_orgs=[], domain=domain, user_domain=user_domain)
 
 
     domain = request.args.get('domain', '')
@@ -277,7 +300,7 @@ def join_organization():
             except DatabaseError:
                 pass
 
-    return render_template('settings/join_org.html', existing_orgs=existing_orgs, domain=domain, user_domain=user_domain)
+    return _join_org_page(existing_orgs=existing_orgs, domain=domain, user_domain=user_domain)
 
 
 @settings_bp.route('/organizations/<org_id>/edit', methods=['GET', 'POST'])

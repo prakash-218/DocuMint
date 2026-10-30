@@ -922,6 +922,13 @@ input[type="date"].form-input { padding-right: 8px; }
 .auth-card { width: 100%; max-width: 400px; }
 .auth-card h1 { font-size: var(--font-size-2xl); margin-bottom: 6px; }
 .auth-card .lead { color: var(--ink-2); margin-bottom: var(--spacing-xl); }
+/* Choosing an organization to join (frontend/src/public/) */
+.org-choices { display: grid; gap: var(--spacing-sm); margin: var(--spacing-md) 0; }
+.org-choice { display: flex; gap: var(--spacing-md); align-items: flex-start; padding: var(--spacing-md); border: 1px solid var(--line-1);
+              border-radius: var(--radius); cursor: pointer; }
+.org-choice:hover, .org-choice:has(input:checked) { border-color: var(--accent-ink); background: var(--accent-soft); }
+.org-choice > span { display: grid; gap: 2px; font-size: var(--font-size-sm); }
+.org-choice input { margin-top: 3px; }
 .auth-footer { margin-top: var(--spacing-lg); text-align: center; font-size: var(--font-size-sm); color: var(--ink-2); }
 .auth-standalone { min-height: 100vh; display: grid; place-items: center; padding: var(--spacing-xl) var(--spacing-md); }
 .auth-standalone .card { width: 100%; max-width: 560px; }

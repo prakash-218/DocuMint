@@ -1,10 +1,7 @@
 """
-The React screens on a page: the script (and styles) Vite built from frontend/ into static/app, found through
-the manifest it writes. Without a build (unit tests, a checkout that never ran npm) pages simply have none.
-
-A page puts a React screen in with the island macro (_macros.html):
-    <div data-island="email-composer" data-props='{"project_id": "..."}'></div>
-and frontend/src/main.tsx mounts it.
+The React app on a page: the script (and styles) Vite built from frontend/ into static/app, found through the manifest
+it writes. spa.html, public.html and portal.html put it in; frontend/src/main.tsx starts the part whose root the page
+has (#app, #public or #portal). Without a build (unit tests, a checkout that never ran npm) pages simply have none.
 """
 
 import json

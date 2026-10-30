@@ -8,7 +8,6 @@ log) ask the database for one page with Page.from_count() and offset.
 
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
-from urllib.parse import urlencode
 
 PER_PAGE = 25
 
@@ -82,11 +81,3 @@ def paginate(items: List[Any], page: Optional[int] = None, per_page: int = PER_P
     p.items = items[p.offset:p.offset + p.per_page]
     return p
 
-
-def page_url(n: int) -> str:
-    """This page's URL with ?page=n (other query arguments kept)."""
-    from flask import request
-    args = [(k, v) for k, v in request.args.items(multi=True) if k != 'page']
-    if n > 1:
-        args.append(('page', n))
-    return request.path + (('?' + urlencode(args)) if args else '')

@@ -1,0 +1,50 @@
+{% from "_skeletons.html" import skeleton as skeleton_shapes %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {# The customer portal's React app (nav.portal): its frame and the screen's grey shapes until frontend/src/portal/ takes over #}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} · DocuMint</title>
+    <script>
+        try { var t = localStorage.getItem('dm-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
+    <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+    <link rel="icon" href="{{ url_for('static', filename='img/favicon-32.png') }}" sizes="32x32" type="image/png">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ui.css') }}">
+    <noscript><style>.skeleton { display: none; }</style></noscript>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js" defer></script>
+</head>
+<body>
+    <div id="portal">
+        <div class="app-container">
+            <aside class="sidebar" aria-hidden="true">
+                <div class="sidebar-header"><span class="sidebar-logo">
+                    <span class="logo-icon"><img src="{{ url_for('static', filename='img/documint-icon.svg') }}" alt=""></span>
+                    <span class="logo-text">Billing portal</span>
+                </span></div>
+            </aside>
+            <main class="main-content">
+                <header class="header"><div class="header-content"><div class="header-title-section">
+                    <div style="min-width: 0;"><h1 class="header-title">{{ title }}</h1></div>
+                </div></div></header>
+                {% if boot.flashes %}
+                <div class="page-alerts" role="status">
+                    {% for f in boot.flashes %}<div class="alert alert-{{ f.category }}">{{ f.text }}</div>{% endfor %}
+                </div>
+                {% endif %}
+                {{ skeleton_shapes(skeleton, title) }}
+                <noscript><p>DocuMint needs JavaScript.</p></noscript>
+            </main>
+        </div>
+    </div>
+    <script type="application/json" id="boot">{{ boot | tojson }}</script>
+    {{ frontend_assets() }}
+</body>
+</html>

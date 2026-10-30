@@ -31,21 +31,22 @@ production). After changing `store/schema.py`, create a migration with
 
 ### The React screens
 
-DocuMint is moving to a single-page app: React (TypeScript, built with Vite, React Router) in `frontend/`. The app
-(`frontend/src/app/`) draws the whole page (sidebar, header and screen) and moves between its screens without
-loading a page. `frontend/src/app/routes.tsx` lists them: Home, the projects list and a project, the quotation,
-proforma and invoice lists, a document, a new document and the editor, a document's packing, the customers (list,
-page, new and edit), a new project, the emails, notifications, settings (the business profile, name and address,
-the audit log), costings and their rates list, and templates (the list, a template, pages & printing and the
-builder). A form still posts to its Flask route; when that doesn't save, `nav.spa(posted=True)` sends the app back
-with what was typed. Flask still checks access for each of those addresses, then sends one page
+DocuMint's screens are a single-page app: React (TypeScript, built with Vite, React Router) in `frontend/`. The app
+(`frontend/src/app/`) draws the whole page (sidebar, header and screen) and moves between its screens without loading
+a page; `frontend/src/app/routes.tsx` lists them. Flask still checks access for each address, then sends one page
 (`templates/spa.html`, `nav.spa()`) with what the app starts with (`nav.boot()`: who's signed in, the sidebar for
-their role, the page's messages). Everything else is still a server page, which the app opens with an ordinary page
-load. Both draw the same sidebar from `nav.sidebar()`.
+their role, the page's messages). A form still posts to its Flask route; when that doesn't save,
+`nav.spa(posted=True)` sends the app back with what was typed.
 
-A server page can still hold a React part as an island: `{{ island('name', props) }}`
-(`templates/_macros.html`) renders a `<div data-island>` that `frontend/src/main.tsx` mounts, using the
-component registered under that name in `frontend/src/islands.ts`.
+Two smaller parts load from the same build (`frontend/src/main.tsx` starts the one its page has a root for):
+
+- `frontend/src/public/`: the pages outside the app (logging in, registering, choosing, making or joining an
+  organization, the customer portal's login). The route decides the screen and its data as before, and
+  `nav.public()` sends `templates/public.html`, the sign-in frame with the page's messages; React draws the form.
+- `frontend/src/portal/`: the customer portal, its own small app over `/customer/api/documents`
+  (`portal_view.py`), sent as `templates/portal.html` by `nav.portal()`.
+
+PDFs and the error pages are still drawn on the server.
 
 The screens read and write through the JSON endpoints in `blueprints/api_bp.py`, with the same login,
 organization and roles as the pages. You need Node 22 for this part.
@@ -57,7 +58,7 @@ npm run watch                                           # rebuilds static/app on
 npm test && npm run typecheck
 ```
 
-Without a build the pages work as before, just without their React parts. Docker and CI build it
+Without a build the pages have no screens: run `npm run build` (or `watch`) first. Docker and CI build it
 themselves (`static/app` isn't committed).
 
 Demo logins (password `demo12345`): `michael.chen@techflow.com` (owner), `sarah.martinez@techflow.com`
@@ -188,12 +189,13 @@ nav.py                    the sidebar, the New menu and the React app's page (sp
 document_page.py          a document's page for the React app (GET /api/document/<id>)
 editor_page.py            the new-document steps and the editor for the React app (GET /api/editor/...)
 packing_page.py           a document's packing, box by box, for the React app (GET /api/packing/<id>)
-customer_view.py, email_view.py, notifications_view.py, settings_view.py, costing_view.py, template_view.py
+customer_view.py, email_view.py, notifications_view.py, settings_view.py, costing_view.py, template_view.py,
+portal_view.py
                           the other screens' JSON (GET /api/customers, /api/emails, /api/settings, /api/costings,
-                          /api/templates...)
+                          /api/templates..., and the portal's /customer/api/documents)
 observability.py          JSON logs, request logging, /healthz
 blueprints/               routes (api_bp: JSON for the React screens)
-templates/, static/       pages, CSS, JS
+templates/, static/       the app's pages (spa, public, portal), PDFs, error pages, CSS, JS
 frontend/                 the React app and screens (TypeScript), built into static/app; frontend_assets.py loads them
 scripts/dbtool.py         migrate / reset / demo
 tests/                    unit tests; tests/integration against real services

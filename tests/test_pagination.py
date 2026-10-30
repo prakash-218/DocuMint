@@ -1,6 +1,6 @@
 from flask import Flask
 
-from pagination import Page, page_url, paginate
+from pagination import Page, paginate
 
 
 def test_pages_and_numbers():
@@ -16,12 +16,7 @@ def test_pages_and_numbers():
     assert (db_page.offset, db_page.first, db_page.last) == (50, 51, 61)
 
 
-def test_page_links_keep_the_other_arguments():
+def test_page_numbers_from_the_address():
     app = Flask(__name__)
-    with app.test_request_context('/quotes/?status=sent&q=hydro&page=4'):
-        assert page_url(5) == '/quotes/?status=sent&q=hydro&page=5'
-        assert page_url(1) == '/quotes/?status=sent&q=hydro'
-    with app.test_request_context('/emails/?page=2'):
-        assert page_url(1) == '/emails/'
     with app.test_request_context('/emails/?page=abc'):
         assert paginate(list(range(40))).page == 1

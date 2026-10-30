@@ -53,12 +53,3 @@ def test_pages_load_the_built_script_when_there_is_one(app, owner, tmp_path, mon
     assert '<script type="module" src="/static/app/assets/main-abc123.js"></script>' in html
     assert '<link rel="stylesheet" href="/static/app/assets/main-def456.css">' in html
 
-
-def test_the_island_macro_passes_props_as_json(app):
-    with app.test_request_context():
-        macro = app.jinja_env.get_template('_macros.html').module.island
-        html = str(macro('email-composer', {'project_id': 'P-1', 'note': 'a "quoted" <b>'}))
-    assert 'data-island="email-composer"' in html
-    props = html.split('data-props="')[1].split('"')[0]
-    import html as h
-    assert json.loads(h.unescape(props)) == {'project_id': 'P-1', 'note': 'a "quoted" <b>'}
