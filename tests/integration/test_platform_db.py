@@ -174,7 +174,6 @@ def _admin_checks(client, org_id, viewer, owner):
     login(client, VIEWER)
     from tests.spa import badge, boot_of, screen
     assert badge(boot_of(client.get('/dashboard/').get_data(as_text=True)), 'notifications') > 0
-    assert 'nav-badge' in client.get('/templates/').get_data(as_text=True)          # and on the server pages
     assert client.get('/settings/audit-log').status_code == 200 and screen(client, '/api/settings/audit-log')['entries']
     assert client.get('/settings/profile').status_code == 200
     assert screen(client, '/api/settings/profile')['action'] == '/settings/profile'

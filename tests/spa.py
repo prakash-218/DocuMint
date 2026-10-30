@@ -82,3 +82,22 @@ def screen(client, path: str) -> dict:
     response = client.get(path)
     assert response.status_code == 200, (path, response.get_data(as_text=True)[:300])
     return response.get_json()
+
+
+def builder_form(data: dict, **changes) -> dict:
+    """The form the template builder posts, as it stands (frontend/src/islands/templates/Builder.tsx), with changes."""
+    form = {'section_count': str(len(data['sections'])), 'total': data['total']}
+    for i, s in enumerate(data['sections'], 1):
+        form.update({f's{i}_present': '1', f's{i}_title': s['title'], f's{i}_name': s['name'], f's{i}_type': s['type'],
+                     f's{i}_field_count': str(len(s['fields']))})
+        for j, f in enumerate(s['fields'], 1):
+            q = f's{i}_f{j}_'
+            form.update({q + 'present': '1', q + 'label': f['label'], q + 'name': f['name'], q + 'type': f['type']})
+            if f['type'] == 'number':                 # the app disables formula and money for other types
+                form[q + 'formula'] = f['formula']
+                if f['currency']:
+                    form[q + 'currency'] = 'on'
+            if f['required']:
+                form[q + 'required'] = 'on'
+    form.update(changes)
+    return form

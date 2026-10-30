@@ -427,8 +427,9 @@ def test_template_pages_and_custom_fields(client, gst_org):
         assert annex['kind'] == 'annexure' and annex['with_document']
         annex['title'], annex['include_terms'] = 'Terms of supply', True
         save_layout(tid, org_id, layout)
-        assert 'Shipping list' in client.get(f'/templates/{tid}').get_data(as_text=True)
-        assert 'Shipping list' in client.get(editor).get_data(as_text=True)
+        from tests.spa import screen
+        assert 'Shipping list' in [p['title'] for p in screen(client, f'/api/templates/{tid}')['pages']]
+        assert 'Shipping list' in [p['title'] for p in screen(client, f'/api/templates/{tid}/layout')['pages']]
 
         # Custom fields: one about us, one defined for customers and filled on the customer
         client.post('/settings/profile', data={**PROFILE, 'orgcf_label_1': 'MSME No.', 'orgcf_value_1': 'UDYAM-TN-02-0000001',
@@ -487,20 +488,11 @@ def test_template_builder_versions(client, gst_org):
     assert client.get(f"/templates/{tpl['template_id']}/edit").status_code == 200
     assert versions() == before
 
-    page = client.get(f"/templates/{tpl['template_id']}/edit").get_data(as_text=True)
+    from tests.spa import builder_form, screen
     sections = TB.sections_for_editor(tpl['template_id'], before)
-    form = {'section_count': str(len(sections)), 'total': ''}
-    for i, s in enumerate(sections, 1):
-        form.update({f's{i}_present': '1', f's{i}_title': s['title'], f's{i}_name': s['name'], f's{i}_type': s['type'],
-                     f's{i}_field_count': str(len(s['fields']))})
-        for j, f in enumerate(s['fields'], 1):
-            form.update({f's{i}_f{j}_present': '1', f's{i}_f{j}_label': f['label'], f's{i}_f{j}_name': f['name'],
-                         f's{i}_f{j}_type': f['type'], f's{i}_f{j}_formula': f['formula']})
-            if f['currency']:
-                form[f's{i}_f{j}_currency'] = 'on'
-            if f['total']:
-                form['total'] = f'{i}:{j}'
-    form['s1_f2_label'] = 'Unit price'                       # rename a column
+    page = screen(client, f"/api/templates/{tpl['template_id']}/fields")
+    assert [f['name'] for f in page['sections'][0]['fields']] == [f['name'] for f in sections[0]['fields']]
+    form = builder_form(page, s1_f2_label='Unit price')     # the builder's form as the app posts it, a column renamed
     in_use = TB.version_in_use(org_id, tpl['template_id'], before)
     assert client.post(f"/templates/{tpl['template_id']}/edit", data=form).status_code == 302
     after = versions()
@@ -514,7 +506,7 @@ def test_template_builder_versions(client, gst_org):
     assert response.status_code == 302
     created = _template(org_id, 'Builder test')
     assert created['currency_code'] == 'EUR'
-    assert 'Builder test' in client.get('/templates/').get_data(as_text=True)
+    assert 'Builder test' in [c['name'] for c in screen(client, '/api/templates')['cards']]
 
 
 def test_export_quotation(client, gst_org):

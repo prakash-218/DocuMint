@@ -50,9 +50,6 @@ def test_needs_a_login(client):
 
 def test_every_page_has_the_search(client, login_as):
     login_as('U-A', ORG_A, 'alice@a.com')
-    html = client.get('/templates/').get_data(as_text=True)                        # a server page
-    assert 'id="palette"' in html and 'data-palette-open' in html and 'data-source="/search/items"' in html
-    assert html.index('js/fuzzy.js') < html.index('js/palette.js')
     app = client.get('/customers/').get_data(as_text=True)                         # the app draws its own button
     assert 'id="palette"' in app and 'data-source="/search/items"' in app and app.index('js/fuzzy.js') < app.index('js/palette.js')
     with client.session_transaction() as s:

@@ -45,7 +45,10 @@ def test_costing_to_quote(client, gst_org):
 
     response = client.post(f'/costings/{costing_id}', data=_form(SHEET, action='save'), follow_redirects=True)
     page = response.get_data(as_text=True)
-    assert 'Costing saved' in page and 'HEC torqueing station' in page and 'Hiwin' in page
+    from tests.spa import screen
+    saved = screen(client, f'/api/costings/{costing_id}')
+    assert 'Costing saved' in page and 'HEC torqueing station' in [i['name'] for i in saved['sheet']['items']]
+    assert 'Hiwin' in [l['make'] for i in saved['sheet']['items'] for l in i['lines']]
     saved = costing.get(costing_id, org_id)
     assert (float(saved['total_cost']), float(saved['total_price'])) == (191300, 220000)
     assert f'/costings/{costing_id}' in [k['url'] for k in client.get(f'/api/projects/{project_id}').get_json()['costings']]
@@ -92,6 +95,7 @@ def test_costing_to_quote(client, gst_org):
     for email in (MEMBER, VIEWER):
         login(client, email)
         assert client.get(f'/costings/{costing_id}').status_code == 403
+        assert client.get(f'/api/costings/{costing_id}').status_code == 403 and client.get('/api/costings/rates').status_code == 403
         assert client.post(f'/costings/{costing_id}/preview', data=_form(SHEET)).status_code == 403
         assert client.get(f'/api/projects/{project_id}').get_json()['costings'] is None
     login(client, OWNER)
@@ -139,8 +143,10 @@ def test_shared_costs_a_dollar_quote_and_copying_items(client, gst_org):
     customer = _customer(org_id, 'Hydraulics Inc', '', 'United States')
     project_id = projects.create_project(org_id, customer, f'Test powerunit {uuid.uuid4().hex[:5]}')
     costing_id = _new_costing(client, project_id)
-    page = client.get(f'/costings/{costing_id}').get_data(as_text=True)
-    assert 'Shared costs' in page and 'Import from Excel' in page and 'Copy from a costing' in page
+    from tests.spa import boot_of, screen
+    assert boot_of(client.get(f'/costings/{costing_id}').get_data(as_text=True))              # the app's page
+    page = screen(client, f'/api/costings/{costing_id}')
+    assert page['urls']['import'] == f'/costings/{costing_id}/import' and page['urls']['library'] == '/costings/library'
 
     sheet = {'items': [{'key': 'unit1', 'name': 'Powerunit', 'qty': 1, 'cost_each': 600000},
                        {'key': 'tank1', 'name': 'Tank', 'qty': 2, 'cost_each': 50000}],
@@ -208,10 +214,11 @@ def test_rates_list_and_spreadsheet_import(client, gst_org):
     assert 'Rates saved (2)' in response.get_data(as_text=True)
     saved = costing.rates(org_id)
     assert [(r['description'], r['unit_cost']) for r in saved] == [('LM guide with block', 34000), ('ms raw material', 88)]
-    page = client.get('/costings/rates').get_data(as_text=True)
-    assert 'Raw material MS' in page                                              # a costing line not in the list yet
-    editor = client.get(f'/costings/{costing_id}').get_data(as_text=True)
-    assert '<datalist id="k-rates">' in editor and 'LM guide with block — Hiwin' in editor
+    from tests.spa import screen
+    page = screen(client, '/api/costings/rates')
+    assert 'Raw material MS' in [s['description'] for s in page['suggestions']]   # a costing line not in the list yet
+    editor = screen(client, f'/api/costings/{costing_id}')
+    assert ('LM guide with block', 'Hiwin') in [(r['description'], r['make']) for r in editor['rates']]   # offered as lines are typed
 
     # A workbook: the heading row and columns are guessed, nothing is stored
     book = openpyxl.Workbook()

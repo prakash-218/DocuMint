@@ -35,9 +35,10 @@ DocuMint is moving to a single-page app: React (TypeScript, built with Vite, Rea
 (`frontend/src/app/`) draws the whole page (sidebar, header and screen) and moves between its screens without
 loading a page. `frontend/src/app/routes.tsx` lists them: Home, the projects list and a project, the quotation,
 proforma and invoice lists, a document, a new document and the editor, a document's packing, the customers (list,
-page, new and edit), a new project, the emails, notifications, and settings (the business profile, name and
-address, the audit log). A form still posts to its Flask route; when that doesn't save, `nav.spa(posted=True)`
-sends the app back with what was typed. Flask still checks access for each of those addresses, then sends one page
+page, new and edit), a new project, the emails, notifications, settings (the business profile, name and address,
+the audit log), costings and their rates list, and templates (the list, a template, pages & printing and the
+builder). A form still posts to its Flask route; when that doesn't save, `nav.spa(posted=True)` sends the app back
+with what was typed. Flask still checks access for each of those addresses, then sends one page
 (`templates/spa.html`, `nav.spa()`) with what the app starts with (`nav.boot()`: who's signed in, the sidebar for
 their role, the page's messages). Everything else is still a server page, which the app opens with an ordinary page
 load. Both draw the same sidebar from `nav.sidebar()`.
@@ -187,8 +188,9 @@ nav.py                    the sidebar, the New menu and the React app's page (sp
 document_page.py          a document's page for the React app (GET /api/document/<id>)
 editor_page.py            the new-document steps and the editor for the React app (GET /api/editor/...)
 packing_page.py           a document's packing, box by box, for the React app (GET /api/packing/<id>)
-customer_view.py, email_view.py, notifications_view.py, settings_view.py
-                          the other screens' JSON (GET /api/customers, /api/emails, /api/notifications, /api/settings...)
+customer_view.py, email_view.py, notifications_view.py, settings_view.py, costing_view.py, template_view.py
+                          the other screens' JSON (GET /api/customers, /api/emails, /api/settings, /api/costings,
+                          /api/templates...)
 observability.py          JSON logs, request logging, /healthz
 blueprints/               routes (api_bp: JSON for the React screens)
 templates/, static/       pages, CSS, JS

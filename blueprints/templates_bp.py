@@ -3,7 +3,7 @@ Templates blueprint - Template management
 """
 
 import logging
-from flask import Blueprint, request, render_template, redirect, url_for, flash, g
+from flask import Blueprint, request, redirect, url_for, flash, g
 from db import db, DatabaseError
 from auth import require_org, get_current_org_role
 from access import get_org_template, get_template_ids
@@ -32,20 +32,8 @@ def _warn_invalid_formulas(template_id):
 @require_org
 def list_templates():
     """Templates as cards: one per template (latest version), with columns and usage"""
-    from template_service import template_cards
-
-    org_id = g.current_org_id
-    include_archived = request.args.get('include_archived', 'false').lower() == 'true'
-    try:
-        cards = template_cards(org_id, include_archived)
-    except DatabaseError:
-        logger.exception("Failed to list templates for %s", org_id)
-        flash('Error loading templates', 'error')
-        cards = []
-    from pagination import paginate
-    page = paginate(cards, per_page=12)                 # cards: a grid of 12
-    return render_template('templates/list.html', templates=page.items, page=page, include_archived=include_archived,
-                           current_org_role=get_current_org_role())
+    import nav
+    return nav.spa('Templates', 'list')                     # the cards: template_view.cards
 
 
 @templates_bp.route('/create', methods=['GET', 'POST'])
@@ -62,61 +50,43 @@ def create_template():
             template_id, _ = TB.save(org_id, request.form)
         except TB.TemplateError as e:
             flash(str(e), 'error')
-            sections, _ = TB.sections_from_form(request.form)
-            return _builder(None, None, sections or TB.STARTER)
+            return _builder('New template')
         except DatabaseError:
             logger.exception("Template create failed")
             flash('Could not create the template', 'error')
-            return _builder(None, None, TB.STARTER)
+            return _builder('New template')
         _save_used_for(template_id, org_id, request.form.getlist('used_for'))
         flash('Template created', 'success')
         _warn_invalid_formulas(template_id)
         return redirect(url_for('templates_bp.view_template', template_id=template_id))
-    return _builder(None, None, TB.STARTER)
+    return _builder('New template')
 
 
-def _builder(template_id, info, sections, in_use=0):
-    import template_builder as TB
-    from document_service import get_org_profile
-    from money import SYMBOLS
-    total_key = ''
-    for i, sec in enumerate(sections, start=1):
-        for j, f in enumerate(sec['fields'], start=1):
-            if f.get('total'):
-                total_key = f'{i}:{j}'
-    from documents import CHOOSABLE, DOC_TYPES
-    return render_template('templates/builder.html', template_id=template_id, info=info, sections=sections,
-                           choosable=CHOOSABLE, doc_types=DOC_TYPES,
-                           total_key=total_key, in_use=in_use, field_types=TB.FIELD_TYPES,
-                           section_types=TB.SECTION_TYPES, currencies=list(SYMBOLS),
-                           default_currency=get_org_profile(g.current_org_id)[1].get('default_currency') or 'INR')
+def _builder(title):
+    """The builder, in the React app (template_view.builder). After a POST that didn't save, it starts from what was
+    sent (nav.spa(posted=True))."""
+    import nav
+    return nav.spa(title, 'page', posted=request.method == 'POST')
 
 
 @templates_bp.route('/<template_id>')
 @require_org
 def view_template(template_id):
     """Template page: calculated preview with sample values, formulas, versions, usage"""
-    from template_service import template_overview
-
-    org_id = g.current_org_id
-    try:
-        overview = template_overview(org_id, template_id)
-    except DatabaseError:
-        logger.exception("Failed to load template %s", template_id)
-        overview = None
-    if not overview:
+    import nav
+    from template_service import template_versions
+    versions = template_versions(g.current_org_id, template_id)
+    if not versions:
         flash('Template not found', 'error')
         return redirect(url_for('templates_bp.list_templates'))
-    return render_template('templates/view.html', template_id=template_id, t=overview,
-                           template_info=overview['info'], current_org_role=get_current_org_role())
+    return nav.spa(versions[0].get('name') or 'Template', 'page')     # the page: template_view.overview
 
 
 @templates_bp.route('/<template_id>/layout', methods=['GET', 'POST'])
 @require_org
 def edit_layout(template_id):
     """Pages & printing: which pages the template prints, their columns, copies and box fields."""
-    from documents import CHOOSABLE, DOC_TYPES
-    from layout import PAGE_KINDS, layout_from_form, load_layout, new_page, save_layout, template_is_export
+    from layout import layout_from_form, load_layout, new_page, save_layout
 
     org_id = g.current_org_id
     if get_current_org_role() not in ('owner', 'admin'):
@@ -144,19 +114,8 @@ def edit_layout(template_id):
             flash('Pages & printing saved', 'success')
         return redirect(url_for('templates_bp.edit_layout', template_id=template_id))
 
-    fields = get_template_fields(template_id, info.get('latest_version'))
-    item_fields, section_choices = [], []
-    for f in fields:
-        if f.get('section_type') == 'line_item' and 'break' not in (f.get('section_name') or '').lower():
-            if f['field_name'] not in [x['field_name'] for x in item_fields]:
-                item_fields.append({'field_name': f['field_name'], 'label': f.get('field_display_name') or f['field_name']})
-        sec = {'name': (f.get('section_name') or '').lower(), 'label': f.get('section_display_name') or f.get('section_name')}
-        if sec not in section_choices:
-            section_choices.append(sec)
-    return render_template('templates/layout.html', template_id=template_id, info=info, layout=layout,
-                           item_fields=item_fields, section_choices=section_choices,
-                           doc_types=DOC_TYPES, page_kinds=PAGE_KINDS, choosable=CHOOSABLE, used_for=_ticked_types(info, layout),
-                           auto_export=template_is_export(template_id, org_id, {**layout, 'export': None}))
+    import nav
+    return nav.spa(f"Pages & printing · {info.get('name') or ''}", 'page')    # the form: template_view.layout_page
 
 
 def _save_used_for(template_id, org_id, used_for):
@@ -230,8 +189,7 @@ def edit_template(template_id):
             _, new_version = TB.save(org_id, request.form, template_id)
         except TB.TemplateError as e:
             flash(str(e), 'error')
-            sections, _ = TB.sections_from_form(request.form)
-            return _builder(template_id, info, sections or TB.sections_for_editor(template_id, info['version']))
+            return _builder(f"Edit {info.get('name') or ''}")
         except DatabaseError:
             logger.exception("Template save failed for %s", template_id)
             flash('Could not save the template', 'error')
@@ -241,8 +199,7 @@ def edit_template(template_id):
         _warn_invalid_formulas(template_id)
         return redirect(url_for('templates_bp.view_template', template_id=template_id))
 
-    return _builder(template_id, info, TB.sections_for_editor(template_id, info['version']),
-                    in_use=TB.version_in_use(org_id, template_id, info['version']))
+    return _builder(f"Edit {info.get('name') or ''}")
 
 
 @templates_bp.route('/<template_id>/section/<section_id>/delete', methods=['POST'])
