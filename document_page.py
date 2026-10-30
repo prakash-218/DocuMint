@@ -106,8 +106,10 @@ def _pdf(ctx: Dict, t, status: str, can_edit: bool, url: Callable, perms) -> Dic
 def build(ctx: Dict, perms, url: Callable) -> Dict:
     """Everything the page shows, from the document page's context (invoices_bp._view_context and view_invoice's), for
     someone with these permissions (permissions.granted(), or a built-in role's name)."""
+    import discounts
     import permissions
     from documents import get_type
+    from invoice_service import with_discount_column
     from project_view import _plain, file_row
     import customers
     import projects
@@ -130,7 +132,7 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
         'change': _change(ctx, t, url) if status != 'draft' and can_edit else None,
         'payments': _payments(ctx, t, status, can_edit and permissions.can('payments.write', perms=perms), url) if (t.takes_payments or t.takes_advances) and status != 'draft' else None,
         'versions_html': _html("{% include 'invoices/_versions.html' %}", ctx) if ctx['versions'] else None,
-        'document_html': _html("{% include 'invoices/_document.html' %}", ctx),
+        'document_html': _html("{% include 'invoices/_document.html' %}", {**ctx, 'sections_data': with_discount_column(ctx['sections_data'])}),
         'chain': ctx['doc_chain'],
         'people': {'list': ctx['doc_people'], 'url': project_url,
                    'empty': f"Nobody on this project gets {'quotations' if t.key == 'quote' else 'proformas and invoices'} yet. "
@@ -139,7 +141,9 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
         'convert': {'label': 'Convert again' if status == 'converted' else 'Convert, choosing the template',
                     'action': url('invoices_bp.convert', invoice_id=invoice['invoice_id']),
                     'targets': [{'key': k, 'label': get_type(k).short, 'template': str(ctx['convert_defaults'].get(k) or '')} for k in t.converts_to],
-                    'templates': [{'id': str(x['template_id']), 'name': x.get('name') or 'Template'} for x in ctx['templates']]}
+                    'templates': [{'id': str(x['template_id']), 'name': x.get('name') or 'Template'} for x in ctx['templates']],
+                    # its discounts in words: converting asks whether to keep them or take them into the prices
+                    'discount': discounts.describe(invoice, invoice.get('currency_code') or 'INR') or None}
         if can_edit and t.converts_to and status not in ('draft', 'declined', 'revised') and not sales else None,
         'project': {
             'project': {'title': project['title'], 'label': projects.project_label(project), 'fy': project.get('fiscal_year'),

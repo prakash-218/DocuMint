@@ -150,7 +150,7 @@
     {% set is_price = c and c.data_type == 'number' and c.is_currency %}
     {% set is_rate = c and (c.field_name or '') | lower in ('gst_rate', 'tax', 'tax_rate', 'gst') %}
     {% if page_cols %}
-        {% if c and c.field_name in page_cols %}{% set _ = cols.append(loop.index0) %}{% endif %}
+        {% if c and (c.field_name in page_cols or c.synthetic) %}{% set _ = cols.append(loop.index0) %}{% endif %}
     {% elif not (packing and (is_price or is_rate)) %}{% set _ = cols.append(loop.index0) %}{% endif %}
 {% endfor %}
 {% set ncols = cols | length + 1 %}
@@ -244,6 +244,25 @@
         <td class="num">{{ ns_q.total | number }}</td>
     </tr>
     {% else %}
+    {% if summary.discount %}
+    <tr>
+        <td>&nbsp;</td>
+        <td class="num" colspan="{{ ncols - 2 }}">Sub total</td>
+        <td class="num">{{ money(summary.subtotal) }}</td>
+    </tr>
+    <tr>
+        <td>&nbsp;</td>
+        <td class="num" colspan="{{ ncols - 2 }}">Less: Discount{% if summary.discount.percent %} @ {{ '%g' | format(summary.discount.percent) }}%{% endif %}</td>
+        <td class="num">-{{ money(summary.discount.amount) }}</td>
+    </tr>
+    {% if summary.tax_lines %}
+    <tr>
+        <td>&nbsp;</td>
+        <td class="num" colspan="{{ ncols - 2 }}"><b>Taxable value</b></td>
+        <td class="num">{{ money(summary.taxable) }}</td>
+    </tr>
+    {% endif %}
+    {% endif %}
     {% for line in summary.tax_lines %}
     <tr>
         <td>&nbsp;</td>

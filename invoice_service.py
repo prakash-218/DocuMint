@@ -14,7 +14,8 @@ from typing import Dict, List, Optional, Tuple
 
 from flask import render_template, make_response
 
-from calculations import calculate
+from calculations import AMOUNT_NAMES, calculate
+import discounts
 from db import db, DatabaseError
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ def _invoice_fields(header: Dict) -> List[Dict]:
 
 def recalculate_invoice(invoice_id, header: Dict, values: List[Dict]) -> Dict[Tuple[str, int], float]:
     """Evaluate every formula on the invoice, persist the results and refresh its total."""
-    results = calculate(_invoice_fields(header), values)
+    results = calculate(_invoice_fields(header), values, discounts.for_engine(header))
     stored = {(v.get('field_id'), v.get('value_ordinal') or 0): v.get('val_number') for v in values}
 
     for (field_id, ordinal), result in results.items():
@@ -75,7 +76,8 @@ def build_sections(header: Dict, values: List[Dict]) -> Dict[str, Dict]:
         }}
 
     Every template field appears, even if the invoice has no value for it yet,
-    and formula fields show freshly calculated results (flagged 'calculated').
+    and formula fields show freshly calculated results (flagged 'calculated'). A discounted line's amount is
+    after its discount, the cell carrying the discount ('discount': '10%') and the amount before it ('gross').
     """
     fields = _invoice_fields(header)
     if not fields:
@@ -92,7 +94,11 @@ def build_sections(header: Dict, values: List[Dict]) -> Dict[str, Dict]:
         if v.get('field_id'):
             stored[(v['field_id'], v.get('value_ordinal') or 0)] = v
 
-    calculated = calculate(fields, values)
+    line_discounts = discounts.for_engine(header)
+    calculated = calculate(fields, values, line_discounts)
+    discounted = discounts.amounts_by_line(header, fields) if line_discounts else {}
+    gross = calculate(fields, values) if discounted else {}
+    currency = header.get('currency_code') or 'INR'
 
     def cell(f, ordinal):
         base = stored.get((f['field_id'], ordinal), {})
@@ -110,6 +116,9 @@ def build_sections(header: Dict, values: List[Dict]) -> Dict[str, Dict]:
         if (f['field_id'], ordinal) in calculated:
             cell['val_number'] = calculated[(f['field_id'], ordinal)]
             cell['calculated'] = True
+        if (f['field_id'], ordinal) in discounted:
+            cell['discount'] = discounts.label(discounted[(f['field_id'], ordinal)], currency)
+            cell['gross'] = gross.get((f['field_id'], ordinal))
         if (cell['data_type'] == 'string' and not cell['val_string']
                 and (cell['field_name'] or '').lower() in RATE_FIELD_NAMES):
             # "GST Rate" / "Tax" columns show the document's rate unless typed in
@@ -143,6 +152,26 @@ def build_sections(header: Dict, values: List[Dict]) -> Dict[str, Dict]:
     return sections
 
 
+def with_discount_column(sections: Dict[str, Dict]) -> Dict[str, Dict]:
+    """The sections as a document prints them: a line-item section with discounted lines gets a "Disc." column
+    before its amount (the line's discount, '10%' or '₹5,000.00'; blank on the others). A copy; sections stays as it
+    is (packing lists and the summaries don't print it)."""
+    out = {}
+    for title, section in sections.items():
+        rows = section.get('line_item_rows') or []
+        if section['type'] != 'line_item' or not any(c.get('discount') for row in rows for c in row):
+            out[title] = section
+            continue
+        at = next((i for row in rows for i, c in enumerate(row) if c.get('discount')), None)
+        column = lambda c: {'field_id': None, 'field_name': 'discount', 'field_label': 'Disc.', 'data_type': 'string',  # noqa: E731
+                            'is_currency': False, 'synthetic': True, 'value_ordinal': c.get('value_ordinal'),
+                            'val_string': c.get('discount') or '', 'val_number': None, 'val_date': None, 'val_boolean': None}
+        out[title] = {**section,
+                      'line_item_headers': section['line_item_headers'][:at] + ['Disc.'] + section['line_item_headers'][at:],
+                      'line_item_rows': [row[:at] + [column(row[at])] + row[at:] for row in rows]}
+    return out
+
+
 def is_breakup_section(name: str, title: str = '') -> bool:
     """Cost break-up sections explain an item's price; they never add to the total."""
     text = f'{name} {title}'.lower().replace('-', '').replace(' ', '')
@@ -173,6 +202,8 @@ def item_lines(sections: Dict[str, Dict]) -> List[Dict]:
         amount = _line_amount_cell(row)
         lines.append({
             'ordinal': row[0]['value_ordinal'] if row else sl, 'sl': sl,
+            'gross': float(amount['gross']) if amount and amount.get('gross') is not None else None,
+            'discount': (amount.get('discount') or '') if amount else '',
             'description': text['val_string'] if text else '',
             'hsn': (hsn.get('val_string') or '') if hsn else '',
             'qty': float(qty['val_number'] or 0) if qty and qty.get('val_number') is not None else 0.0,
@@ -265,8 +296,10 @@ def breakup_check(sections: Dict[str, Dict]) -> List[Dict]:
         parts = groups[item_no]
         total = sum(p['amount'] for p in parts)
         line = lines.get(item_no)
+        # a break-up explains the item's price: before the line's discount, if it has one
+        price = line['gross'] if line and line.get('gross') is not None else (line['amount'] if line else None)
         out.append({'item_no': item_no, 'item': line, 'parts': parts, 'total': total,
-                    'matches': line is not None and abs(total - line['amount']) < 0.01})
+                    'matches': line is not None and abs(total - price) < 0.01})
     return out
 
 
@@ -466,10 +499,11 @@ def render_invoice_pdf(header: Dict, values: List[Dict], copies: Optional[int] =
                 labels = COPY_LABELS[:max(1, min(int(copies or len(COPY_LABELS)), len(COPY_LABELS)))]
             else:
                 labels = ['']
+            shown = {**common, 'sections_data': with_discount_column(sections)}
             if doc_type.key == 'quote':
-                parts.append(_document_pdf('pdf/quote.html', number_if_long=True, page=pg, **common))
+                parts.append(_document_pdf('pdf/quote.html', number_if_long=True, page=pg, **shown))
             else:
-                parts += [_document_pdf('pdf/grid.html', page=pg, copy=label, packing=False, **common) for label in labels]
+                parts += [_document_pdf('pdf/grid.html', page=pg, copy=label, packing=False, **shown) for label in labels]
         elif pg['kind'] == 'packing':
             parts += [_document_pdf('pdf/grid.html', page=pg, copy=label, packing=True, **common)
                       for label in pg['copies'] or ['']]
@@ -488,9 +522,6 @@ def slug_title(title: str) -> str:
     return ''.join(c if c.isalnum() else '_' for c in title).strip('_') or 'Page'
 
 
-AMOUNT_NAMES = ('amount', 'total', 'line_total', 'value', 'total_amount')
-
-
 def _line_amount_cell(row):
     """The cell holding a line item's amount: a column named like an amount, else the last calculated number."""
     numbers = [c for c in row if c['data_type'] == 'number']
@@ -501,8 +532,9 @@ def _line_amount_cell(row):
     return calculated[-1] if calculated else None
 
 
-def _hsn_summary(sections: Dict[str, Dict], tax_mode: str, rate: float) -> List[Dict]:
-    """Taxable value and tax grouped by HSN/SAC code, for the GST summary table."""
+def _hsn_summary(sections: Dict[str, Dict], tax_mode: str, rate: float, share: float = 1.0) -> List[Dict]:
+    """Taxable value and tax grouped by HSN/SAC code, for the GST summary table. share: what's left of each line after
+    the document's discount (taxable / subtotal), so the codes add up to the taxable value."""
     groups: Dict[str, float] = {}
     for section in sections.values():
         if section['type'] != 'line_item' or section.get('breakup'):
@@ -518,6 +550,7 @@ def _hsn_summary(sections: Dict[str, Dict], tax_mode: str, rate: float) -> List[
                 groups[code] = groups.get(code, 0.0) + float(amount.get('val_number') or 0)
     rows = []
     for code, taxable in groups.items():
+        taxable = round(taxable * share, 2)
         tax = taxable * rate / 100 if tax_mode in ('cgst_sgst', 'igst') else 0.0
         rows.append({'hsn': code, 'taxable': taxable, 'rate': rate, 'tax': tax,
                      'half_rate': rate / 2, 'half_tax': tax / 2})
@@ -528,7 +561,9 @@ def invoice_summary(header: Dict, sections: Dict[str, Dict], payments: List[Dict
     """
     Money summary of a document:
 
-        taxable       value before document-level tax (the template's total field)
+        subtotal      the template's total field (its lines after their own discounts)
+        discount      {'label', 'percent', 'amount'}: the document's discount off the subtotal, or None
+        taxable       value before document-level tax: subtotal less the discount
         tax_lines     [{'label': 'CGST', 'rate': 9, 'amount': ...}, ...]
         total         grand total = taxable + tax
         advance       {'percent', 'basis', 'amount'} when an advance is requested
@@ -540,7 +575,13 @@ def invoice_summary(header: Dict, sections: Dict[str, Dict], payments: List[Dict
     from money import amount_in_words
 
     currency = header.get('currency_code') or 'USD'
-    taxable = _invoice_total(header, sections)
+    subtotal = round(_invoice_total(header, sections), 2)
+    spec = discounts.of(header)['document']
+    discount = None
+    if spec:
+        discount = {'label': discounts.label(spec, currency), 'percent': spec[1] if spec[0] == 'percent' else None,
+                    'amount': discounts.off(spec, subtotal)}
+    taxable = round(subtotal - (discount['amount'] if discount else 0.0), 2)
     tax_mode = header.get('tax_mode') or 'none'
     rate = float(header.get('tax_rate') or 0)
 
@@ -565,6 +606,8 @@ def invoice_summary(header: Dict, sections: Dict[str, Dict], payments: List[Dict
     paid = sum(float(p.get('amount') or 0) for p in payments or [])
     return {
         'currency': currency,
+        'subtotal': subtotal,
+        'discount': discount,
         'taxable': taxable,
         'tax_mode': tax_mode,
         'tax_lines': tax_lines,
@@ -576,6 +619,7 @@ def invoice_summary(header: Dict, sections: Dict[str, Dict], payments: List[Dict
         'balance': max(total - paid, 0.0),
         'words': amount_in_words(payable_now, currency),
         'tax_words': amount_in_words(tax_total, currency) if tax_total else None,
-        'hsn': _hsn_summary(sections, tax_mode, rate) if tax_mode in ('cgst_sgst', 'igst', 'lut') else [],
+        'hsn': (_hsn_summary(sections, tax_mode, rate, taxable / subtotal if subtotal else 1.0)
+                if tax_mode in ('cgst_sgst', 'igst', 'lut') else []),
         'breakups': breakup_check(sections),
     }

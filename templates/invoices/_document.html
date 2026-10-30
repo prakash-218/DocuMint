@@ -122,7 +122,7 @@
                     {% for value in section.fields %}
                     {% set is_grand = not summary.tax_lines and loop.last and (value.val_number or 0) | round(2) == summary.total | round(2) %}
                     <div class="{{ 'grand' if is_grand }}">
-                        <span class="{{ '' if is_grand else 'label' }}">{{ value.field_label }}</span>
+                        <span class="{{ '' if is_grand else 'label' }}">{{ 'Sub total' if summary.discount and loop.last else value.field_label }}</span>
                         <span>{{ field_value(value, cur) }}</span>
                     </div>
                     {% endfor %}
@@ -149,7 +149,7 @@
     {% if not ns.totals %}
     {# Templates without a separate totals section: show the document totals on their own #}
     <section class="invoice-section"><div class="invoice-totals">
-        <div><span class="label">Total before tax</span><span>{{ summary.taxable | currency(cur) }}</span></div>
+        <div><span class="label">{{ 'Sub total' if summary.discount else 'Total before tax' }}</span><span>{{ (summary.subtotal if summary.discount else summary.taxable) | currency(cur) }}</span></div>
         {% include "invoices/_tax_rows.html" %}
     </div></section>
     {% endif %}

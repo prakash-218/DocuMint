@@ -83,7 +83,7 @@
     {% set page_cols = (page or {}).columns or [] %}
     {% for h in section.line_item_headers %}
         {% set c = first[loop.index0] if first else none %}
-        {% if not (merge and loop.index0 == ns_c.unit) and (not page_cols or (c and c.field_name in page_cols) or (merge and loop.index0 == ns_c.qty)) %}{% set _ = shown.append(loop.index0) %}{% endif %}
+        {% if not (merge and loop.index0 == ns_c.unit) and (not page_cols or (c and (c.field_name in page_cols or c.synthetic)) or (merge and loop.index0 == ns_c.qty)) %}{% set _ = shown.append(loop.index0) %}{% endif %}
     {% endfor %}
     {# Explicit widths: xhtml2pdf can't size tables that have colspans on its own #}
     {% set ns_w = namespace(weights=[], aligns=[]) %}
@@ -112,6 +112,10 @@
         </tr>
         {% endfor %}
         {% set width = shown | length %}
+        {% if summary.discount %}
+        <tr><td>&nbsp;</td><td colspan="{{ width - 1 }}" class="num">Sub total</td><td class="num">{{ summary.subtotal | currency(cur) }}</td></tr>
+        <tr><td>&nbsp;</td><td colspan="{{ width - 1 }}" class="num">Less: Discount{% if summary.discount.percent %} {{ '%g' | format(summary.discount.percent) }}%{% endif %}</td><td class="num">-{{ summary.discount.amount | currency(cur) }}</td></tr>
+        {% endif %}
         {% for line in summary.tax_lines %}
         <tr><td>&nbsp;</td><td colspan="{{ width - 1 }}" class="num">{{ line.label }} {{ '%g' | format(line.rate) }}%</td><td class="num">{{ line.amount | currency(cur) }}</td></tr>
         {% endfor %}

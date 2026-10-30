@@ -54,8 +54,9 @@
                     <span class="change-detail">
                         {% if 'qty' in c.what %}Qty {{ c.before.qty | number }} → <strong>{{ c.after.qty | number }}</strong>{% if 'price' in c.what %} · {% endif %}{% endif %}
                         {% if 'price' in c.what %}Price {{ c.price_before | currency(cur) }} → <strong>{{ c.price_after | currency(cur) }}</strong>{% endif %}
-                        {% if 'qty' in c.what or 'price' in c.what %} · Amount {{ c.before.amount | currency(cur) }} → <strong>{{ c.after.amount | currency(cur) }}</strong>{% endif %}
-                        {% if 'description' in c.what %}{% if 'qty' in c.what or 'price' in c.what %} · {% endif %}Description reworded{% endif %}
+                        {% if 'discount' in c.what %}{% if 'qty' in c.what or 'price' in c.what %} · {% endif %}Discount {{ c.discount_before or 'none' }} → <strong>{{ c.discount_after or 'none' }}</strong>{% endif %}
+                        {% if 'qty' in c.what or 'price' in c.what or 'discount' in c.what %} · Amount {{ c.before.amount | currency(cur) }} → <strong>{{ c.after.amount | currency(cur) }}</strong>{% endif %}
+                        {% if 'description' in c.what %}{% if 'qty' in c.what or 'price' in c.what or 'discount' in c.what %} · {% endif %}Description reworded{% endif %}
                     </span>
                     {% endif %}
                 </div>

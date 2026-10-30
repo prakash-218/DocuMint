@@ -70,7 +70,9 @@ def _key(text: str) -> str:
 
 
 def _price(line: Dict) -> float:
-    return round(line['amount'] / line['qty'], 2) if line['qty'] else line['amount']
+    """The line's unit price: its amount before any discount on it, over its quantity."""
+    amount = line['gross'] if line.get('gross') is not None else line['amount']
+    return round(amount / line['qty'], 2) if line['qty'] else amount
 
 
 def compare(before: Dict, after: Dict) -> Dict:
@@ -91,11 +93,14 @@ def compare(before: Dict, after: Dict) -> Dict:
             changes.append('qty')
         if abs(_price(match) - _price(line)) > 0.004:
             changes.append('price')
+        if (match.get('discount') or '') != (line.get('discount') or ''):
+            changes.append('discount')
         if (match['description'] or '').strip() != (line['description'] or '').strip():
             changes.append('description')
         if changes:
             items.append({'change': 'changed', 'description': line['description'], 'before': match, 'after': line,
-                          'what': changes, 'price_before': _price(match), 'price_after': _price(line)})
+                          'what': changes, 'price_before': _price(match), 'price_after': _price(line),
+                          'discount_before': match.get('discount') or '', 'discount_after': line.get('discount') or ''})
     for rest in old.values():
         items += [{'change': 'removed', 'description': line['description'], 'before': line} for line in rest]
 
@@ -104,6 +109,9 @@ def compare(before: Dict, after: Dict) -> Dict:
     for key, label in (('subject', 'Subject'), ('reference', 'Reference'), ('kind_attn', 'Kind attn.')):
         if (b.get(key) or '').strip() != (a.get(key) or '').strip():
             fields.append({'label': label, 'before': b.get(key) or '', 'after': a.get(key) or ''})
+    off = [_document_discount(v) for v in (before, after)]
+    if off[0] != off[1]:
+        fields.append({'label': 'Discount on the total', 'before': off[0] or 'None', 'after': off[1] or 'None'})
     if str(before['header'].get('due_date') or '') != str(after['header'].get('due_date') or ''):
         fields.append({'label': 'Valid until', 'before': before['header'].get('due_date'), 'after': after['header'].get('due_date'),
                        'dates': True})
@@ -116,6 +124,12 @@ def compare(before: Dict, after: Dict) -> Dict:
             'notes_changed': notes, 'total_before': total_before, 'total_after': total_after,
             'total_change': round(total_after - total_before, 2),
             'nothing': not (items or fields or terms['added'] or terms['removed'] or notes or abs(total_after - total_before) > 0.004)}
+
+
+def _document_discount(version: Dict) -> str:
+    """A version's discount on the whole, as it prints ('10%', '₹53,000.00'), '' without one."""
+    import discounts
+    return discounts.label(discounts.of(version['header'])['document'], version['header'].get('currency_code') or 'INR')
 
 
 def previous(versions: List[Dict], invoice_id: str) -> Optional[Dict]:

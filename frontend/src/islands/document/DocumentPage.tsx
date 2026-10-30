@@ -251,6 +251,14 @@ function Convert({ convert }: { convert: NonNullable<DocumentData['convert']> })
             <Dropdown id={`${id}-template`} name="template_id" value={template} onChange={setTemplate}
                       data={convert.templates.map((t) => ({ value: t.id, label: t.name }))} />
           </div>
+          {convert.discount && (
+            <fieldset className="form-group convert-discount">
+              <legend className="form-label">Its discount</legend>
+              <p className="form-text">{convert.discount[0].toUpperCase() + convert.discount.slice(1)}.</p>
+              <label className="form-check"><input type="radio" name="discount" value="keep" defaultChecked /> Keep it as a discount</label>
+              <label className="form-check"><input type="radio" name="discount" value="spread" /> Take it into the item prices</label>
+            </fieldset>
+          )}
           <button type="submit" className="btn btn-primary btn-block"><Icon name="arrowRightLeft" />Convert</button>
         </form>
       </details>

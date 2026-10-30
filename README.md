@@ -111,6 +111,18 @@ across currencies. URLs follow the type: `/quotes/<id>`, `/proformas/<id>`, `/in
 Templates are edited in a builder; a version that documents already use is never changed, saving makes
 the next version.
 
+**Discounts** (`discounts.py`) are an amount (`5000`) or a percent (`10%`), on any line and on the whole
+document, with any template:
+
+- A line's discount comes off its amount column (`calculations.amount_field`) before the totals add the lines up. The
+  printed amount, the totals and the GST summary all show the line after its discount, and the document prints a
+  "Disc." column.
+- The document's discount comes off its total before tax ("Less: Discount"). GST, the HSN summary and a proforma's
+  advance are worked out on what's left.
+- Discounts are kept in the document's details, as typed.
+- A revision keeps them. Converting asks whether to keep them, or to take them into the item prices, so the new
+  document shows net prices and the same total; a rounding paisa goes on a line of quantity 1.
+
 ### Email
 
 The worker copies mail from each mailbox over IMAP (read-only: nothing is marked as read) and groups it

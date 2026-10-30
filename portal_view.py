@@ -54,7 +54,7 @@ def documents(customer_id, url: Callable) -> Dict:
 def document(header: Dict, values, url: Callable) -> Dict:
     from db import db
     from documents import display_number
-    from invoice_service import build_sections, invoice_summary
+    from invoice_service import build_sections, invoice_summary, with_discount_column
     sections = build_sections(header, values)
     payments = db.execute_proc('sp_get_invoice_payments', (header['invoice_id'],)) or []
     ctx = {'invoice': header, 'sections_data': sections, 'payments': payments,
@@ -64,6 +64,7 @@ def document(header: Dict, values, url: Callable) -> Dict:
         'from': header.get('organization_name') or '',
         'back': url('customer_portal_bp.dashboard'),
         'pdf': url('customer_portal_bp.export_pdf', invoice_id=header['invoice_id']),
-        'document_html': render_template_string('{% include "invoices/_document.html" %}', **ctx),
+        'document_html': render_template_string('{% include "invoices/_document.html" %}',
+                                                **{**ctx, 'sections_data': with_discount_column(sections)}),
         'summary_html': render_template_string('{% include "invoices/_summary.html" %}', **ctx),
     }

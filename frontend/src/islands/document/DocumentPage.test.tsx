@@ -106,6 +106,20 @@ describe('DocumentPage', () => {
     expect(window.localStorage.getItem('documint.pdfSeal')).toBe('off');
   });
 
+  it('asks whether to keep a discount or take it into the prices when converting', async () => {
+    const convert = { label: 'Convert, choosing the template', action: '/quotes/D-7/convert', discount: '₹45,000.00 off the total; a discount on 1 line',
+                      targets: [{ key: 'proforma', label: 'Proforma', template: 'T-1' }], templates: [{ id: 'T-1', name: 'Standard' }] };
+    serve({ ...DOC, convert });
+    render(<DocumentPage invoiceId="D-7" />);
+    await userEvent.click(await screen.findByText('Convert, choosing the template'));
+    expect(screen.getByText('₹45,000.00 off the total; a discount on 1 line.')).toBeInTheDocument();
+    const keep = screen.getByRole('radio', { name: 'Keep it as a discount' });
+    expect(keep).toBeChecked();
+    await userEvent.click(screen.getByRole('radio', { name: 'Take it into the item prices' }));
+    const posted = Object.fromEntries(new FormData(keep.closest('form')!).entries());
+    expect(posted).toMatchObject({ target: 'proforma', template_id: 'T-1', discount: 'spread' });
+  });
+
   it('moves the document to another of the customer\'s projects', async () => {
     serve();
     render(<DocumentPage invoiceId="D-7" />);

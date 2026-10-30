@@ -1,12 +1,18 @@
-{# Document-level tax, grand total and advance rows. Expects: summary, invoice #}
+{# Document-level discount, tax, grand total and advance rows. Expects: summary, invoice #}
 {% set cur = invoice.currency_code %}
+{% if summary.discount %}
+<div><span class="label">Less: discount{% if summary.discount.percent %} {{ '%g' | format(summary.discount.percent) }}%{% endif %}</span><span>-{{ summary.discount.amount | currency(cur) }}</span></div>
+{% if summary.tax_lines %}
+<div><span class="label">Taxable value</span><span>{{ summary.taxable | currency(cur) }}</span></div>
+{% endif %}
+{% endif %}
 {% for line in summary.tax_lines %}
 <div><span class="label">{{ line.label }} {{ '%g' | format(line.rate) }}%</span><span>{{ line.amount | currency(cur) }}</span></div>
 {% endfor %}
 {% if summary.tax_mode == 'lut' %}
 <div><span class="label">Supply under LUT, without payment of IGST</span><span>{{ 0 | currency(cur) }}</span></div>
 {% endif %}
-{% if summary.tax_lines or summary.tax_mode == 'lut' %}
+{% if summary.tax_lines or summary.tax_mode == 'lut' or summary.discount %}
 <div class="grand"><span>Total</span><span>{{ summary.total | currency(cur) }}</span></div>
 {% endif %}
 {% if summary.advance %}
