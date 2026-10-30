@@ -5,7 +5,8 @@ Invoices blueprint - CRUD operations for invoices
 import logging
 from flask import Blueprint, request, redirect, url_for, flash, session, g, make_response
 from db import db, DatabaseError
-from auth import require_org, get_current_org_role, can_create_invoice, can_edit_invoice, can_delete_invoice, can_finalize_invoice
+from auth import require_org
+import permissions
 from access import get_org_invoice, get_org_template
 from documents import DOC_TYPES, TAX_MODES, get_type, invoice_kind, load_json
 from document_service import (REVISABLE, DocumentError, apply_document_form, convert_document, customer_tax_hints,
@@ -40,11 +41,6 @@ def list_invoices():
 @require_org
 def create_invoice():
     """Create a new invoice"""
-    current_role = get_current_org_role()
-    if not can_create_invoice():
-        flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to create invoices.', 'error')
-        return redirect(url_for('invoices_bp.list_invoices'))
-    
     org_id = g.current_org_id
 
     doc_type = request.values.get('doc_type')
@@ -282,10 +278,9 @@ def page_context(invoice_id):
     if not isinstance(context, dict):
         return context
     import document_view
-    from auth import SALES
     invoice, project, summary = context['invoice'], context['project'], context['summary']
-    role = context['current_org_role']
-    can = {'edit': can_edit_invoice(), 'sales': role == SALES}
+    sales = permissions.quotations_only()
+    can = {'edit': permissions.can_doc('write', invoice.get('doc_type')), 'sales': sales}
     from payment_terms import usual_days
     context['doc_next'] = document_view.next_step(invoice, summary, context['advance_received'], context['open_advances'], can,
                                                   url_for, context['convert_defaults'], can_email=bool(project),
@@ -297,13 +292,12 @@ def page_context(invoice_id):
         import contacts
         people = contacts.for_project(g.current_org_id, project['project_id'])
         events = db.execute_proc('sp_list_project_events', (project['project_id'], g.current_org_id, 200)) or []
-    if role == SALES:                                   # their files: not the POs, invoices and the like
-        context['files'] = [f for f in context['files'] if f.get('kind') not in projects.NOT_QUOTATIONS]
+    context['files'] = [f for f in context['files'] if permissions.file_kind_allowed(f.get('kind'))]
     context.update(
         doc_pill=document_view.pill(invoice, summary, advance_received),
         doc_money=document_view.money_strip(invoice, summary, context['payments'], advance_received),
         doc_chain=document_view.chain(context['project_docs'], invoice_id, url_for) if project else [],
-        doc_people=[] if role == SALES and invoice.get('doc_type') != 'quote' else document_view.who_gets_it(invoice, people),
+        doc_people=[] if sales and invoice.get('doc_type') != 'quote' else document_view.who_gets_it(invoice, people),
         doc_activity=document_view.activity(events, invoice_id, (invoice.get('customer_name'), invoice.get('customer_site'))))
     return context
 
@@ -382,8 +376,7 @@ def _view_context(invoice_id):
                 advances=advances_in, advance_received=sum(float(a['amount'] or 0) for a in advances_in),
                 open_advances=open_advances,
                 source=source,
-                templates=templates,
-                current_org_role=get_current_org_role())
+                templates=templates)
 
 
 @invoices_bp.route('/<invoice_id>/pdf')
@@ -413,10 +406,6 @@ def export_pdf(invoice_id):
 @require_org
 def finalize_invoice(invoice_id):
     """Finalize a draft: invoices become 'pending' (awaiting payment), quotes/proformas 'sent'."""
-    if not can_finalize_invoice():
-        flash('You need to be a Member or Owner to finalize documents.', 'error')
-        return redirect(_back(invoice_id))
-
     invoice_header, _ = get_org_invoice(invoice_id, g.current_org_id)
     if not invoice_header:
         flash('Document not found', 'error')
@@ -446,10 +435,6 @@ QUOTE_OUTCOMES = {'accepted': 'marked as accepted', 'declined': 'marked as decli
 @require_org
 def set_status(invoice_id):
     """Record a customer's answer to a quote."""
-    if not can_edit_invoice():
-        flash('You need to be a Member or Owner to update documents.', 'error')
-        return redirect(_back(invoice_id))
-
     invoice_header, _ = get_org_invoice(invoice_id, g.current_org_id)
     status = request.form.get('status')
     if not invoice_header or invoice_header.get('doc_type') != 'quote' or status not in QUOTE_OUTCOMES:
@@ -470,10 +455,6 @@ def set_status(invoice_id):
 @require_org
 def convert(invoice_id):
     """Turn a quote into a proforma/invoice, or a proforma into an invoice."""
-    if not can_create_invoice():
-        flash('You need to be a Member or Owner to create documents.', 'error')
-        return redirect(_back(invoice_id))
-
     org_id = g.current_org_id
     source, values = get_org_invoice(invoice_id, org_id)
     if not source:
@@ -525,10 +506,6 @@ def _into_project(source, new_id, org_id):
 @require_org
 def revise(invoice_id):
     """Start a new revision of a sent quotation or proforma (Q/029 -> Q/029R1), in its template or another one."""
-    if not can_create_invoice():
-        flash('You need to be a Member or Owner to revise documents.', 'error')
-        return redirect(_back(invoice_id))
-
     source, values = get_org_invoice(invoice_id, g.current_org_id)
     if not source:
         flash('Document not found', 'error')
@@ -573,10 +550,6 @@ def packing(invoice_id):
         flash("This document's template has no packing list page. Add one under Templates → Pages & printing.", 'error')
         return redirect(_back(invoice_id))
     box_fields = pack_page['box_fields']
-    if not can_edit_invoice():
-        flash('You need to be a Member or Owner to edit packing.', 'error')
-        return redirect(_back(invoice_id))
-
     if request.method == 'POST':
         details = load_json(header.get('details'))
         boxes = boxes_from_form(request.form, item_lines(build_sections(header, values)), box_fields)
@@ -667,11 +640,6 @@ def _document_form_context(doc_type, org, profile, customers, header=None, org_i
 @require_org
 def edit_invoice(invoice_id):
     """Edit invoice"""
-    current_role = get_current_org_role()
-    if not can_edit_invoice():
-        flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to edit invoices.', 'error')
-        return redirect(_back(invoice_id))
-    
     org_id = g.current_org_id
 
 
@@ -906,9 +874,6 @@ def reopen_blocker(header, payments) -> str:
 def reopen(invoice_id):
     """Undo "Mark as sent" / "Finalize": back to a draft (same number) to edit and send again."""
     back = redirect(_back(invoice_id))
-    if not can_finalize_invoice():
-        flash('You need to be a Member or Owner to change documents.', 'error')
-        return back
     header, _ = get_org_invoice(invoice_id, g.current_org_id)
     if not header:
         flash('Document not found', 'error')
@@ -932,7 +897,6 @@ def reopen(invoice_id):
 @require_org
 def delete_invoice(invoice_id):
     """Delete an invoice"""
-    current_role = get_current_org_role()
     org_id = g.current_org_id
     invoice_header = None
 
@@ -942,8 +906,8 @@ def delete_invoice(invoice_id):
         if not invoice_header:
             flash('Invoice not found', 'error')
             return redirect(url_for('invoices_bp.list_invoices'))
-        if not can_delete_invoice(invoice_header):
-            flash(f'Your role is {current_role or "unknown"}. You need to be an Owner to delete invoices.', 'error')
+        if not permissions.may_delete(invoice_header):
+            flash("Your role doesn't delete documents that were sent.", 'error')
             return redirect(_back(invoice_id))
 
 
@@ -959,11 +923,6 @@ def delete_invoice(invoice_id):
 @require_org
 def add_payment(invoice_id):
     """Add payment to invoice"""
-    current_role = get_current_org_role()
-    if not can_edit_invoice():
-        flash(f'Your role is {current_role or "unknown"}. You need to be a Member or Owner to add payments.', 'error')
-        return redirect(_back(invoice_id))
-    
     amount = request.form.get('amount')
     method = request.form.get('method')
     reference_number = request.form.get('reference_number')
@@ -1027,9 +986,6 @@ def add_payment(invoice_id):
 def apply_advances(invoice_id):
     """Apply advances received on the customer's proformas to this invoice."""
     back = redirect(_back(invoice_id))
-    if not can_edit_invoice():
-        flash('You need to be a Member or Owner to apply advances.', 'error')
-        return back
     header, _ = get_org_invoice(invoice_id, g.current_org_id)
     if not header or not get_type(header.get('doc_type')).takes_payments:
         flash('Advances are applied to invoices', 'error')
@@ -1051,9 +1007,6 @@ def apply_advances(invoice_id):
 def remove_advance(invoice_id, payment_id):
     """Take an applied advance off this invoice; it goes back to its proforma."""
     back = redirect(_back(invoice_id))
-    if not can_edit_invoice():
-        flash('You need to be a Member or Owner to change advances.', 'error')
-        return back
     try:
         db.execute_proc('sp_unapply_advance', (payment_id, invoice_id, g.current_org_id), fetch=False)
         flash('The advance is back on its proforma', 'success')

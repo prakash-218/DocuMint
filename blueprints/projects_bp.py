@@ -10,7 +10,8 @@ import re
 from flask import Blueprint, abort, flash, g, jsonify, redirect, request, send_file, url_for
 
 from access import get_org_customer, get_org_invoice, safe_referrer
-from auth import can_delete_project, can_edit_invoice, quotations_only, require_org
+from auth import require_org
+import permissions
 from db import DatabaseError, db
 import projects as J
 import activity
@@ -39,13 +40,6 @@ def _fiscal_year(value):
     return value if re.fullmatch(r'\d{2}-\d{2}|\d{4}', value) else None
 
 
-def _need_editor(back):
-    if can_edit_invoice():
-        return None
-    flash('You need to be a Member or Owner to change projects and files.', 'error')
-    return redirect(back)
-
-
 @projects_bp.route('/options')
 @require_org
 def picker_options():
@@ -64,9 +58,6 @@ def picker_options():
 def create_project():
     org_id = g.current_org_id
     back = url_for('projects_bp.list_projects')
-    denied = _need_editor(back)
-    if denied:
-        return denied
 
     if request.method == 'POST':
         from_invoice = request.form.get('invoice_id')
@@ -139,9 +130,6 @@ def view_project_new(project_id):
 def edit_project(project_id):
     project = _project_or_404(project_id)
     back = _project_page(project_id)
-    denied = _need_editor(back)
-    if denied:
-        return denied
     status = request.form.get('status', project['status'])
     try:
         db.execute_proc('sp_update_project', (
@@ -168,9 +156,6 @@ def set_person(project_id):
     """What one of the customer's contacts gets on this project: everything, proformas and invoices, or nothing."""
     _project_or_404(project_id)
     back = _project_page(project_id) + '#people'
-    denied = _need_editor(back)
-    if denied:
-        return denied
     gets = request.form.get('gets')
     if gets not in contacts.GETS:
         return redirect(back)
@@ -186,9 +171,6 @@ def set_person(project_id):
 @require_org
 def delete_project(project_id):
     _project_or_404(project_id)
-    if not can_delete_project():
-        flash('Only owners can delete projects', 'error')
-        return redirect(_project_page(project_id))
     try:
         db.execute_proc('sp_delete_project', (project_id, g.current_org_id), fetch=False)
     except DatabaseError:
@@ -211,9 +193,6 @@ def project_document(project_id):
     org_id = g.current_org_id
     _project_or_404(project_id)
     back = _project_page(project_id)
-    denied = _need_editor(back)
-    if denied:
-        return denied
     invoice_id = request.form.get('invoice_id')
     header, _ = get_org_invoice(invoice_id, org_id) if invoice_id else (None, None)
     if not header:
@@ -238,9 +217,6 @@ def document_project(invoice_id):
     """From a document page: put it in an existing project of the customer, or take it out."""
     org_id = g.current_org_id
     back = url_for('invoices_bp.view_invoice', invoice_id=invoice_id)
-    denied = _need_editor(back)
-    if denied:
-        return denied
     header, _ = get_org_invoice(invoice_id, org_id)
     if not header:
         abort(404)
@@ -265,9 +241,6 @@ def document_project(invoice_id):
 def upload_file():
     org_id = g.current_org_id
     back = safe_referrer('projects_bp.list_projects')
-    denied = _need_editor(back)
-    if denied:
-        return denied
     customer_id = request.form.get('customer_id')
     project_id = request.form.get('project_id') or None
     invoice_id = request.form.get('invoice_id') or None
@@ -319,7 +292,7 @@ def upload_file():
 @require_org
 def download_file(attachment_id):
     doc = J.get_attachment(attachment_id, g.current_org_id)
-    if not doc or quotations_only() and doc.get('kind') in J.NOT_QUOTATIONS:
+    if not doc or not permissions.file_kind_allowed(doc.get('kind')):
         abort(404)
     inline = doc['content_type'] in J.INLINE_TYPES and request.args.get('download') != '1'
     response = send_file(io.BytesIO(doc['data']), mimetype=doc['content_type'], as_attachment=not inline,
@@ -333,9 +306,6 @@ def download_file(attachment_id):
 @require_org
 def link_file(attachment_id):
     back = safe_referrer('projects_bp.list_projects')
-    denied = _need_editor(back)
-    if denied:
-        return denied
     if not J.get_attachment(attachment_id, g.current_org_id):
         abort(404)
     try:
@@ -353,9 +323,6 @@ def link_file(attachment_id):
 @require_org
 def delete_file(attachment_id):
     back = safe_referrer('projects_bp.list_projects')
-    denied = _need_editor(back)
-    if denied:
-        return denied
     doc = J.get_attachment(attachment_id, g.current_org_id)
     if not doc:
         abort(404)

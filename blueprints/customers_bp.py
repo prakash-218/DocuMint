@@ -6,7 +6,7 @@ import re
 
 from flask import Blueprint, request, redirect, url_for, flash, g
 from db import db, DatabaseError
-from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, require_org, get_current_org_role
+from auth import require_org
 from access import get_org_customer
 from payment_terms import parse_days
 import contacts
@@ -70,11 +70,6 @@ def list_customers():
 @require_org
 def create_customer():
     """Create a new customer"""
-    current_role = get_current_org_role()
-    if current_role not in CUSTOMER_EDITORS:
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner, admin or sales to create customers.', 'error')
-        return redirect(url_for('customers_bp.list_customers'))
-    
     org_id = g.current_org_id
 
     if request.method == 'POST':
@@ -179,9 +174,6 @@ def _contact_back(customer_id):
 def save_contact(customer_id, contact_id=None):
     """Add a contact, or change one."""
     back = _contact_back(customer_id)
-    if get_current_org_role() not in EDITORS:
-        flash('Viewers can look at contacts but not change them.', 'error')
-        return redirect(back)
     fields, problem = contacts.fields_from(request.form)
     if problem:
         flash(problem, 'error')
@@ -200,9 +192,6 @@ def save_contact(customer_id, contact_id=None):
 @require_org
 def delete_contact(customer_id, contact_id):
     back = _contact_back(customer_id)
-    if get_current_org_role() not in EDITORS:
-        flash('Viewers can look at contacts but not change them.', 'error')
-        return redirect(back)
     try:
         db.execute_proc('sp_delete_contact', (g.current_org_id, customer_id, contact_id), fetch=False)
     except DatabaseError:
@@ -218,7 +207,7 @@ def ignore_contact(customer_id):
     """Stop suggesting an address (or a phone number, 'tel:<digits>') found in this customer's emails."""
     back = _contact_back(customer_id)
     value = (request.form.get('value') or '').strip().lower()
-    if get_current_org_role() in MAIL_READERS and value:
+    if value:
         try:
             db.execute_proc('sp_ignore_contact_suggestion', (g.current_org_id, customer_id, value), fetch=False)
         except DatabaseError:
@@ -230,11 +219,6 @@ def ignore_contact(customer_id):
 @require_org
 def create_portal_account(customer_id):
     """Create a customer portal account (admin action)"""
-    current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to create portal accounts.', 'error')
-        return redirect(_customer_page(customer_id))
-    
     org_id = g.current_org_id
 
     email = request.form.get('email')
@@ -293,11 +277,6 @@ def create_portal_account(customer_id):
 @require_org
 def edit_customer(customer_id):
     """Edit customer details"""
-    current_role = get_current_org_role()
-    if current_role not in CUSTOMER_EDITORS:
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner, admin or sales to edit customers.', 'error')
-        return redirect(_customer_page(customer_id))
-    
     org_id = g.current_org_id
 
 
@@ -377,11 +356,6 @@ def edit_customer(customer_id):
 @require_org
 def delete_customer(customer_id):
     """Delete a customer"""
-    current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to delete customers.', 'error')
-        return redirect(_customer_page(customer_id))
-    
     org_id = g.current_org_id
 
     try:
@@ -423,11 +397,6 @@ def delete_customer(customer_id):
 @require_org
 def archive_customer(customer_id):
     """Archive a customer"""
-    current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to archive customers.', 'error')
-        return redirect(_customer_page(customer_id))
-    
     org_id = g.current_org_id
     
     try:
@@ -443,11 +412,6 @@ def archive_customer(customer_id):
 @require_org
 def unarchive_customer(customer_id):
     """Unarchive a customer"""
-    current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to unarchive customers.', 'error')
-        return redirect(_customer_page(customer_id))
-    
     org_id = g.current_org_id
     
     try:

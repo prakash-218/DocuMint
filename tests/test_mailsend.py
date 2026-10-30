@@ -145,7 +145,7 @@ def test_viewers_cannot_send(signed_in, fake_db):
     fake_db.members['U-A'][0]['role'] = 'viewer'
     assert signed_in.get('/api/projects/P-1/compose').status_code == 403
     response = signed_in.post('/api/projects/P-1/emails', json={'to': ['ravi@gearco.example']})
-    assert response.status_code == 403 and 'Viewers' in response.get_json()['error']
+    assert response.status_code == 403 and "doesn't allow that (email documents" in response.get_json()['error']
 
 
 def test_sending_takes_json_only(signed_in):

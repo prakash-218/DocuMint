@@ -6,7 +6,8 @@ import logging
 import re
 from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, jsonify
 from db import db, DatabaseError
-from auth import require_auth, require_org
+from auth import get_current_org_role, require_auth, require_org
+import permissions
 from store.schema import ROLES
 from access import safe_referrer
 import nav
@@ -322,10 +323,6 @@ def edit_organization(org_id):
             flash('Organization not found', 'error')
             return redirect(url_for('settings_bp.index'))
         
-        if current_org.get('role') != 'owner' and current_org['role'] != 'owner':
-            flash('Only organization owners can edit organization details', 'error')
-            return redirect(url_for('settings_bp.index'))
-        
         if request.method == 'POST':
             name = request.form.get('name')
             street_address = request.form.get('street_address')
@@ -375,17 +372,7 @@ def approve_member():
     role = request.form.get('role') 
     action = request.form.get('action')
     
-    # Check if current user is owner
-    current_role = None
-    if session.get('user_organizations'):
-        for org in session['user_organizations']:
-            if str(org.get('org_id')) == str(org_id):
-                current_role = org.get('role')
-                break
-    
-    if current_role not in ('owner', 'admin'):
-        flash('Only owners and admins can manage the team', 'error')
-        return redirect(safe_referrer('settings_bp.index'))
+    current_role = get_current_org_role()
 
     if not user_id or not action:
         flash('Invalid request', 'error')
@@ -395,8 +382,8 @@ def approve_member():
         flash('Invalid role', 'error')
         return redirect(safe_referrer('settings_bp.index'))
 
-    # Admins manage members and viewers; only owners make or change owners
-    if current_role == 'admin':
+    # Those who manage the team without team.owners (admins) manage everyone but the owners
+    if not permissions.can('team.owners'):
         target = next((m for m in db.execute_proc('sp_get_org_members', (org_id,)) or []
                        if str(m.get('user_id')) == str(user_id)), None)
         if role == 'owner' or (target and target.get('role') == 'owner'):
@@ -448,21 +435,7 @@ def approve_member():
 @settings_bp.route('/audit-log')
 @require_org
 def audit_log():
-    """View audit log (owners only)"""
-    org_id = g.current_org_id
-    
-    # Get current role
-    current_role = None
-    if session.get('user_organizations'):
-        for org in session['user_organizations']:
-            if str(org.get('org_id')) == str(org_id):
-                current_role = org.get('role')
-                break
-    
-    if current_role not in ('owner', 'admin'):
-        flash('Only owners and admins can view the audit log', 'error')
-        return redirect(url_for('settings_bp.index'))
-    
+    """The audit log, in the React app."""
     return nav.spa('Audit log', 'list')                    # the list: settings_view.audit
 
 
@@ -477,13 +450,6 @@ PROFILE_TEXT_FIELDS = (
 PROFILE_IMAGES = ('logo', 'logo_small', 'stamp', 'signature')
 MAX_IMAGE_BYTES = 300 * 1024
 CURRENCIES = ('INR', 'USD', 'EUR', 'GBP', 'AUD', 'CAD', 'SGD', 'AED')
-
-
-def _current_role(org_id):
-    for org in session.get('user_organizations') or []:
-        if str(org.get('org_id')) == str(org_id):
-            return org.get('role')
-    return None
 
 
 def _image_data_uri(upload):
@@ -509,10 +475,6 @@ def business_profile():
     from document_service import get_org_profile, save_org_profile, set_next_number
 
     org_id = g.current_org_id
-    if _current_role(org_id) not in ('owner', 'admin'):
-        flash('Only organization owners can change the business profile', 'error')
-        return redirect(url_for('settings_bp.index'))
-
     org, profile = get_org_profile(org_id)
 
     if request.method == 'POST':
@@ -613,9 +575,6 @@ def starter_templates():
     from document_service import create_starter_templates
 
     org_id = g.current_org_id
-    if _current_role(org_id) not in ('owner', 'admin'):
-        flash('Only organization owners can add templates', 'error')
-        return redirect(url_for('settings_bp.index'))
     try:
         created = create_starter_templates(org_id)
     except DatabaseError:

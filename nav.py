@@ -22,26 +22,33 @@ def _item(key, label, icon, href, prefix, badge=0) -> Dict:
     return {'key': key, 'label': label, 'icon': icon, 'href': href, 'prefix': prefix, 'badge': badge}
 
 
-def sidebar(role: Optional[str], unread: int = 0) -> List[Dict]:
-    """[{title, items: [{key, label, icon, href, prefix, badge}]}] for this role (as base.html always showed it)."""
-    from auth import SALES
-    sales = role == SALES
+def sidebar(perms, unread: int = 0) -> List[Dict]:
+    """[{title, items: [{key, label, icon, href, prefix, badge}]}]: the links someone with these permissions may open
+    (permissions.granted(), or a built-in role's name)."""
+    import permissions
+    perms = permissions.of(perms)
+
+    def opens(endpoint, doc_type=None):
+        return permissions.allows(endpoint, doc_type, perms)
+
     main = []
-    if not sales:
+    if opens('dashboard_bp.index'):
         main.append(_item('home', 'Dashboard', 'layout-dashboard', url_for('dashboard_bp.index'), '/dashboard'))
-    if role in ('owner', 'admin'):
+    if opens('notifications_bp.index'):
         main.append(_item('notifications', 'Notifications', 'bell', url_for('notifications_bp.index'), '/notifications', unread))
-    main.append(_item('projects', 'Projects', 'briefcase', url_for('projects_bp.list_projects'), '/projects'))
-    if role in ('owner', 'admin', 'member'):
+    if opens('projects_bp.list_projects'):
+        main.append(_item('projects', 'Projects', 'briefcase', url_for('projects_bp.list_projects'), '/projects'))
+    if opens('emails_bp.inbox'):
         main.append(_item('emails', 'Emails', 'mail', url_for('emails_bp.inbox'), '/emails'))
     for key, label, icon, prefix in DOCUMENT_LINKS:
-        if key == 'quote' or not sales:
+        if opens('invoices_bp.list_invoices', 'invoice' if key == 'invoices' else key):
             main.append(_item(key, label, icon, url_for('invoices_bp.list_invoices', type=None if key == 'invoices' else key), prefix))
-    main.append(_item('customers', 'Customers', 'users', url_for('customers_bp.list_customers'), '/customers'))
-    if not sales:
+    if opens('customers_bp.list_customers'):
+        main.append(_item('customers', 'Customers', 'users', url_for('customers_bp.list_customers'), '/customers'))
+    if opens('templates_bp.list_templates'):
         main.append(_item('templates', 'Templates', 'layout-template', url_for('templates_bp.list_templates'), '/templates'))
     org = [_item('settings', 'Settings', 'settings', url_for('settings_bp.index'), '/settings')]
-    if role in ('owner', 'admin'):
+    if opens('settings_bp.audit_log'):
         org.append(_item('audit', 'Audit log', 'history', url_for('settings_bp.audit_log'), '/settings/audit-log'))
     return [{'title': None, 'items': main}, {'title': 'Organization', 'items': org}]
 
@@ -57,14 +64,16 @@ def active(sections: List[Dict], path: str) -> Optional[str]:
     return best
 
 
-def new_menu(role: Optional[str], with_project: bool = True) -> List[Dict]:
-    """The header's "New" menu: a document of each kind, and a project."""
+def new_menu(perms, with_project: bool = True) -> List[Dict]:
+    """The header's "New" menu, for those who make invoices: each kind of document they may make, and a project."""
+    import permissions
     from documents import get_type
-    if role not in ('owner', 'admin', 'member'):
+    perms = permissions.of(perms)
+    if not permissions.can('invoices.write', perms=perms):
         return []
     items = [{'label': get_type(k).label, 'icon': get_type(k).icon, 'href': url_for('invoices_bp.create_invoice', doc_type=k)}
-             for k in ('quote', 'proforma', 'invoice')]
-    if with_project:
+             for k in ('quote', 'proforma', 'invoice') if permissions.can_doc('write', k, perms)]
+    if with_project and permissions.can('projects.write', perms=perms):
         items.append({'label': 'Project', 'icon': 'briefcase', 'href': url_for('projects_bp.create_project'), 'divider': True})
     return items
 
@@ -72,18 +81,18 @@ def new_menu(role: Optional[str], with_project: bool = True) -> List[Dict]:
 def boot(role: Optional[str], unread: int, posted: Optional[Dict] = None) -> Dict:
     """What the React app starts with: who's signed in, the sidebar, the links it needs, and the page's messages.
     posted: a form that didn't save (spa(posted=...)), so its screen starts from what was typed."""
-    from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, MANAGERS, SALES
+    import permissions
+    perms = permissions.granted()
     orgs = session.get('user_organizations') or []
     return {
         'me': {'email': session.get('email'), 'role': role,
                'org': {'id': str(session.get('org_id') or ''), 'name': session.get('org_name') or ''},
-               'can': {'edit': role in EDITORS, 'edit_customers': role in CUSTOMER_EDITORS, 'manage': role in MANAGERS,
-                       'read_mail': role in MAIL_READERS, 'quotations_only': role == SALES}},
-        'sidebar': sidebar(role, unread),
+               'permissions': sorted(perms), 'can': permissions.flags(perms)},
+        'sidebar': sidebar(perms, unread),
         'orgs': [{'id': str(o.get('org_id')), 'name': o.get('name')} for o in orgs] if len(orgs) > 1 else [],
-        'links': {'home': url_for('projects_bp.list_projects') if role == SALES else url_for('dashboard_bp.index'),
+        'links': {'home': permissions.home(perms),
                   'logout': url_for('auth_bp.logout'), 'select_org': url_for('settings_bp.select_org'),
-                  'search': url_for('search_bp.items'), 'new': new_menu(role)},
+                  'search': url_for('search_bp.items'), 'new': new_menu(perms)},
         'flashes': [{'category': 'info' if c == 'message' else c, 'text': m} for c, m in get_flashed_messages(with_categories=True)],
         'posted': posted,
     }

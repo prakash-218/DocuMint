@@ -7,7 +7,6 @@ the templates_bp routes as the server pages did, which save them.
 
 from typing import Callable, Dict, List, Optional
 
-MANAGERS = ('owner', 'admin')
 BADGES = {'paid': 'success', 'accepted': 'success', 'pending': 'warning', 'sent': 'info', 'declined': 'danger',
           'converted': 'secondary', 'revised': 'secondary', 'draft': 'secondary'}
 
@@ -36,12 +35,13 @@ def _kind(f: Dict, cur: str) -> str:
     return {'date': 'date', 'boolean': 'yes / no'}.get(f.get('data_type'), 'text')
 
 
-def cards(org_id, archived: bool, role: str, url: Callable) -> Dict:
+def cards(org_id, archived: bool, perms, url: Callable) -> Dict:
+    import permissions
     from documents import get_type
     from pagination import paginate
     from template_service import template_cards
     page = paginate(template_cards(org_id, archived), per_page=12)           # cards: a grid of 12
-    manage = role in MANAGERS
+    manage = permissions.can('templates.write', perms=perms)
     return {
         'title': 'Templates',
         'archived': archived,
@@ -70,7 +70,8 @@ def _pages(layout: Dict) -> List[Dict]:
     return out
 
 
-def overview(org_id, template_id: str, role: str, url: Callable) -> Optional[Dict]:
+def overview(org_id, template_id: str, perms, url: Callable) -> Optional[Dict]:
+    import permissions
     from app_helpers import invoice_is_overdue
     from documents import DOC_TYPES, display_number, get_type
     from template_service import template_overview
@@ -99,13 +100,13 @@ def overview(org_id, template_id: str, role: str, url: Callable) -> Optional[Dic
                   'status': {'text': 'Overdue', 'tone': 'danger'} if invoice_is_overdue(d)
                   else {'text': d.get('status') or 'draft', 'tone': BADGES.get(d.get('status') or 'draft', 'secondary')}}
                  for d in t['documents'][:6]]
-    manage = role in MANAGERS
+    manage = permissions.can('templates.write', perms=perms)
     return {
         'title': info.get('name') or '',
         'sub': f"Template · v{info['version']} · {cur} · {t['field_count']} fields",
         'archived': bool(info.get('is_archived')),
         'use': [{'label': f'New {dt.label.lower()}', 'href': url('invoices_bp.create_invoice', doc_type=key, template_id=template_id)}
-                for key, dt in DOC_TYPES.items()] if editable and role in ('owner', 'admin', 'member') else [],
+                for key, dt in DOC_TYPES.items() if permissions.can_doc('write', key, perms)] if editable else [],
         'layout': url('templates_bp.edit_layout', template_id=template_id) if editable and manage else None,
         'edit': url('templates_bp.edit_template', template_id=template_id) if editable and manage else None,
         'broken': sum(1 for f in t['formulas'] if f['error']),

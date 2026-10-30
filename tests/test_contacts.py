@@ -115,8 +115,9 @@ def owner(client, login_as):
 
 def test_viewers_cannot_change_contacts(owner, fake_db):
     fake_db.members['U-A'][0]['role'] = 'viewer'
-    response = owner.post('/customers/C-A/contacts', data={'name': 'Ravi Kumar', 'email': 'ravi.k@gearco.example'})
-    assert response.headers['Location'].endswith('/customers/C-A#contacts')
+    response = owner.post('/customers/C-A/contacts', data={'name': 'Ravi Kumar', 'email': 'ravi.k@gearco.example'},
+                          headers={'Referer': 'http://localhost/customers/C-A'})
+    assert response.headers['Location'] == 'http://localhost/customers/C-A'          # back to the page they were on
     assert not [c for c in fake_db.calls if c[0] in ('sp_save_contact', 'sp_delete_contact')]
 
 

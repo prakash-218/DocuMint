@@ -35,5 +35,8 @@ export interface Me {
   email: string;
   role: 'owner' | 'admin' | 'member' | 'viewer' | 'sales';
   org: { id: string; name: string };
+  /** Every permission they have (permissions.py: quotes.read, projects.write, ...) */
+  permissions: string[];
+  /** The app's shorthand for them (permissions.flags) */
   can: { edit: boolean; edit_customers: boolean; manage: boolean; read_mail: boolean; quotations_only: boolean };
 }

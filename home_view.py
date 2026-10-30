@@ -147,13 +147,14 @@ def first_name(email: Optional[str]) -> str:
     return '' if not local.isalpha() or local.lower() in ('info', 'admin', 'office', 'accounts', 'sales', 'contact') else local.capitalize()
 
 
-def build(org_id, role: str, url: Callable, today: Optional[date] = None, email: Optional[str] = None) -> Dict:
+def build(org_id, perms, url: Callable, today: Optional[date] = None, email: Optional[str] = None) -> Dict:
+    """perms: the person's permissions (permissions.granted(), or a built-in role's name)."""
+    import permissions
     import project_view
     import revisions
-    from auth import MAIL_READERS
     from db import db
     today = today or date.today()
-    rows = project_view.projects_list(org_id, role, url, today)['projects']
+    rows = project_view.projects_list(org_id, perms, url, today)['projects']
     docs = revisions.collapse(db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or [])
     live = [d for d in docs if d.get('status') != 'revised']
     drafts = [{'label': f"{get_type(d.get('doc_type')).label} {display_number(d) or '(draft)'}",
@@ -166,7 +167,7 @@ def build(org_id, role: str, url: Callable, today: Optional[date] = None, email:
     payments = db.execute_proc('sp_list_org_payments', (org_id, month_start.isoformat())) or []
     month_invoiced = [d for d in invoices if d.get('status') != 'draft' and to_date(d.get('issue_date')) and to_date(d['issue_date']) >= month_start]
     unfiled = 0
-    if role in MAIL_READERS:
+    if permissions.can('emails.read', perms=perms):
         unfiled = (db.execute_proc_single('sp_count_email_threads', (org_id, None, None, True)) or {}).get('n') or 0
     events = db.execute_proc('sp_list_recent_events', (org_id, 8)) or []
     usual = usual_days(get_org_profile(org_id)[1])

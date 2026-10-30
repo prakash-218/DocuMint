@@ -122,10 +122,10 @@ def require_org(f):
             return render_template('errors/org_status.html', status=org_status, org_name=session.get('org_name'))
         
         g.current_org_id = user['org_id']
-        if get_current_org_role() == SALES:
-            refused = _sales_refusal()
-            if refused:
-                return refused
+        import permissions
+        refused = permissions.check()             # what this page or endpoint needs (permissions.ENDPOINTS)
+        if refused:
+            return refused
         return f(*args, **kwargs)
     return decorated_function
 
@@ -141,117 +141,6 @@ def get_current_org_role():
             return org.get('role')
     return None
 
-
-def require_role(allowed_roles):
-    """Decorator to require specific role(s)"""
-    def decorator(f):
-        @wraps(f)
-        @require_org
-        def decorated_function(*args, **kwargs):
-            current_role = get_current_org_role()
-            if not current_role or current_role not in allowed_roles:
-                from flask import flash
-                flash('You do not have permission to perform this action', 'error')
-                return redirect(url_for('dashboard_bp.index'))
-            return f(*args, **kwargs)
-        return decorated_function
-    return decorator
-
-
-# Roles, most to least: owner (everything), admin (runs the business: customers, templates,
-# settings, team except owners), member (creates and edits documents), viewer (read only).
-# Beside them, sales: projects (and their files), quotations and customers, and nothing else.
-SALES = 'sales'
-MANAGERS = ('owner', 'admin')
-EDITORS = ('owner', 'admin', 'member', SALES)          # create and edit documents (sales: quotations only)
-CUSTOMER_EDITORS = ('owner', 'admin', SALES)           # add and edit customers
-MAIL_READERS = ('owner', 'admin', 'member')            # read the mailbox (and what's found in it)
-
-# What Sales may open: blueprint -> its pages (None: all of them). Anything else is refused, so a page
-# added later stays closed to Sales until it's listed here. Every document a request is about must be a
-# quotation, which also keeps out converting one to a proforma or invoice.
-SALES_PAGES = {
-    'projects_bp': None,
-    'invoices_bp': {'list_invoices', 'create_invoice', 'view_invoice', 'view_invoice_new', 'export_pdf', 'finalize_invoice',
-                    'set_status', 'revise', 'edit_invoice', 'reopen', 'delete_invoice'},
-    'customers_bp': {'list_customers', 'view_customer', 'view_customer_new', 'create_customer',
-                     'edit_customer', 'save_contact', 'delete_contact'},
-    'search_bp': None,
-    'api_bp': {'me', 'documents', 'document_page', 'new_document', 'edit_document', 'compose', 'send_email', 'list_projects',
-               'project', 'update_project', 'add_note', 'set_person', 'save_person', 'customer', 'save_customer_contact',
-               'delete_customer_contact', 'update_file', 'customers', 'new_customer', 'customer_form', 'new_project',
-               'settings'},
-    'settings_bp': {'index', 'select_org'},
-}
-
-
-def sales_may(endpoint, doc_type=None) -> bool:
-    """Whether Sales may open this page (endpoint), about a document of this type if any."""
-    blueprint, _, page = (endpoint or '').partition('.')
-    if blueprint not in SALES_PAGES or SALES_PAGES[blueprint] is not None and page not in SALES_PAGES[blueprint]:
-        return False
-    return doc_type in (None, 'quote')
-
-
-def _request_doc_type():
-    """The type of document this request is about: the one in its URL or form, or for the document pages the
-    type their address or form names (/quotes/create, doc_type=proforma)."""
-    import doc_urls
-    invoice_id = (request.view_args or {}).get('invoice_id') or request.form.get('invoice_id')
-    if invoice_id:
-        return doc_urls.doc_type_of(invoice_id)
-    if (request.endpoint or '').startswith('invoices_bp.'):
-        return request.values.get('doc_type') or doc_urls.PATH_TYPES.get(getattr(g, 'doc_path', None), 'invoice')
-    return None
-
-
-def _sales_refusal():
-    """None when Sales may open this request; otherwise where to send them (their home: projects)."""
-    from flask import flash
-    home = url_for('projects_bp.list_projects')
-    if request.endpoint == 'dashboard_bp.index':
-        return redirect(home)
-    if sales_may(request.endpoint, _request_doc_type()):
-        return None
-    if wants_json():
-        return _refuse(403, 'Your role is Sales: projects, quotations and customers only', None)
-    flash('Your role is Sales: you can open projects, quotations and customers.', 'error')
-    return redirect(home)
-
-
-def quotations_only() -> bool:
-    """Sales: pages show quotations only, and no money beyond what was quoted."""
-    return get_current_org_role() == SALES
-
-
-def can_manage():
-    """Customers, templates, business settings, team, audit log, deleting drafts."""
-    return get_current_org_role() in MANAGERS
-
-
-def can_create_invoice():
-    return get_current_org_role() in EDITORS
-
-
-def can_edit_invoice():
-    return get_current_org_role() in EDITORS
-
-
-def can_delete_invoice(doc=None):
-    """Owners and admins; Sales their draft quotations (doc: the document, when there is one)."""
-    if can_manage():
-        return True
-    return (quotations_only() and bool(doc) and doc.get('doc_type') == 'quote'
-            and (doc.get('status') or 'draft') == 'draft')
-
-
-def can_delete_project():
-    """Deleting a project only ungroups it: its documents and files stay."""
-    return can_manage() or quotations_only()
-
-
-def can_finalize_invoice():
-    return get_current_org_role() in EDITORS
 
 def register_user(email: str, password: str, org_name: str, org_domain: str) -> dict:
     """

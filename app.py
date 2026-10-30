@@ -83,7 +83,8 @@ def create_app(config_name=None):
                 'unread_notifications': _unread(user, org_id, membership)}
 
     def _unread(user, org_id, membership):
-        if not user or not org_id or not membership or membership.get('role') not in ('owner', 'admin'):
+        import permissions
+        if not user or not org_id or not membership or not permissions.can('notifications.read', perms=membership.get('role')):
             return 0
         from activity import unread_count
         return unread_count(user['user_id'], org_id)

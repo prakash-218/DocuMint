@@ -12,39 +12,39 @@ from typing import Dict, List
 
 from flask import current_app, url_for
 
-from auth import CUSTOMER_EDITORS, EDITORS, MANAGERS, SALES, sales_may
 from customers import label as customer_label
 from db import DatabaseError, db
 from documents import display_number, get_type
 from layout import types_by_template
 from money import format_money
 import app_helpers
+import permissions
 import projects
 
 logger = logging.getLogger(__name__)
 
-# (title, endpoint, url arguments, icon, who sees it (None: everyone), other words people may type).
-# Sales see only what auth.SALES_PAGES lets them open.
+# (title, endpoint, url arguments, icon, other words people may type). Each is listed for those whose permissions let
+# them open it (permissions.allows).
 PAGES = [
-    ('Dashboard', 'dashboard_bp.index', {}, 'layout-dashboard', None, 'home overview revenue'),
-    ('Notifications', 'notifications_bp.index', {}, 'bell', MANAGERS, 'activity alerts'),
-    ('Projects', 'projects_bp.list_projects', {}, 'briefcase', None, 'jobs'),
-    ('Emails', 'emails_bp.inbox', {}, 'mail', EDITORS, 'inbox mail'),
-    ('Quotations', 'invoices_bp.list_invoices', {'type': 'quote'}, 'file-pen-line', None, 'quotes'),
-    ('Proforma invoices', 'invoices_bp.list_invoices', {'type': 'proforma'}, 'file-clock', None, 'pi'),
-    ('Invoices', 'invoices_bp.list_invoices', {}, 'file-text', None, 'tax export bills'),
-    ('Customers', 'customers_bp.list_customers', {}, 'users', None, 'clients buyers'),
-    ('Templates', 'templates_bp.list_templates', {}, 'layout-template', None, 'formats'),
-    ('Settings', 'settings_bp.index', {}, 'settings', None, 'business profile bank seal signature numbering team'),
-    ('Audit log', 'settings_bp.audit_log', {}, 'history', MANAGERS, 'history changes'),
+    ('Dashboard', 'dashboard_bp.index', {}, 'layout-dashboard', 'home overview revenue'),
+    ('Notifications', 'notifications_bp.index', {}, 'bell', 'activity alerts'),
+    ('Projects', 'projects_bp.list_projects', {}, 'briefcase', 'jobs'),
+    ('Emails', 'emails_bp.inbox', {}, 'mail', 'inbox mail'),
+    ('Quotations', 'invoices_bp.list_invoices', {'type': 'quote'}, 'file-pen-line', 'quotes'),
+    ('Proforma invoices', 'invoices_bp.list_invoices', {'type': 'proforma'}, 'file-clock', 'pi'),
+    ('Invoices', 'invoices_bp.list_invoices', {}, 'file-text', 'tax export bills'),
+    ('Customers', 'customers_bp.list_customers', {}, 'users', 'clients buyers'),
+    ('Templates', 'templates_bp.list_templates', {}, 'layout-template', 'formats'),
+    ('Settings', 'settings_bp.index', {}, 'settings', 'business profile bank seal signature numbering team'),
+    ('Audit log', 'settings_bp.audit_log', {}, 'history', 'history changes'),
 ]
 ACTIONS = [
-    ('New quotation', 'invoices_bp.create_invoice', {'doc_type': 'quote'}, 'plus', EDITORS, 'create quote'),
-    ('New proforma invoice', 'invoices_bp.create_invoice', {'doc_type': 'proforma'}, 'plus', EDITORS, 'create pi'),
-    ('New invoice', 'invoices_bp.create_invoice', {'doc_type': 'invoice'}, 'plus', EDITORS, 'create tax'),
-    ('New project', 'projects_bp.create_project', {}, 'plus', EDITORS, 'create job'),
-    ('New customer', 'customers_bp.create_customer', {}, 'plus', CUSTOMER_EDITORS, 'create client'),
-    ('New template', 'templates_bp.create_template', {}, 'plus', MANAGERS, 'create format'),
+    ('New quotation', 'invoices_bp.create_invoice', {'doc_type': 'quote'}, 'plus', 'create quote'),
+    ('New proforma invoice', 'invoices_bp.create_invoice', {'doc_type': 'proforma'}, 'plus', 'create pi'),
+    ('New invoice', 'invoices_bp.create_invoice', {'doc_type': 'invoice'}, 'plus', 'create tax'),
+    ('New project', 'projects_bp.create_project', {}, 'plus', 'create job'),
+    ('New customer', 'customers_bp.create_customer', {}, 'plus', 'create client'),
+    ('New template', 'templates_bp.create_template', {}, 'plus', 'create format'),
 ]
 
 # Put before a document's number for the search, so 'pi 9' finds proforma 009 and 'inv 38' invoice 038
@@ -65,7 +65,7 @@ def _sub(*parts) -> str:
 
 def _links(rows, kind) -> List[Dict]:
     return [{'kind': kind, 'title': title, 'url': url_for(endpoint, **args), 'icon': icon, 'name': title, 'also': also}
-            for title, endpoint, args, icon, roles, also in rows]
+            for title, endpoint, args, icon, also in rows]
 
 
 def _project(p) -> Dict:
@@ -118,25 +118,27 @@ def _templates(org_id) -> List[Dict]:
             for t in rows]
 
 
-def _opens(row, role) -> bool:
-    title, endpoint, args, icon, roles, also = row
-    if roles is not None and role not in roles:
-        return False
+def _opens(row, perms) -> bool:
+    title, endpoint, args, icon, also = row
     doc_type = args.get('doc_type') or args.get('type') or ('invoice' if endpoint.startswith('invoices_bp.') else None)
-    return role != SALES or sales_may(endpoint, doc_type)
+    return permissions.allows(endpoint, doc_type, perms)
 
 
-def palette_items(org_id, role) -> List[Dict]:
-    """Everything the Ctrl+K search can find for someone with this role."""
-    allowed = [r for r in PAGES + ACTIONS if _opens(r, role)]
+def palette_items(org_id, perms) -> List[Dict]:
+    """Everything the Ctrl+K search can find for someone with these permissions (permissions.granted(), or a built-in
+    role's name): the pages and actions they may open, and the projects, customers, documents and templates they read."""
+    perms = permissions.of(perms)
+    allowed = [r for r in PAGES + ACTIONS if _opens(r, perms)]
     items = _links([r for r in allowed if r in PAGES], 'page') + _links([r for r in allowed if r in ACTIONS], 'action')
-    sales = role == SALES
+    readable = permissions.doc_types('read', perms)
     try:
-        items += [_project(p) for p in projects.list_projects(org_id)]
-        items += [_customer(c) for c in db.execute_proc('sp_list_customers', (org_id, False)) or []]
+        if permissions.can('projects.read', perms=perms):
+            items += [_project(p) for p in projects.list_projects(org_id)]
+        if permissions.can('customers.read', perms=perms):
+            items += [_customer(c) for c in db.execute_proc('sp_list_customers', (org_id, False)) or []]
         items += [_document(d) for d in db.execute_proc('sp_list_search_documents', (org_id,)) or []
-                  if not sales or d.get('doc_type') == 'quote']
-        items += [] if sales else _templates(org_id)
+                  if d.get('doc_type') in readable]
+        items += _templates(org_id) if permissions.can('templates.read', perms=perms) else []
     except DatabaseError:
         logger.exception('Could not list everything for the search')
     return items

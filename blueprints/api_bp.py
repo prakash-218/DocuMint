@@ -11,11 +11,12 @@ import re
 
 from flask import Blueprint, g, jsonify, request, session, url_for
 
-from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, MANAGERS, SALES, get_current_org_role, require_org
+from auth import get_current_org_role, require_org
 from db import DatabaseError, db
 import activity
 import contacts
 import mailsend
+import permissions
 import project_view
 import projects
 
@@ -23,18 +24,13 @@ logger = logging.getLogger(__name__)
 api_bp = Blueprint('api_bp', __name__)
 
 
-def _project(project_id, editing=True, refusal='Viewers can look but not change things'):
-    """(project, None), or (None, a JSON refusal) when it isn't this organization's or the role can't change it."""
-    if editing and get_current_org_role() not in EDITORS:
-        return None, (jsonify(error=refusal), 403)
+def _project(project_id):
+    """(project, None), or (None, a JSON refusal) when it isn't this organization's. What the person may do with it was
+    checked before the endpoint ran (permissions.ENDPOINTS)."""
     project = projects.get_project(project_id, g.current_org_id)
     if not project:
         return None, (jsonify(error='Not found'), 404)
     return project, None
-
-
-def _editable_project(project_id):
-    return _project(project_id, refusal='Viewers can read but not send email')
 
 
 def _body() -> dict:
@@ -50,23 +46,21 @@ def json_bodies_only():
 @api_bp.route('/me')
 @require_org
 def me():
-    """Who is signed in, in which organization, and what their role lets them do."""
-    role = get_current_org_role()
-    return jsonify(email=session.get('email'), role=role,
+    """Who is signed in, in which organization, their role and what it lets them do (permissions.PERMISSIONS)."""
+    return jsonify(email=session.get('email'), role=get_current_org_role(),
                    org={'id': g.current_org_id, 'name': session.get('org_name')},
-                   can={'edit': role in EDITORS, 'edit_customers': role in CUSTOMER_EDITORS, 'manage': role in MANAGERS,
-                        'read_mail': role in MAIL_READERS, 'quotations_only': role == SALES})
+                   permissions=sorted(permissions.granted()), can=permissions.flags())
 
 
 @api_bp.route('/projects/<project_id>/compose')
 @require_org
 def compose(project_id):
     """What the email form starts with: who it goes to, the subject and message, the documents it can attach."""
-    project, refused = _editable_project(project_id)
+    project, refused = _project(project_id)
     if refused:
         return refused
     return jsonify(mailsend.compose_context(g.current_org_id, session.get('org_name') or '', project,
-                                            get_current_org_role(), request.args.get('invoice_id'),
+                                            permissions.granted(), request.args.get('invoice_id'),
                                             request.args.get('thread_id')))
 
 
@@ -74,12 +68,12 @@ def compose(project_id):
 @require_org
 def send_email(project_id):
     """Send an email about the project from the shared mailbox: {to, cc, subject, body, thread_id, invoice_ids}."""
-    project, refused = _editable_project(project_id)
+    project, refused = _project(project_id)
     if refused:
         return refused
     try:
         sent = mailsend.send_for_project(g.current_org_id, session.get('org_name') or '', project,
-                                         get_current_org_role(), request.get_json(silent=True) or {})
+                                         permissions.granted(), request.get_json(silent=True) or {})
     except mailsend.SendError as e:
         return jsonify(error=str(e)), e.status
     return jsonify(sent), 201
@@ -92,7 +86,7 @@ def send_email(project_id):
 def home():
     """What needs doing and the money still to come in (home_view.build). Not for Sales: their home is projects."""
     import home_view
-    return jsonify(home_view.build(g.current_org_id, get_current_org_role(), url_for, email=session.get('email')))
+    return jsonify(home_view.build(g.current_org_id, permissions.granted(), url_for, email=session.get('email')))
 
 
 @api_bp.route('/document/<invoice_id>')
@@ -107,7 +101,7 @@ def document_page(invoice_id):
     context = page_context(invoice_id) if header else None
     if not isinstance(context, dict):
         return jsonify(error='That document is not in this organization'), 404
-    return jsonify(page.build(context, get_current_org_role(), url_for))
+    return jsonify(page.build(context, permissions.granted(), url_for))
 
 
 @api_bp.route('/editor/new/<any(quotes, proformas, invoices):group>')
@@ -118,14 +112,11 @@ def new_document(group):
     import doc_urls
     import editor_page
     from documents import DOC_TYPES
-    role = get_current_org_role()
     doc_type = request.args.get('doc_type')
     if doc_type == 'export_invoice':
         doc_type = 'invoice'
     if doc_type not in DOC_TYPES:
         doc_type = doc_urls.PATH_TYPES[group]
-    if role not in EDITORS or (role == SALES and doc_type != 'quote'):
-        return jsonify(error=f"Your role is {role or 'unknown'}: you can't make this document"), 403
     return jsonify(project_view._plain(editor_page.new_page(g.current_org_id, doc_type, request.args.get('project_id'),
                                                             request.args.get('template_id'), url_for)))
 
@@ -136,8 +127,6 @@ def edit_document(invoice_id):
     """A document in the editor (editor_page.edit_page): a draft, or with ?correct=1 a sent one being corrected."""
     from access import get_org_invoice
     import editor_page
-    if get_current_org_role() not in EDITORS:
-        return jsonify(error='You need to be a Member or Owner to change documents'), 403
     header, _ = get_org_invoice(invoice_id, g.current_org_id)
     if not header:
         return jsonify(error='That document is not in this organization'), 404
@@ -154,8 +143,6 @@ def packing(invoice_id):
     from access import get_org_invoice
     from layout import load_layout, packing_page as page_of
     import packing_page
-    if get_current_org_role() not in EDITORS:
-        return jsonify(error='You need to be a Member or Owner to edit packing'), 403
     header, values = get_org_invoice(invoice_id, g.current_org_id)
     if not header:
         return jsonify(error='That document is not in this organization'), 404
@@ -168,11 +155,9 @@ def packing(invoice_id):
 @api_bp.route('/documents/<any(quotes, proformas, invoices):group>')
 @require_org
 def documents(group):
-    """The quotations, proformas or invoices list (document_list.build). Sales see quotations only."""
+    """The quotations, proformas or invoices list (document_list.build), for someone who may read them."""
+    import doc_urls
     import document_list
-    role = get_current_org_role()
-    if role == SALES and group != 'quotes':
-        return jsonify(error='Your role is Sales: projects, quotations and customers only'), 403
     try:
         docs = db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
     except DatabaseError:
@@ -180,7 +165,7 @@ def documents(group):
         return jsonify(error="Couldn't load the documents. Try again in a moment."), 500
     from document_service import get_org_profile
     from payment_terms import usual_days
-    return jsonify(document_list.build(group, docs, url_for, can_create=role in EDITORS,
+    return jsonify(document_list.build(group, docs, url_for, can_create=permissions.can_doc('write', doc_urls.PATH_TYPES[group]),
                                        usual_days=usual_days(get_org_profile(g.current_org_id)[1])))
 
 
@@ -190,17 +175,17 @@ def documents(group):
 @require_org
 def list_projects():
     """Every project with where it is and what's next (project_view.projects_list), for the list and the board."""
-    return jsonify(project_view.projects_list(g.current_org_id, get_current_org_role(), url_for))
+    return jsonify(project_view.projects_list(g.current_org_id, permissions.granted(), url_for))
 
 
 @api_bp.route('/projects/<project_id>')
 @require_org
 def project(project_id):
     """Everything the project page shows (project_view.build), for this role."""
-    found, refused = _project(project_id, editing=False)
+    found, refused = _project(project_id)
     if refused:
         return refused
-    return jsonify(project_view.build(g.current_org_id, found, get_current_org_role(), url_for))
+    return jsonify(project_view.build(g.current_org_id, found, permissions.granted(), url_for))
 
 
 @api_bp.route('/projects/<project_id>', methods=['PATCH'])
@@ -297,8 +282,6 @@ def ignore_person(project_id):
     found, refused = _project(project_id)
     if refused:
         return refused
-    if get_current_org_role() not in MAIL_READERS:
-        return jsonify(error="Your role doesn't see what's in the mailbox."), 403
     value = (_body().get('value') or '').strip().lower()
     if not value:
         return jsonify(error='Nothing to ignore.'), 400
@@ -308,12 +291,11 @@ def ignore_person(project_id):
 
 # ---------------------------------------------------------------- The customer page
 
-def _customer(customer_id, editing=False):
-    """(customer, None), or (None, a JSON refusal) when it isn't this organization's or the role can't change it."""
+def _customer(customer_id):
+    """(customer, None), or (None, a JSON refusal) when it isn't this organization's. What the person may do with it was
+    checked before the endpoint ran (permissions.ENDPOINTS)."""
     import uuid
     from access import get_org_customer
-    if editing and get_current_org_role() not in EDITORS:
-        return None, (jsonify(error='Viewers can look at contacts but not change them'), 403)
     try:
         found = get_org_customer(str(uuid.UUID(str(customer_id))), g.current_org_id)[0]
     except (ValueError, DatabaseError):
@@ -331,7 +313,7 @@ def customer(customer_id):
     found, refused = _customer(customer_id)
     if refused:
         return refused
-    return jsonify(customer_view.build(g.current_org_id, found, get_current_org_role(), url_for))
+    return jsonify(customer_view.build(g.current_org_id, found, permissions.granted(), url_for))
 
 
 @api_bp.route('/customers/<customer_id>/statement/compose')
@@ -341,8 +323,6 @@ def statement_compose(customer_id):
     found, refused = _customer(customer_id)
     if refused:
         return refused
-    if get_current_org_role() not in EDITORS:
-        return jsonify(error='Viewers can look at the statement but not email it'), 403
     return jsonify(mailsend.statement_compose(g.current_org_id, session.get('org_name') or '', found,
                                               request.args.get('fy'), request.args.get('currency')))
 
@@ -354,8 +334,6 @@ def send_statement(customer_id):
     found, refused = _customer(customer_id)
     if refused:
         return refused
-    if get_current_org_role() not in EDITORS:
-        return jsonify(error='Viewers can look at the statement but not email it'), 403
     try:
         sent = mailsend.send_statement(g.current_org_id, session.get('org_name') or '', found, request.get_json(silent=True) or {})
     except mailsend.SendError as e:
@@ -368,7 +346,7 @@ def send_statement(customer_id):
 @require_org
 def save_customer_contact(customer_id, contact_id=None):
     """Add a contact to the customer, or change one of theirs: {name, email, phone, role, gets}."""
-    found, refused = _customer(customer_id, editing=True)
+    found, refused = _customer(customer_id)
     if refused:
         return refused
     fields, problem = contacts.fields_from(_body())
@@ -385,7 +363,7 @@ def save_customer_contact(customer_id, contact_id=None):
 @api_bp.route('/customers/<customer_id>/contacts/<contact_id>', methods=['DELETE'])
 @require_org
 def delete_customer_contact(customer_id, contact_id):
-    found, refused = _customer(customer_id, editing=True)
+    found, refused = _customer(customer_id)
     if refused:
         return refused
     try:
@@ -401,14 +379,12 @@ def delete_customer_contact(customer_id, contact_id):
 @require_org
 def update_file(attachment_id):
     """What a dropped-in file is, and its number: {kind, reference_no}. A PO's number goes onto the project's documents."""
-    if get_current_org_role() not in EDITORS:
-        return jsonify(error='Viewers can look at files but not change them'), 403
     found = projects.get_attachment(attachment_id, g.current_org_id)
-    if not found or get_current_org_role() == SALES and found.get('kind') in projects.NOT_QUOTATIONS:
+    if not found or not permissions.file_kind_allowed(found.get('kind')):
         return jsonify(error='Not found'), 404
     data = _body()
-    if get_current_org_role() == SALES and data.get('kind') in projects.NOT_QUOTATIONS:
-        return jsonify(error="Your role is Sales: that kind of file isn't yours to keep."), 403
+    if not permissions.file_kind_allowed(data.get('kind')):
+        return jsonify(error="Your role doesn't keep that kind of file."), 403
     try:
         filled = projects.update_attachment(g.current_org_id, found, data.get('kind'), data.get('reference_no') or '')
     except projects.UploadError as e:
@@ -427,7 +403,7 @@ def customers():
     """The customers list (customer_view.listing): ?q= searches, ?include_archived=true shows archived ones, ?page=."""
     import customer_view
     return jsonify(customer_view.listing(g.current_org_id, (request.args.get('q') or '').strip(),
-                                         request.args.get('include_archived', '').lower() == 'true', get_current_org_role(), url_for))
+                                         request.args.get('include_archived', '').lower() == 'true', permissions.granted(), url_for))
 
 
 @api_bp.route('/customers/new')
@@ -436,8 +412,6 @@ def new_customer():
     """A new customer's form; ?parent_id= adds a site of that customer, starting from its details."""
     import customer_view
     from access import get_org_customer
-    if get_current_org_role() not in CUSTOMER_EDITORS:
-        return jsonify(error='You need to be an owner, admin or sales to create customers'), 403
     defaults = {}
     parent = get_org_customer(request.args['parent_id'], g.current_org_id)[0] if request.args.get('parent_id') else None
     if parent and not parent.get('parent_id'):
@@ -450,8 +424,6 @@ def new_customer():
 @require_org
 def customer_form(customer_id):
     import customer_view
-    if get_current_org_role() not in CUSTOMER_EDITORS:
-        return jsonify(error='You need to be an owner, admin or sales to edit customers'), 403
     found, refused = _customer(customer_id)
     if refused:
         return refused
@@ -462,8 +434,6 @@ def customer_form(customer_id):
 @require_org
 def new_project():
     """The new project form (project_view.new_project); ?customer_id= picks the customer."""
-    if get_current_org_role() not in EDITORS:
-        return jsonify(error='Viewers can look but not change things'), 403
     return jsonify(project_view.new_project(g.current_org_id, request.args.get('customer_id'), url_for))
 
 
@@ -472,9 +442,7 @@ def new_project():
 def emails():
     """The inbox (email_view.inbox): threads not in a project yet, or ?show=all; ?page=."""
     import email_view
-    if get_current_org_role() not in MAIL_READERS:
-        return jsonify(error="Your role doesn't read the mailboxes"), 403
-    data = email_view.inbox(g.current_org_id, request.args.get('show', 'unlinked'), get_current_org_role(), url_for)
+    data = email_view.inbox(g.current_org_id, request.args.get('show', 'unlinked'), permissions.granted(), url_for)
     return jsonify(project_view._plain(data))
 
 
@@ -482,8 +450,6 @@ def emails():
 @require_org
 def email_thread(thread_id):
     import email_view
-    if get_current_org_role() not in MAIL_READERS:
-        return jsonify(error="Your role doesn't read the mailboxes"), 403
     data = email_view.thread(g.current_org_id, thread_id, url_for)
     return jsonify(project_view._plain(data)) if data else (jsonify(error='Not found'), 404)
 
@@ -502,7 +468,7 @@ def notifications():
 def settings():
     """The settings page (settings_view.index): owners and admins also manage the team there."""
     import settings_view
-    data = settings_view.index(g.current_user, g.current_org_id, session.get('org_name') or '', get_current_org_role(), url_for)
+    data = settings_view.index(g.current_user, g.current_org_id, session.get('org_name') or '', permissions.granted(), url_for)
     return jsonify(project_view._plain(data))
 
 
@@ -513,8 +479,6 @@ def organization(org_id):
     import settings_view
     if str(org_id) != str(g.current_org_id):
         return jsonify(error='You can only edit the current organization'), 403
-    if get_current_org_role() != 'owner':
-        return jsonify(error='Only organization owners can edit organization details'), 403
     found = db.execute_proc('sp_get_organization_details', (org_id,)) or []
     if not found:
         return jsonify(error='Not found'), 404
@@ -526,8 +490,6 @@ def organization(org_id):
 def audit_log():
     """The audit log (settings_view.audit): ?table_name= one kind of change, ?page=; owners and admins."""
     import settings_view
-    if get_current_org_role() not in MANAGERS:
-        return jsonify(error='Only owners and admins can view the audit log'), 403
     return jsonify(settings_view.audit(g.current_org_id, request.args.get('table_name') or '', url_for))
 
 
@@ -536,8 +498,6 @@ def audit_log():
 def business_profile():
     """The business profile's form (settings_view.profile); owners and admins."""
     import settings_view
-    if get_current_org_role() not in MANAGERS:
-        return jsonify(error='Only organization owners can change the business profile'), 403
     return jsonify(project_view._plain(settings_view.profile(g.current_org_id, url_for)))
 
 
@@ -554,8 +514,6 @@ def costing_rates():
     """The usual rates (costing_view.rates_page); ?back=<costing id> to go back to it. Owners and admins."""
     import costing as K
     import costing_view
-    if get_current_org_role() not in MANAGERS:
-        return jsonify(error='Only owners and admins see costings'), 403
     back = K.get(request.args['back'], g.current_org_id) if request.args.get('back') else None
     return jsonify(project_view._plain(costing_view.rates_page(g.current_org_id, back, _base_currency(), url_for)))
 
@@ -566,8 +524,6 @@ def costing(costing_id):
     """A costing in its editor (costing_view.editor). Owners and admins."""
     import costing as K
     import costing_view
-    if get_current_org_role() not in MANAGERS:
-        return jsonify(error='Only owners and admins see costings'), 403
     row = K.get(costing_id, g.current_org_id)
     if not row:
         return jsonify(error='Not found'), 404
@@ -580,7 +536,7 @@ def templates():
     """The templates as cards (template_view.cards); ?include_archived=true, ?page=."""
     import template_view
     return jsonify(template_view.cards(g.current_org_id, request.args.get('include_archived', '').lower() == 'true',
-                                       get_current_org_role(), url_for))
+                                       permissions.granted(), url_for))
 
 
 @api_bp.route('/templates/new')
@@ -588,8 +544,6 @@ def templates():
 def new_template():
     import template_builder as TB
     import template_view
-    if get_current_org_role() not in MANAGERS:
-        return jsonify(error='Only owners and admins can create templates'), 403
     return jsonify(template_view.builder(g.current_org_id, None, None, TB.STARTER, url_for))
 
 
@@ -598,7 +552,7 @@ def new_template():
 def template(template_id):
     """A template's page (template_view.overview): its preview on sample values, formulas, pages, use and versions."""
     import template_view
-    data = template_view.overview(g.current_org_id, template_id, get_current_org_role(), url_for)
+    data = template_view.overview(g.current_org_id, template_id, permissions.granted(), url_for)
     return jsonify(project_view._plain(data)) if data else (jsonify(error='Not found'), 404)
 
 
@@ -608,8 +562,6 @@ def template_layout(template_id):
     """Pages & printing (template_view.layout_page). Owners and admins."""
     import template_view
     from access import get_org_template
-    if get_current_org_role() not in MANAGERS:
-        return jsonify(error='Only owners and admins can change how templates print'), 403
     info = get_org_template(template_id, g.current_org_id)
     if not info:
         return jsonify(error='Not found'), 404
@@ -622,8 +574,6 @@ def template_fields(template_id):
     """The latest version's fields in the builder (template_view.builder). Owners and admins."""
     import template_builder as TB
     import template_view
-    if get_current_org_role() not in MANAGERS:
-        return jsonify(error='Only owners and admins can edit templates'), 403
     info = next((t for t in db.execute_proc('sp_list_templates', (g.current_org_id, False)) or []
                  if t.get('template_id') == template_id and t.get('version') == t.get('latest_version')), None)
     if not info:

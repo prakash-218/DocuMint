@@ -1,5 +1,5 @@
 """Costings: work out a quote's prices (cost + profit, or back from a total), then make the quote.
-Owners and admins only - costs and margins never reach members, viewers or customers."""
+Costs and margins need costings.read (owners and admins): they never reach members, viewers or customers."""
 
 import json
 import logging
@@ -8,16 +8,11 @@ from flask import Blueprint, abort, flash, g, jsonify, redirect, request, url_fo
 
 import costing as K
 import projects
-from auth import can_manage, require_org
+from auth import require_org
 from db import DatabaseError, db
 
 logger = logging.getLogger(__name__)
 costings_bp = Blueprint('costings_bp', __name__)
-
-
-def _guard():
-    if not can_manage():
-        abort(403)
 
 
 def _costing_or_404(costing_id):
@@ -50,7 +45,6 @@ def _quote_templates(org_id, currency):
 @costings_bp.route('/new', methods=['POST'])
 @require_org
 def create():
-    _guard()
     org_id = g.current_org_id
     project = projects.get_project(request.form.get('project_id'), org_id)
     if not project:
@@ -76,7 +70,6 @@ def create():
 @require_org
 def edit(costing_id):
     """A costing in its editor, in the React app (costing_view.editor)."""
-    _guard()
     row = _costing_or_404(costing_id)
     import nav
     return nav.spa(f"Costing v{row['version']} · {row.get('title') or ''}", 'page')
@@ -86,7 +79,6 @@ def edit(costing_id):
 @require_org
 def preview(costing_id):
     """The worked-out numbers for the sheet being edited (nothing is saved)."""
-    _guard()
     _costing_or_404(costing_id)
     sheet = K.clean_sheet(_sheet_from_request())
     sheet['cost_currency'] = _base_currency()
@@ -108,7 +100,6 @@ def _save_from_form(row):
 @require_org
 def save(costing_id):
     """Save, and (with action=quote / update_quote) make or update the quote from it."""
-    _guard()
     org_id = g.current_org_id
     row = _costing_or_404(costing_id)
     action = request.form.get('action') or 'save'
@@ -147,7 +138,6 @@ def save(costing_id):
 @require_org
 def library():
     """The org's costings, to pick one to copy items from (JSON for the editor's dialog)."""
-    _guard()
     from projects import project_label
     rows = K.library(g.current_org_id, (request.args.get('q') or '')[:100])
     return jsonify([{'costing_id': r['costing_id'], 'title': r['title'], 'version': r['version'],
@@ -159,7 +149,6 @@ def library():
 @costings_bp.route('/<costing_id>/items')
 @require_org
 def items(costing_id):
-    _guard()
     row = _costing_or_404(costing_id)
     return jsonify({'items': K.items_to_copy(row), 'cost_currency': row['sheet'].get('cost_currency') or 'INR'})
 
@@ -168,7 +157,6 @@ def items(costing_id):
 @require_org
 def read_spreadsheet(costing_id):
     """A spreadsheet's sheets as grids, for the editor to turn into items or cost lines. Nothing is kept."""
-    _guard()
     _costing_or_404(costing_id)
     import costing_import
     upload = request.files.get('file')
@@ -186,10 +174,12 @@ def read_spreadsheet(costing_id):
 @costings_bp.route('/rates', methods=['GET', 'POST'])
 @require_org
 def rates():
-    """The usual rates, offered as cost lines are typed."""
-    _guard()
+    """The usual rates, offered as cost lines are typed (seeing them needs costings.read; saving them costings.write)."""
+    import permissions
     org_id = g.current_org_id
     if request.method == 'POST':
+        if not permissions.can('costings.write'):
+            abort(403)
         try:
             raw = json.loads(request.form.get('rates_json') or '[]')
         except ValueError:
@@ -208,7 +198,6 @@ def rates():
 @costings_bp.route('/<costing_id>/delete', methods=['POST'])
 @require_org
 def delete(costing_id):
-    _guard()
     row = _costing_or_404(costing_id)
     db.execute_proc('sp_delete_costing', (costing_id, g.current_org_id), fetch=False)
     flash(f"Costing version {row['version']} deleted", 'success')
