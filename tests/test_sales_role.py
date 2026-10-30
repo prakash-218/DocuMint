@@ -24,17 +24,22 @@ def test_sales_open_projects_quotations_and_customers(sales, path):
 
 @pytest.mark.parametrize('path', ['/invoices/', '/proformas/', '/invoices/INV-A', '/invoices/INV-A/pdf', '/invoices/INV-A/edit',
                                   '/proformas/create', '/quotes/create?doc_type=invoice', '/templates/', '/templates/T-A',
-                                  '/emails/', '/notifications/', '/settings/audit-log', '/settings/profile', '/costings/rates'])
+                                  '/notifications/', '/settings/audit-log', '/settings/profile'])
 def test_sales_are_kept_out_of_everything_else(sales, path):
     response = sales.get(path)
     assert response.status_code == 302 and response.headers['Location'].endswith('/projects/'), path
-    assert 'Your role is Sales' in sales.get('/projects/').get_data(as_text=True)
+    assert "Your role doesn&#39;t allow that" in sales.get('/projects/').get_data(as_text=True)
+
+
+@pytest.mark.parametrize('path', ['/emails/', '/costings/rates'])
+def test_mail_and_costings_are_not_there_for_sales(sales, path):
+    assert sales.get(path).status_code == 403, path
 
 
 def test_sales_start_on_projects(sales):
     response = sales.get('/dashboard/')
     assert response.status_code == 302 and response.headers['Location'].endswith('/projects/')
-    assert 'Your role is Sales' not in sales.get('/projects/').get_data(as_text=True)      # no complaint: it's their home
+    assert "doesn&#39;t allow" not in sales.get('/projects/').get_data(as_text=True)      # no complaint: it's their home
 
 
 def test_sales_cannot_post_to_other_documents(sales, fake_db):
@@ -88,4 +93,4 @@ def test_members_are_unchanged(client, login_as, fake_db):
     fake_db.members['U-A'][0]['role'] = 'member'
     login_as('U-A', ORG_A, 'alice@a.com')
     assert client.get('/invoices/INV-A').status_code == 200 and client.get('/dashboard/').status_code == 200
-    assert client.get('/customers/create').headers['Location'].endswith('/customers/')    # adding customers: still owners and admins
+    assert client.get('/customers/create').headers['Location'].endswith('/dashboard/')    # adding customers: still owners and admins

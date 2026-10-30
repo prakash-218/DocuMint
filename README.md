@@ -34,8 +34,8 @@ production). After changing `store/schema.py`, create a migration with
 DocuMint's screens are a single-page app: React (TypeScript, built with Vite, React Router) in `frontend/`. The app
 (`frontend/src/app/`) draws the whole page (sidebar, header and screen) and moves between its screens without loading
 a page; `frontend/src/app/routes.tsx` lists them. Flask still checks access for each address, then sends one page
-(`templates/spa.html`, `nav.spa()`) with what the app starts with (`nav.boot()`: who's signed in, the sidebar for
-their role, the page's messages). A form still posts to its Flask route; when that doesn't save,
+(`templates/spa.html`, `nav.spa()`) with what the app starts with (`nav.boot()`: who's signed in and their permissions, the
+sidebar for them, the page's messages). A form still posts to its Flask route; when that doesn't save,
 `nav.spa(posted=True)` sends the app back with what was typed.
 
 Two smaller parts load from the same build (`frontend/src/main.tsx` starts the one its page has a root for):
@@ -49,7 +49,7 @@ Two smaller parts load from the same build (`frontend/src/main.tsx` starts the o
 PDFs and the error pages are still drawn on the server.
 
 The screens read and write through the JSON endpoints in `blueprints/api_bp.py`, with the same login,
-organization and roles as the pages. You need Node 22 for this part.
+organization and permissions as the pages. You need Node 22 for this part.
 
 ```bash
 cd frontend
@@ -125,17 +125,30 @@ more than one. Through Gmail: `GMAIL_SMTP_HOST=smtp.gmail.com` (the same app pas
 `GMAIL_SMTP_FROM=info@...` when Gmail has that address under "Send mail as"; Gmail keeps the Sent copy
 itself. Until `*_SMTP_HOST` is set, the form says sending isn't set up.
 
-### Roles
+### Roles and permissions
 
-| | Owner | Admin | Member | Viewer |
-|---|:-:|:-:|:-:|:-:|
-| Create, edit, send documents; record payments; projects; upload files | ✓ | ✓ | ✓ | |
-| Read synced email | ✓ | ✓ | ✓ | |
-| Customers, templates, business profile, audit log, delete drafts | ✓ | ✓ | | |
-| Team: approve, deactivate, change roles (admins can't touch owners) | ✓ | ✓ | | |
-| Organization name and address; make owners | ✓ | | | |
-| Notifications | ✓ | ✓ | | |
-| View everything else | ✓ | ✓ | ✓ | ✓ |
+Every check asks for a permission, never a role (`permissions.py`). Permissions are `<area>.<action>`:
+documents by type (`quotes`, `proformas`, `invoices`, each `.read`, `.write`, `.delete`), then `projects.*`,
+`files.*`, `customers.*`, `emails.*`, `costings.*`, `templates.*`, `team.*` and the rest. `GET /api/me` lists
+someone's. The built-in roles are sets of them:
+
+| | Owner | Admin | Member | Sales | Viewer |
+|---|:-:|:-:|:-:|:-:|:-:|
+| See quotations, projects, files and customers | ✓ | ✓ | ✓ | ✓ | ✓ |
+| See proformas, invoices, what's owed and templates | ✓ | ✓ | ✓ | | ✓ |
+| Make, edit and send quotations; projects and their files; contacts | ✓ | ✓ | ✓ | ✓ | |
+| Make, edit and send proformas and invoices; record payments | ✓ | ✓ | ✓ | | |
+| Read synced email | ✓ | ✓ | ✓ | | |
+| Add and edit customers; delete draft quotations; delete projects | ✓ | ✓ | | ✓ | |
+| Delete other drafts and sent documents; archive and delete customers; portal logins | ✓ | ✓ | | | |
+| Costings, templates, business profile, audit log, notifications, syncing mail | ✓ | ✓ | | | |
+| Team: approve, deactivate, change roles (admins can't touch owners) | ✓ | ✓ | | | |
+| Organization name and address; make owners | ✓ | | | | |
+
+`permissions.ENDPOINTS` says what each page and API endpoint needs, and `auth.require_org` checks it before
+the view runs; an endpoint that isn't listed is refused, so a new page stays closed until it's added there
+(`tests/test_permissions.py` fails until it is). A request about a document also needs reading that
+document's type. The views then show only what someone may do (`permissions.can`, `can_doc`, `may_delete`).
 
 Customers can log in to the portal (`/customer/login`) to see and download their own sent documents.
 

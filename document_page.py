@@ -89,8 +89,8 @@ def _change(ctx: Dict, t, url: Callable) -> Dict:
             'reopen': {'blocker': ctx['reopen_blocker'] or None, 'action': url('invoices_bp.reopen', invoice_id=invoice['invoice_id'])}}
 
 
-def _pdf(ctx: Dict, t, status: str, can_edit: bool, url: Callable) -> Dict:
-    from auth import can_delete_invoice
+def _pdf(ctx: Dict, t, status: str, can_edit: bool, url: Callable, perms) -> Dict:
+    import permissions
     invoice_id = ctx['invoice']['invoice_id']
     links = [{'label': 'All copies' if t.takes_payments else 'Download PDF', 'icon': 'file-down', 'href': url('invoices_bp.export_pdf', invoice_id=invoice_id)}]
     if t.takes_payments:
@@ -99,24 +99,25 @@ def _pdf(ctx: Dict, t, status: str, can_edit: bool, url: Callable) -> Dict:
         links.append({'label': page.get('title') or 'Extra page', 'icon': 'package' if page.get('kind') == 'packing' else 'file-plus',
                       'href': url('invoices_bp.export_pdf', invoice_id=invoice_id, page=page['key'])})
     return {'seal': ctx['has_seal'], 'links': links,
-            'packing': url('invoices_bp.packing', invoice_id=invoice_id) if ctx['has_packing'] and can_edit else None,
-            'delete': url('invoices_bp.delete_invoice', invoice_id=invoice_id) if status == 'draft' and can_delete_invoice(ctx['invoice']) else None}
+            'packing': url('invoices_bp.packing', invoice_id=invoice_id) if ctx['has_packing'] and can_edit and permissions.can('invoices.write', perms=perms) else None,
+            'delete': url('invoices_bp.delete_invoice', invoice_id=invoice_id) if status == 'draft' and permissions.may_delete(ctx['invoice'], perms) else None}
 
 
-def build(ctx: Dict, role: str, url: Callable) -> Dict:
-    """Everything the page shows, from the document page's context (invoices_bp._view_context and view_invoice's)."""
-    from auth import EDITORS, SALES
-    from documents import DOC_TYPES, get_type
+def build(ctx: Dict, perms, url: Callable) -> Dict:
+    """Everything the page shows, from the document page's context (invoices_bp._view_context and view_invoice's), for
+    someone with these permissions (permissions.granted(), or a built-in role's name)."""
+    import permissions
+    from documents import get_type
     from project_view import _plain, file_row
     import customers
     import projects
     invoice, project = ctx['invoice'], ctx['project']
     t = get_type(invoice.get('doc_type'))
     status = invoice.get('status') or 'draft'
-    can_edit, sales = role in EDITORS, role == SALES
+    can_edit, sales = permissions.can_doc('write', invoice.get('doc_type'), perms), permissions.quotations_only(perms)
     path, list_label = LISTS.get(t.key, ('invoices', 'Invoices'))
     project_url = url('projects_bp.view_project', project_id=project['project_id']) if project else None
-    others = [d for d in ctx['project_docs'] if d['invoice_id'] != invoice['invoice_id'] and d.get('doc_type') in (('quote',) if sales else DOC_TYPES)]
+    others = [d for d in ctx['project_docs'] if d['invoice_id'] != invoice['invoice_id'] and d.get('doc_type') in permissions.doc_types('read', perms)]
     return _plain({
         'invoice_id': invoice['invoice_id'], 'project_id': project['project_id'] if project else None,
         'number': _number(invoice), 'doc_type': t.key, 'status': status, 'currency': invoice.get('currency_code') or 'INR',
@@ -125,9 +126,9 @@ def build(ctx: Dict, role: str, url: Callable) -> Dict:
                  'customer': {'name': customers.label(invoice), 'url': url('customers_bp.view_customer', customer_id=invoice['customer_id'])},
                  'project': {'label': projects.project_label(project), 'title': project['title'], 'url': project_url} if project else None},
         'next': ctx['doc_next'], 'money': ctx['doc_money'],
-        'pdf': _pdf(ctx, t, status, can_edit, url),
+        'pdf': _pdf(ctx, t, status, can_edit, url, perms),
         'change': _change(ctx, t, url) if status != 'draft' and can_edit else None,
-        'payments': _payments(ctx, t, status, can_edit, url) if (t.takes_payments or t.takes_advances) and status != 'draft' else None,
+        'payments': _payments(ctx, t, status, can_edit and permissions.can('payments.write', perms=perms), url) if (t.takes_payments or t.takes_advances) and status != 'draft' else None,
         'versions_html': _html("{% include 'invoices/_versions.html' %}", ctx) if ctx['versions'] else None,
         'document_html': _html("{% include 'invoices/_document.html' %}", ctx),
         'chain': ctx['doc_chain'],

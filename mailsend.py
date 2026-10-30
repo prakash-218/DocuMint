@@ -233,8 +233,10 @@ def first_message(people: List[Dict], to: List[str], document: Optional[Dict], p
     return '\n'.join(lines + ['Regards,', org_name])
 
 
-def _documents(org_id, project, sales: bool) -> List[Dict]:
-    """The project's latest documents, and why one can't go out yet (a draft; Sales: anything but quotations)."""
+def _documents(org_id, project, perms) -> List[Dict]:
+    """The project's latest documents, and why one can't go out yet: a draft, or a kind their role doesn't read (Sales
+    send quotations only)."""
+    import permissions
     import projects
     import revisions
     from documents import display_number, get_type
@@ -242,20 +244,20 @@ def _documents(org_id, project, sales: bool) -> List[Dict]:
     for d in revisions.collapse(projects.project_documents(project['project_id'], org_id)):
         kind = get_type(d.get('doc_type'))
         why_not = ('Finalize it first' if (d.get('status') or 'draft') == 'draft' else
-                   'Sales send quotations only' if sales and kind.key != 'quote' else None)
+                   "Your role doesn't send this kind of document" if not permissions.can_doc('read', kind.key, perms) else None)
         out.append({'invoice_id': d['invoice_id'], 'doc_type': kind.key, 'kind': kind.label, 'number': display_number(d),
                     'label': f'{kind.label} {display_number(d)}', 'status': d.get('status'), 'why_not': why_not})
     return out
 
 
-def compose_context(org_id, org_name: str, project: Dict, role: str, invoice_id=None, thread_id=None) -> Dict:
+def compose_context(org_id, org_name: str, project: Dict, perms, invoice_id=None, thread_id=None) -> Dict:
     """What the email form starts with, for a project: one of its documents attached, or a reply in one of its threads."""
     import contacts
+    import permissions
     import projects
-    from auth import MAIL_READERS, SALES
-    reads_mail = role in MAIL_READERS
+    reads_mail = permissions.can('emails.read', perms=perms)
     people = [p for p in contacts.for_project(org_id, project['project_id']) if p.get('email')]
-    documents = _documents(org_id, project, role == SALES)
+    documents = _documents(org_id, project, perms)
     chosen = [d for d in documents if d['invoice_id'] == invoice_id and not d['why_not']]
     to, cc = default_recipients(people, [d['doc_type'] for d in chosen])
     threads = []
@@ -310,23 +312,23 @@ def _checked(org_id, data: Dict) -> Tuple[Dict, List[str], List[str], str, str]:
     return cfg, to, cc, subject, body
 
 
-def send_for_project(org_id, org_name: str, project: Dict, role: str, data: Dict) -> Dict:
+def send_for_project(org_id, org_name: str, project: Dict, perms, data: Dict) -> Dict:
     """Send what the email form posted. Raises SendError with what to fix (or what went wrong on the server)."""
     import activity
     import contacts
-    from auth import MAIL_READERS, SALES
+    import permissions
     from flask import url_for
     cfg, to, cc, subject, body = _checked(org_id, data)
 
     reply_to = None
     if data.get('thread_id'):
-        if role not in MAIL_READERS:
+        if not permissions.can('emails.read', perms=perms):
             raise SendError("Your role can start new emails but not reply in the mailbox's threads.")
         reply_to = db.execute_proc_single('sp_get_thread_reply_headers', (data['thread_id'], org_id, project['project_id']))
         if not reply_to:
             raise SendError("That thread isn't on this project.")
 
-    documents = {d['invoice_id']: d for d in _documents(org_id, project, role == SALES)}
+    documents = {d['invoice_id']: d for d in _documents(org_id, project, perms)}
     attach = []
     for invoice_id in dict.fromkeys(data.get('invoice_ids') or []):
         d = documents.get(invoice_id)

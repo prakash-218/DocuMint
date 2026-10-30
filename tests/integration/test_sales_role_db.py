@@ -53,8 +53,9 @@ def test_sales_work_on_quotations_only(client, gst_org):
 
         # ...and never the invoice itself, nor a quotation turned into one
         for response in (client.get(f'/invoices/{invoice_id}'), client.get(f'/invoices/{invoice_id}/pdf'),
-                         client.post(f'/quotes/{quote_id}/convert', data={'target': 'invoice'}), client.get('/emails/')):
+                         client.post(f'/quotes/{quote_id}/convert', data={'target': 'invoice'})):
             assert response.headers['Location'].endswith('/projects/')
+        assert client.get('/emails/').status_code == 403                                  # no mail: not there for them
         assert not [d for d in projects.project_documents(project, org_id) if d['doc_type'] == 'invoice' and d['invoice_id'] != invoice_id]
     finally:
         login(client, OWNER)

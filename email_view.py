@@ -7,7 +7,8 @@ to emails_bp.link_project; Sync now posts to emails_bp.sync_now.
 from typing import Callable, Dict, Optional
 
 
-def inbox(org_id, show: str, role: str, url: Callable) -> Dict:
+def inbox(org_id, show: str, perms, url: Callable) -> Dict:
+    import permissions
     from db import db
     from pagination import Page
     from projects import project_label
@@ -20,7 +21,7 @@ def inbox(org_id, show: str, role: str, url: Callable) -> Dict:
         'title': 'Emails',
         'accounts': ' · '.join(a['address'] for a in accounts) if accounts else 'No mailboxes synced yet',
         'problems': [f"{a['address']}: {a['last_error']}" for a in accounts if a.get('last_error')],
-        'sync': url('emails_bp.sync_now') if role in ('owner', 'admin') else None,
+        'sync': url('emails_bp.sync_now') if permissions.can('emails.sync', perms=perms) else None,
         'filters': [{'label': 'Not in a project', 'href': url('emails_bp.inbox'), 'active': unlinked},
                     {'label': 'All', 'href': url('emails_bp.inbox', show='all'), 'active': not unlinked}],
         'threads': [{'id': str(t['thread_id']), 'url': url('emails_bp.thread', thread_id=t['thread_id']),

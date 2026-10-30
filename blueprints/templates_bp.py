@@ -5,7 +5,7 @@ Templates blueprint - Template management
 import logging
 from flask import Blueprint, request, redirect, url_for, flash, g
 from db import db, DatabaseError
-from auth import require_org, get_current_org_role
+from auth import require_org
 from access import get_org_template, get_template_ids
 from calculations import validate_formula
 from invoice_service import get_template_fields
@@ -41,9 +41,6 @@ def list_templates():
 def create_template():
     """New template in the builder (owners)."""
     import template_builder as TB
-    if get_current_org_role() not in ('owner', 'admin'):
-        flash('Only owners and admins can create templates', 'error')
-        return redirect(url_for('templates_bp.list_templates'))
     org_id = g.current_org_id
     if request.method == 'POST':
         try:
@@ -89,9 +86,6 @@ def edit_layout(template_id):
     from layout import layout_from_form, load_layout, new_page, save_layout
 
     org_id = g.current_org_id
-    if get_current_org_role() not in ('owner', 'admin'):
-        flash('Only owners and admins can change how templates print', 'error')
-        return redirect(url_for('templates_bp.view_template', template_id=template_id))
     info = get_org_template(template_id, org_id)
     if not info:
         flash('Template not found', 'error')
@@ -143,11 +137,6 @@ def _ticked_types(info, layout):
 @require_org
 def create_template_version(template_id):
     """Create a new version of an existing template"""
-    current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to create template versions.', 'error')
-        return redirect(url_for('templates_bp.view_template', template_id=template_id))
-    
     org_id = g.current_org_id
 
     try:
@@ -174,9 +163,6 @@ def edit_template(template_id):
     """Edit the latest version in the builder. Nothing is written until Save; a version
     that documents use is kept and the next version is made instead."""
     import template_builder as TB
-    if get_current_org_role() not in ('owner', 'admin'):
-        flash('Only owners and admins can edit templates', 'error')
-        return redirect(url_for('templates_bp.view_template', template_id=template_id))
     org_id = g.current_org_id
     info = next((t for t in db.execute_proc('sp_list_templates', (org_id, False)) or []
                  if t.get('template_id') == template_id and t.get('version') == t.get('latest_version')), None)
@@ -206,11 +192,6 @@ def edit_template(template_id):
 @require_org
 def delete_section(template_id, section_id):
     """Delete a section from template"""
-    current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to delete sections.', 'error')
-        return redirect(url_for('templates_bp.edit_template', template_id=template_id))
-    
     allowed_section_ids, allowed_field_ids = (get_template_ids(template_id)
                                               if get_org_template(template_id, g.current_org_id) else (set(), set()))
     if section_id not in allowed_section_ids:
@@ -230,11 +211,6 @@ def delete_section(template_id, section_id):
 @require_org
 def delete_field(template_id, field_id):
     """Delete a field from template"""
-    current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to delete fields.', 'error')
-        return redirect(url_for('templates_bp.edit_template', template_id=template_id))
-    
     allowed_section_ids, allowed_field_ids = (get_template_ids(template_id)
                                               if get_org_template(template_id, g.current_org_id) else (set(), set()))
     if field_id not in allowed_field_ids:
@@ -254,11 +230,6 @@ def delete_field(template_id, field_id):
 @require_org
 def archive_template(template_id):
     """Archive a template"""
-    current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to archive templates.', 'error')
-        return redirect(url_for('templates_bp.view_template', template_id=template_id))
-    
     org_id = g.current_org_id
     
     try:
@@ -274,11 +245,6 @@ def archive_template(template_id):
 @require_org
 def unarchive_template(template_id):
     """Unarchive a template"""
-    current_role = get_current_org_role()
-    if current_role not in ('owner', 'admin'):
-        flash(f'Your role is {current_role or "unknown"}. You need to be an owner or admin to unarchive templates.', 'error')
-        return redirect(url_for('templates_bp.view_template', template_id=template_id))
-    
     org_id = g.current_org_id
     
     try:

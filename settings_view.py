@@ -6,32 +6,33 @@ post to the settings_bp routes as before, which save them.
 
 from typing import Callable, Dict, List
 
-MANAGERS = ('owner', 'admin')
-ROLE_LABELS = {'viewer': 'Viewer', 'sales': 'Sales (projects and quotations)', 'member': 'Member', 'admin': 'Admin',
-               'owner': 'Owner'}
 AUDIT_FILTERS = [('', 'All'), ('invoice', 'Documents'), ('payment', 'Payments'), ('user_organization', 'Team'),
                  ('customer', 'Customers'), ('template', 'Templates')]
 MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November',
           'December']
 
 
-def index(user: Dict, org_id, org_name: str, role: str, url: Callable) -> Dict:
+def index(user: Dict, org_id, org_name: str, perms, url: Callable) -> Dict:
+    """perms: the person's permissions (permissions.granted(), or a built-in role's name): the links are the ones they
+    may open, and the team is there for those who manage it."""
+    import permissions
     from db import db
-    manage = role in MANAGERS
+    manage = permissions.can('team.manage', perms=perms)
     requests, members = [], []
     if manage:
         requests = db.execute_proc('sp_get_pending_members', (org_id,)) or []
         members = [m for m in db.execute_proc('sp_get_org_members', (org_id,)) or [] if m.get('status') in ('active', 'deactivated')]
-    roles = ['viewer', 'sales', 'member', 'admin'] + (['owner'] if role == 'owner' else [])
+    roles = ['viewer', 'sales', 'member', 'admin'] + (['owner'] if permissions.can('team.owners', perms=perms) else [])
+    links = [('Business profile', 'GSTIN, bank details, numbering, logo, quotation terms', 'business.write', url('settings_bp.business_profile')),
+             ('Name & address', org_name or '', 'organization.write', url('settings_bp.edit_organization', org_id=org_id)),
+             ('Templates', 'Columns, formulas and printed pages', 'templates.write', url('templates_bp.list_templates')),
+             ('Audit log', 'Who changed what', 'audit.read', url('settings_bp.audit_log'))]
     me = str(user['user_id'])
     return {
         'title': 'Settings',
-        'links': [{'title': 'Business profile', 'sub': 'GSTIN, bank details, numbering, logo, quotation terms', 'href': url('settings_bp.business_profile')},
-                  {'title': 'Name & address', 'sub': org_name or '', 'href': url('settings_bp.edit_organization', org_id=org_id)},
-                  {'title': 'Templates', 'sub': 'Columns, formulas and printed pages', 'href': url('templates_bp.list_templates')},
-                  {'title': 'Audit log', 'sub': 'Who changed what', 'href': url('settings_bp.audit_log')}] if manage else [],
+        'links': [{'title': title, 'sub': sub, 'href': href} for title, sub, need, href in links if permissions.can(need, perms=perms)],
         'team': url('settings_bp.approve_member'),
-        'roles': [[r, ROLE_LABELS[r]] for r in roles],
+        'roles': [[r, permissions.ROLE_LABELS[r]] for r in roles],
         'requests': [{'user_id': str(r['user_id']), 'email': r.get('email') or '', 'asked': r.get('joined_at')} for r in requests],
         'members': [{'user_id': str(m['user_id']), 'email': m.get('email') or '', 'role': m.get('role') or '',
                      'status': m.get('status') or '', 'you': str(m['user_id']) == me} for m in members],

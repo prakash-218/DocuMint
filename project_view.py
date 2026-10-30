@@ -285,26 +285,29 @@ def file_row(f: Dict, url: Callable) -> Dict:
 SALES_EVENTS = ('project_created', 'project_status', 'file_uploaded', 'note')
 
 
-def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date] = None) -> Dict:
-    """Everything the page shows, for this role: Sales see quotations only (and no money beyond what was
-    quoted, no mail); viewers see it all but change nothing; only owners and admins see costings."""
+def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = None) -> Dict:
+    """Everything the page shows, for someone with these permissions (permissions.granted(), or a built-in role's
+    name): the documents they may read (quotations only, as Sales: no money beyond what was quoted), the mail if they
+    read it, costings if they see them; viewers see it all but change nothing."""
     import contacts
     import costing
+    import permissions
     import projects
     import revisions
-    from auth import EDITORS, MAIL_READERS, MANAGERS, SALES
     from db import db
     from document_service import get_org_profile
     project_id = project['project_id']
-    sales, reads_mail = role == SALES, role in MAIL_READERS
-    can = {'edit': role in EDITORS, 'manage': role in MANAGERS, 'read_mail': reads_mail, 'sales': sales}
+    sales, reads_mail = permissions.quotations_only(perms), permissions.can('emails.read', perms=perms)
+    costings = permissions.can('costings.read', perms=perms)
+    can = {'edit': permissions.can('projects.write', perms=perms), 'manage': costings, 'read_mail': reads_mail, 'sales': sales}
+    readable = permissions.doc_types('read', perms)
 
     docs = revisions.collapse(projects.project_documents(project_id, org_id))
     files = projects.list_attachments(org_id, project_id=project_id)
     events = db.execute_proc('sp_list_project_events', (project_id, org_id, 100)) or []
+    docs = [d for d in docs if d.get('doc_type') in readable]
+    files = [f for f in files if permissions.file_kind_allowed(f.get('kind'), perms)]
     if sales:
-        docs = [d for d in docs if d.get('doc_type') == 'quote']
-        files = [f for f in files if f.get('kind') not in projects.NOT_QUOTATIONS]
         events = [e for e in events if e.get('kind') in SALES_EVENTS or '/quotes/' in (e.get('link') or '')]
     messages = db.execute_proc('sp_list_project_messages', (project_id, org_id, 100)) or [] if reads_mail else []
 
@@ -318,7 +321,7 @@ def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date]
     addable = projects.unassigned_documents(org_id, project['customer_id']) if can['edit'] else []
     if sales:
         addable = [d for d in addable if d.get('doc_type') == 'quote']
-    kinds = {k: v for k, v in projects.DOCUMENT_KINDS.items() if not (sales and k in projects.NOT_QUOTATIONS)}
+    kinds = {k: v for k, v in projects.DOCUMENT_KINDS.items() if permissions.file_kind_allowed(k, perms)}
     return _plain({
         'project': {'id': project_id, 'label': projects.project_label(project), 'title': project['title'],
                     'reference': project.get('reference') or '', 'notes': project.get('notes') or '',
@@ -351,14 +354,14 @@ def build(org_id, project: Dict, role: str, url: Callable, today: Optional[date]
                       'cost': float(k.get('total_cost') or 0), 'price': float(k.get('total_price') or 0),
                       'profit_on_cost': k.get('profit_on_cost'), 'quote_number': k.get('quote_number'),
                       'url': url('costings_bp.edit', costing_id=k['costing_id'])}
-                     for k in costing.list_for(org_id, project_id)] if can['manage'] else None,
+                     for k in costing.list_for(org_id, project_id)] if costings else None,
         'addable': [{'invoice_id': d['invoice_id'], 'number': display_number(d), 'kind': get_type(d.get('doc_type')).label,
                      'total': float(d.get('total_amount') or 0), 'currency': d.get('currency_code') or 'INR'}
                     for d in revisions.collapse(addable) if d.get('status') != 'revised'],
         'links': {'documents': url('projects_bp.project_document', project_id=project_id) if can['edit'] else None,
-                  'delete': url('projects_bp.delete_project', project_id=project_id) if can['manage'] or sales else None,
-                  'new_costing': url('costings_bp.create') if can['manage'] else None,
-                  'rates': url('costings_bp.rates') if can['manage'] else None},
+                  'delete': url('projects_bp.delete_project', project_id=project_id) if permissions.can('projects.delete', perms=perms) else None,
+                  'new_costing': url('costings_bp.create') if permissions.can('costings.write', perms=perms) else None,
+                  'rates': url('costings_bp.rates') if costings else None},
         'years': sorted(set(projects.recent_fiscal_years(org_id)) | {project.get('fiscal_year')} - {None}, reverse=True),
         'statuses': projects.PROJECT_STATUSES,
     })
@@ -368,18 +371,18 @@ BOARD = (('quoted', 'Quoting'), ('accepted', 'Waiting for an answer'), ('advance
          ('invoiced', 'To invoice'), ('paid', 'Waiting for payment'))
 
 
-def projects_list(org_id, role: str, url: Callable, today: Optional[date] = None) -> Dict:
+def projects_list(org_id, perms, url: Callable, today: Optional[date] = None) -> Dict:
     """Every project with where it is and what's next, for the projects list and board: two queries (all the
     projects, all the documents) and the same stage logic as the project page."""
+    import permissions
     import projects
     import revisions
-    from auth import EDITORS, SALES
     from db import db
-    sales = role == SALES
-    can = {'edit': role in EDITORS, 'sales': sales}
+    sales, readable = permissions.quotations_only(perms), permissions.doc_types('read', perms)
+    can = {'edit': permissions.can('projects.write', perms=perms), 'sales': sales}
     by_project: Dict[str, List[Dict]] = {}
     for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []:
-        if d.get('project_id') and (not sales or d.get('doc_type') == 'quote'):
+        if d.get('project_id') and d.get('doc_type') in readable:
             by_project.setdefault(str(d['project_id']), []).append(d)
     order = {'quote': 0, 'proforma': 1, 'invoice': 2, 'export_invoice': 2}
     rows = []

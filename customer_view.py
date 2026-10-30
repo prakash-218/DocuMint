@@ -70,39 +70,41 @@ def file_groups(files: List[Dict], projects_by_id: Dict[str, Dict], url: Callabl
     return sorted(latest, key=lambda g: g['project'] is None)
 
 
-def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date] = None) -> Dict:
-    """Everything the page shows, for this role: Sales see quotations only, and nothing they owe; viewers see it
-    all and change nothing."""
+def build(org_id, customer: Dict, perms, url: Callable, today: Optional[date] = None) -> Dict:
+    """Everything the page shows, for someone with these permissions (permissions.granted(), or a built-in role's
+    name): the documents they may read, what's owed if they see invoices (Sales see quotations only, and nothing owed);
+    viewers see it all and change nothing."""
     import contacts
     import home_view
+    import permissions
     import project_view
     import projects
     import revisions
-    from auth import CUSTOMER_EDITORS, EDITORS, MANAGERS, SALES
     from db import db
     from document_service import get_org_profile
     from documents import fy_start_month, load_json, suggest_tax_mode
     from layout import custom_field_defs
     today = today or date.today()
     profile = get_org_profile(org_id)[1]
-    sales = role == SALES
-    can = {'edit': role in EDITORS, 'edit_customer': role in CUSTOMER_EDITORS, 'manage': role in MANAGERS, 'sales': sales}
+    sales = permissions.quotations_only(perms)
+    can = {'edit': permissions.can('projects.write', perms=perms), 'edit_customer': permissions.can('customers.write', perms=perms),
+           'manage': permissions.can('customers.manage', perms=perms), 'sales': sales}
+    readable, owed = permissions.doc_types('read', perms), permissions.can('invoices.read', perms=perms)
     customer_id = str(customer['customer_id'])
     sites = [] if customer.get('parent_id') else db.execute_proc('sp_list_customer_sites', (org_id, customer_id)) or []
     family = [customer_id] + [str(s['customer_id']) for s in sites]
 
     all_docs = [d for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or [] if str(d.get('customer_id')) in family]
     files = [f for cid in family for f in projects.list_attachments(org_id, customer_id=cid)]
-    if sales:
-        all_docs = [d for d in all_docs if d.get('doc_type') == 'quote']
-        files = [f for f in files if f.get('kind') not in projects.NOT_QUOTATIONS]
+    all_docs = [d for d in all_docs if d.get('doc_type') in readable]
+    files = [f for f in files if permissions.file_kind_allowed(f.get('kind'), perms)]
     docs = revisions.collapse(all_docs)
-    rows = [r for r in project_view.projects_list(org_id, role, url, today)['projects'] if str(r['customer']['id']) in family]
+    rows = [r for r in project_view.projects_list(org_id, perms, url, today)['projects'] if str(r['customer']['id']) in family]
     rows.sort(key=lambda r: str(r['last_activity'] or ''), reverse=True)
     rows.sort(key=lambda r: r['status'] != 'open')                    # open ones first, latest first
 
     money = None
-    if not sales:
+    if owed:
         invoices = [d for d in docs if d.get('doc_type') in INVOICE_TYPES]
         payments = db.execute_proc('sp_list_customer_payments', (org_id, family)) or []
         held: Dict[str, float] = {}
@@ -121,7 +123,7 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
     tax_note = {'cgst_sgst': f'{state}, so CGST + SGST' if state else 'CGST + SGST', 'igst': f'{state}, so IGST' if state else 'IGST',
                 'lut': 'Export, under LUT'}.get(suggest_tax_mode('invoice', org, customer), '')
     portal = (db.execute_proc('sp_get_customer_users', (customer_id,)) or [None])[0] if can['manage'] else None
-    kinds = {k: v for k, v in projects.DOCUMENT_KINDS.items() if not (sales and k in projects.NOT_QUOTATIONS)}
+    kinds = {k: v for k, v in projects.DOCUMENT_KINDS.items() if permissions.file_kind_allowed(k, perms)}
     people = contacts.for_customer(org_id, customer)
     values = load_json(customer.get('custom'))
     custom = [{'label': f['label'], 'value': values[f['key']]} for f in custom_field_defs(profile, 'customer') if values.get(f['key'])]
@@ -168,9 +170,9 @@ def build(org_id, customer: Dict, role: str, url: Callable, today: Optional[date
             'archive': url('customers_bp.unarchive_customer' if customer.get('is_archived') else 'customers_bp.archive_customer',
                            customer_id=customer_id) if can['manage'] else None,
             # The statement as a PDF (?fy=, ?currency=), and emailing it (the email form's own addresses)
-            'statement_pdf': url('customers_bp.statement_pdf', customer_id=customer_id) if not sales else None,
+            'statement_pdf': url('customers_bp.statement_pdf', customer_id=customer_id) if owed else None,
             'statement_email': {'compose': url('api_bp.statement_compose', customer_id=customer_id),
-                                'send': url('api_bp.send_statement', customer_id=customer_id)} if can['edit'] else None,
+                                'send': url('api_bp.send_statement', customer_id=customer_id)} if owed and permissions.can('emails.send', perms=perms) else None,
         },
     })
 
@@ -195,11 +197,11 @@ def _row(c: Dict, parent: Optional[Dict], url: Callable, site_count: int = 0) ->
             'archived': bool(c.get('is_archived')), 'site': bool(parent)}
 
 
-def listing(org_id, query: str, archived: bool, role: str, url: Callable) -> Dict:
+def listing(org_id, query: str, archived: bool, perms, url: Callable) -> Dict:
     """The customers list (frontend/src/islands/customers/): a page of whole groups, so a site stays with its customer;
     the search (customers.search) keeps a matching site's parent and a matching parent's sites."""
     import customers
-    from auth import CUSTOMER_EDITORS
+    import permissions
     from db import db
     from pagination import paginate
     rows = customers.search(db.execute_proc('sp_list_customers', (org_id, archived)) or [], query)
@@ -207,7 +209,7 @@ def listing(org_id, query: str, archived: bool, role: str, url: Callable) -> Dic
     q = query or None
     return {
         'title': 'Customers', 'query': query, 'archived': archived, 'any': bool(rows),
-        'new': url('customers_bp.create_customer') if role in CUSTOMER_EDITORS else None,
+        'new': url('customers_bp.create_customer') if permissions.can('customers.write', perms=perms) else None,
         'filters': [{'label': 'Active', 'href': url('customers_bp.list_customers', q=q), 'active': not archived},
                     {'label': 'All', 'href': url('customers_bp.list_customers', include_archived='true', q=q), 'active': archived}],
         'groups': [{'customer': _row(g['customer'], None, url, len(g['sites'])),
