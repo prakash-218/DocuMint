@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '../../test/render';
+import { pick, render, screen, waitFor, within } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import ProjectPage from './ProjectPage';
@@ -95,7 +95,8 @@ describe('ProjectPage', () => {
   it('changes what a contact gets, and adds someone found in the emails', async () => {
     const fetch = serve();
     render(<ProjectPage projectId="P-1" />);
-    await userEvent.selectOptions(await screen.findByLabelText('What Ravi Kumar gets on this project'), 'billing');
+    await screen.findByLabelText('What Ravi Kumar gets on this project', { selector: 'input' });
+    await pick('What Ravi Kumar gets on this project', 'Proformas and invoices only');
     await userEvent.click(screen.getByRole('button', { name: 'Add to Hosur plant' }));
     expect(screen.getByLabelText('Email')).toHaveValue('meera@gearco.example');
     await userEvent.type(screen.getByLabelText(/^Role/), 'Quality');
@@ -121,7 +122,7 @@ describe('ProjectPage', () => {
     const fetch = serve(PAGE, (_path, init) => (init?.method === 'PATCH' ? json(400, { error: 'Give the project a name.' }) : undefined));
     render(<ProjectPage projectId="P-1" />);
     await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
-    await userEvent.selectOptions(screen.getByLabelText('Status'), 'cancelled');
+    await pick(screen.getByLabelText('Status'), 'Cancelled');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Give the project a name.');
     expect(sent(fetch, 'PATCH')[0]).toEqual(['/api/projects/P-1',
@@ -162,7 +163,7 @@ describe('ProjectPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Other: change what scan 0041.pdf is' }));
     const form = screen.getByRole('form', { name: 'What scan 0041.pdf is' });
-    await userEvent.selectOptions(within(form).getByLabelText('What it is'), 'po');
+    await pick(within(form).getByLabelText('What it is'), 'Purchase order');
     await userEvent.type(within(form).getByLabelText(/Number/), '4500 0188');
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(sent(fetch, 'PATCH')).toEqual([['/api/files/F-1', { kind: 'po', reference_no: '4500 0188' }]]));
@@ -176,7 +177,8 @@ describe('ProjectPage', () => {
     render(<ProjectPage projectId="P-1" />);
     const add = (await screen.findByLabelText("Add one of their documents that's in no project")).closest('form')!;
     expect(add).toHaveAttribute('action', '/projects/P-1/documents');
-    expect(within(add).getByRole('option', { name: 'Q/039 · Quotation · ₹5,000' })).toBeInTheDocument();
+    await userEvent.click(within(add).getByLabelText("Add one of their documents that's in no project"));
+    expect(await screen.findByRole('option', { name: /Q\/039 · Quotation/ })).toHaveTextContent('₹5,000');
     const out = screen.getAllByRole('button', { name: 'Take out of the project' })[0].closest('form')!;
     expect(out).toHaveAttribute('action', '/projects/P-1/documents');
     expect(out.querySelector('input[name=action]')).toHaveValue('remove');

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Dropdown, choices } from '../../mantine/Dropdown';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Autocomplete, Text } from '@mantine/core';
 import { PageHeader } from '../../app/PageHeader';
 import { ask, Loading, useLoad } from '../../app/ui';
 import { Icon } from '../../icons';
@@ -45,12 +47,28 @@ function withRate<T extends Partial<Line>>(row: T, hit: Rate, fields: (keyof Lin
 }
 
 /** onChange for a description with the rates list: a pick from the list (not typing) fills from the rate */
-function describe<T extends Partial<Line>>(rates: Rate[], row: T, fields: (keyof Line)[], set: (patch: Partial<T>) => void) {
-  return (e: ChangeEvent<HTMLInputElement>) => {
-    const how = (e.nativeEvent as InputEvent).inputType;
-    const hit = how !== 'insertText' && how !== 'deleteContentBackward' ? rateFor(rates, e.target.value) : null;
-    set(hit ? withRate(row, hit, fields) : ({ description: e.target.value } as Partial<T>));
+const rateLabel = (r: Rate) => r.description + (r.make ? ` — ${r.make}` : '');
+
+/** A cost line's (or shared cost's) description, offering the rates list as it's typed: picking a rate, or typing one
+ *  exactly, fills in what it says (make, unit, cost, markup) */
+function RateInput({ rates, base, value, label, placeholder, onType, onRate }: {
+  rates: Rate[]; base: string; value: string; label: string; placeholder: string;
+  onType: (description: string) => void; onRate: (rate: Rate) => void;
+}) {
+  const labels = useMemo(() => [...new Set(rates.map(rateLabel))], [rates]);
+  const pick = (text: string) => {
+    const hit = rateFor(rates, text);
+    if (hit) onRate(hit);
   };
+  return (
+    <Autocomplete value={value} aria-label={label} placeholder={placeholder} data={labels} limit={8}
+                  onChange={onType} onOptionSubmit={pick} onBlur={(e) => pick(e.currentTarget.value)}
+                  renderOption={({ option }) => {
+                    const r = rates.find((x) => rateLabel(x) === option.value);
+                    const cost = r && r.unit_cost !== null ? `${money(r.unit_cost, base)}${r.unit ? ` / ${r.unit}` : ''}${r.markup ? ` + ${num(r.markup)}%` : ''}` : '';
+                    return <div><Text size="sm">{option.value}</Text>{cost && <Text size="xs" c="dimmed">{cost}</Text>}</div>;
+                  }} />
+  );
 }
 
 function grow(el: HTMLTextAreaElement | null) {
@@ -211,15 +229,12 @@ export function CostingEditor({ data }: { data: CostingData }) {
                 </div>
                 <div className="form-group">
                   <label htmlFor="round_to" className="form-label">Round prices to</label>
-                  <select id="round_to" name="round_to" className="form-select" value={settings.round_to} onChange={(e) => set({ round_to: e.target.value })}>
-                    {data.options.rounding.map((r) => <option key={r} value={String(r)}>{r ? `nearest ${r.toLocaleString('en-US')}` : 'No rounding'}</option>)}
-                  </select>
+                  <Dropdown id="round_to" name="round_to" value={String(settings.round_to)} onChange={(v) => set({ round_to: v })}
+                            data={data.options.rounding.map((r) => ({ value: String(r), label: r ? `nearest ${r.toLocaleString('en-US')}` : 'No rounding' }))} />
                 </div>
                 <div className="form-group">
                   <label htmlFor="currency" className="form-label">Quote in</label>
-                  <select id="currency" name="currency" className="form-select" value={cur} onChange={(e) => set({ currency: e.target.value })}>
-                    {data.options.currencies.map((x) => <option key={x} value={x}>{x}</option>)}
-                  </select>
+                  <Dropdown id="currency" name="currency" value={cur} onChange={(v) => set({ currency: v })} data={choices(data.options.currencies)} />
                 </div>
                 <div className="form-group k-fx-only">
                   <label htmlFor="exchange_rate" className="form-label">{base} per {cur}</label>
@@ -330,10 +345,9 @@ export function CostingEditor({ data }: { data: CostingData }) {
                               return (
                                 <tr key={j} className="k-line">
                                   <td className="long" data-label="Cost line">
-                                    <input type="text" className="form-input" value={l.description} placeholder="Material, machining, bought-out…" aria-label="Cost line"
-                                           list="k-rates" autoComplete="off"
-                                           onChange={describe(data.rates, l, ['make', 'unit', 'unit_cost', 'markup'], (p) => setLine(it.key, j, p))}
-                                           onBlur={(e) => { const hit = rateFor(data.rates, e.target.value); if (hit) setLine(it.key, j, withRate(l, hit, ['make', 'unit', 'unit_cost', 'markup'])); }} />
+                                    <RateInput rates={data.rates} base={base} value={l.description} label="Cost line" placeholder="Material, machining, bought-out…"
+                                               onType={(description) => setLine(it.key, j, { description })}
+                                               onRate={(hit) => setLine(it.key, j, withRate(l, hit, ['make', 'unit', 'unit_cost', 'markup']))} />
                                   </td>
                                   <td className="short" data-label="Make / spec"><input type="text" className="form-input" value={l.make} aria-label="Make or specification"
                                                                                        onChange={(e) => setLine(it.key, j, { make: e.target.value })} /></td>
@@ -392,14 +406,13 @@ export function CostingEditor({ data }: { data: CostingData }) {
                   return (
                     <tr key={j} className="k-share" data-kind={s.kind}>
                       <td className="long" data-label="Shared cost">
-                        <input type="text" className="form-input" value={s.description} placeholder="Design, freight, reference station…" aria-label="Shared cost"
-                               list="k-rates" autoComplete="off" onChange={describe(data.rates, s, ['unit_cost', 'markup'], (p) => setShare(j, p))}
-                               onBlur={(e) => { const hit = rateFor(data.rates, e.target.value); if (hit) setShare(j, withRate(s, hit, ['unit_cost', 'markup'])); }} />
+                        <RateInput rates={data.rates} base={base} value={s.description} label="Shared cost" placeholder="Design, freight, reference station…"
+                                   onType={(description) => setShare(j, { description })}
+                                   onRate={(hit) => setShare(j, withRate(s, hit, ['unit_cost', 'markup']))} />
                       </td>
                       <td className="short" data-label="How">
-                        <select className="form-select" value={s.kind} aria-label="An amount, or a % of the items' cost" onChange={(e) => setShare(j, { kind: e.target.value })}>
-                          {data.options.shared_kinds.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                        </select>
+                        <Dropdown value={s.kind} aria-label="An amount, or a % of the items' cost" onChange={(v) => setShare(j, { kind: v })}
+                                  data={choices(data.options.shared_kinds)} />
                       </td>
                       <td className="short num" data-label="Qty"><input type="number" step="any" className="form-input k-amount-only" value={s.qty} placeholder="1" aria-label="Quantity"
                                                                         onChange={(e) => setShare(j, { qty: e.target.value })} /></td>
@@ -411,9 +424,8 @@ export function CostingEditor({ data }: { data: CostingData }) {
                       <td className="short num" data-label="Markup %"><input type="number" step="any" className="form-input k-amount-only" value={s.markup} placeholder="0" aria-label="Markup percent"
                                                                              onChange={(e) => setShare(j, { markup: e.target.value })} /></td>
                       <td className="short" data-label="Spread">
-                        <select className="form-select k-amount-only" value={s.spread} aria-label="How it's spread over the items" onChange={(e) => setShare(j, { spread: e.target.value })}>
-                          {data.options.spreads.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                        </select>
+                        <Dropdown className="k-amount-only" value={s.spread} aria-label="How it's spread over the items" onChange={(v) => setShare(j, { spread: v })}
+                                  data={choices(data.options.spreads)} />
                         <span className="k-percent-only k-fixed">by cost</span>
                       </td>
                       <td className="short" data-label="Over">
@@ -497,14 +509,6 @@ export function CostingEditor({ data }: { data: CostingData }) {
       </form>
       <form id="k-delete" method="post" action={data.urls.delete} onSubmit={ask(`Delete costing version ${c.version}? This can't be undone.`)} />
 
-      <datalist id="k-rates">
-        {data.rates.map((r) => (
-          <option key={`${r.description}|${r.make}`} value={r.description + (r.make ? ` — ${r.make}` : '')}>
-            {r.unit_cost !== null ? `${money(r.unit_cost, base)}${r.unit ? ` / ${r.unit}` : ''}${r.markup ? ` + ${num(r.markup)}%` : ''}` : ''}
-          </option>
-        ))}
-      </datalist>
-
       <CopyDialog open={dialog === 'copy'} onClose={() => setDialog(null)} library={data.urls.library} itemsUrl={data.urls.items} self={c.id}
                   onAdd={addItems} />
       <ImportDialog open={dialog === 'import'} onClose={() => setDialog(null)} url={data.urls.import} base={base} items={labels}
@@ -518,9 +522,8 @@ function MakeQuote({ data, primary }: { data: CostingData; primary: boolean }) {
     <>
       <div className="form-group">
         <label htmlFor="template_id" className="form-label">Template</label>
-        <select id="template_id" name="template_id" className="form-select">
-          {data.templates.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
-        </select>
+        <Dropdown id="template_id" name="template_id" defaultValue={data.templates[0]?.id}
+                  data={data.templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))} />
       </div>
       <button type="submit" name="action" value="quote" className={`btn btn-${primary ? 'primary' : 'secondary'} btn-block`}><Icon name="file" />Save and make the quote</button>
       <p className="form-text" style={{ marginBottom: 0 }}>A draft quotation with these items and prices; the costs stay here.</p>

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { pick, render, screen, within } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import DocumentList, { fiscalYear, matches, type DocList, type DocRow } from './DocumentList';
@@ -68,10 +68,10 @@ describe('DocumentList', () => {
     render(<DocumentList group="invoices" />);
     await screen.findByRole('tab', { name: /^All/ });
     expect(screen.queryByText('Due', { selector: '.rh span' })).toBeNull();
-    await userEvent.selectOptions(screen.getByLabelText('Financial year'), '25-26');
+    await pick(screen.getByLabelText('Financial year'), 'FY 25-26');
     expect(numbers()).toEqual(['056']);
-    await userEvent.selectOptions(screen.getByLabelText('Financial year'), '');
-    await userEvent.selectOptions(screen.getByLabelText('Customer'), 'C-1');
+    await pick(screen.getByLabelText('Financial year'), 'All years');
+    await pick(screen.getByLabelText('Customer'), /Gear Cutters/);
     expect(numbers()).toEqual(['058', '057']);
   });
 

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '../../test/render';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Home, { totals, type HomeData } from './Home';
 

@@ -1,3 +1,4 @@
+import { Dropdown } from '../../mantine/Dropdown';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../icons';
 import { blankItem, money, num } from './sheet';
@@ -296,9 +297,8 @@ export function ImportDialog({ open, onClose, url, base, items, onAddItems, onAd
           <div className="k-import-grid">
             <div className="form-group">
               <label htmlFor="k-im-sheet" className="form-label">Sheet</label>
-              <select id="k-im-sheet" className="form-select" value={sheetIndex} onChange={(e) => pickSheet(file.sheets, +e.target.value)}>
-                {file.sheets.map((s, i) => <option key={i} value={i}>{s.name}</option>)}
-              </select>
+              <Dropdown id="k-im-sheet" value={String(sheetIndex)} onChange={(v) => pickSheet(file.sheets, +v)}
+                        data={file.sheets.map((s, i) => ({ value: String(i), label: s.name }))} />
             </div>
             <div className="form-group">
               <label htmlFor="k-im-head" className="form-label">Headings in row</label>
@@ -307,14 +307,12 @@ export function ImportDialog({ open, onClose, url, base, items, onAddItems, onAd
             {COLUMNS.map(([key, label]) => (
               <div key={key} className="form-group">
                 <label htmlFor={`k-im-${key}`} className="form-label">{label}</label>
-                <select id={`k-im-${key}`} className="form-select" value={cols[key] < width ? cols[key] : -1}
-                        onChange={(e) => setCols({ ...cols, [key]: +e.target.value })}>
-                  <option value={-1}>—</option>
-                  {Array.from({ length: width }, (_, j) => {
-                    const h = cellText(heads[j]);
-                    return <option key={j} value={j}>{String.fromCharCode(65 + j)}{h ? ` · ${h.slice(0, 28)}` : ''}</option>;
-                  })}
-                </select>
+                <Dropdown id={`k-im-${key}`} value={String(cols[key] < width ? cols[key] : -1)}
+                          onChange={(v) => setCols({ ...cols, [key]: +v })}
+                          data={[{ value: '-1', label: '—' }, ...Array.from({ length: width }, (_, j) => {
+                            const h = cellText(heads[j]);
+                            return { value: String(j), label: `${String.fromCharCode(65 + j)}${h ? ` · ${h.slice(0, 28)}` : ''}` };
+                          })]} />
               </div>
             ))}
           </div>
@@ -327,17 +325,14 @@ export function ImportDialog({ open, onClose, url, base, items, onAddItems, onAd
                        onChange={(e) => setNewItem(e.target.value)} onFocus={() => setAs('lines')} /></label>
               <label className="k-check"><input type="radio" name="k-im-as" value="into" checked={mode === 'into'} disabled={!items.length} onChange={() => setAs('into')} />
                 <span>Cost lines of</span>
-                <select className="form-select" value={into} aria-label="The item to add the cost lines to" onChange={(e) => setInto(e.target.value)} onFocus={() => setAs('into')}>
-                  {items.map((label, i) => <option key={i} value={i}>{label}</option>)}
-                </select></label>
+                <Dropdown value={into} aria-label="The item to add the cost lines to" onChange={setInto} onFocus={() => setAs('into')}
+                          data={items.map((label, i) => ({ value: String(i), label }))} /></label>
             </div>
             {mode === 'items' && (
               <div className="form-group">
                 <label htmlFor="k-im-prices" className="form-label">The amounts in the price column are</label>
-                <select id="k-im-prices" className="form-select" value={prices} onChange={(e) => setPrices(e.target.value as 'cost' | 'price')}>
-                  <option value="cost">our costs</option>
-                  <option value="price">prices to the customer</option>
-                </select>
+                <Dropdown id="k-im-prices" value={prices} onChange={(v) => setPrices(v as 'cost' | 'price')}
+                          data={[{ value: 'cost', label: 'our costs' }, { value: 'price', label: 'prices to the customer' }]} />
               </div>
             )}
           </div>

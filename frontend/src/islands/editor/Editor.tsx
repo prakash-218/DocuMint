@@ -1,3 +1,4 @@
+import { Dropdown, choices, type Choice, type ChoiceGroup } from '../../mantine/Dropdown';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../../app/PageHeader';
 import { Icon } from '../../icons';
@@ -22,14 +23,12 @@ function grow(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-export function CustomerOptions({ groups }: { groups: CustomerGroup[] }) {
-  return (
-    <>
-      {groups.map((g, i) => g.label ? (
-        <optgroup key={i} label={g.label}>{g.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</optgroup>
-      ) : g.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>))}
-    </>
-  );
+/** The customers to pick from, a parent company's sites grouped under it */
+export function customerChoices(groups: CustomerGroup[]): (Choice | ChoiceGroup)[] {
+  return groups.flatMap((g): (Choice | ChoiceGroup)[] => {
+    const items = g.options.map((o) => ({ value: o.id, label: o.label }));
+    return g.label ? [{ group: g.label, items }] : items;
+  });
 }
 
 function Cell({ section, field: f, row, value, calc, currency, onChange }: {
@@ -234,11 +233,9 @@ export function Editor({ data }: { data: EditorData }) {
                         <div className="form-static">{data.customer.fixed.name}</div>
                       </>
                     ) : (
-                      <select id="customer_id" name="customer_id" className="form-select" required defaultValue=""
-                              onChange={(e) => { const hint = data.tax_hints[e.target.value]; if (hint) setTaxMode(hint); }}>
-                        <option value="">Select a customer</option>
-                        <CustomerOptions groups={data.customer.groups} />
-                      </select>
+                      <Dropdown id="customer_id" name="customer_id" required placeholder="Select a customer" searchable
+                                data={customerChoices(data.customer.groups)}
+                                onChange={(v) => { const hint = data.tax_hints[v]; if (hint) setTaxMode(hint); }} />
                     )}
                   </div>
                   <div className="form-group">
@@ -286,15 +283,11 @@ export function Editor({ data }: { data: EditorData }) {
               <div className="card-body">
                 <div className="form-group">
                   <label htmlFor="currency" className="form-label">Currency</label>
-                  <select id="currency" name="currency" className="form-select" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                    {s.currencies.map((c) => <option key={c}>{c}</option>)}
-                  </select>
+                  <Dropdown id="currency" name="currency" value={currency} onChange={setCurrency} data={choices(s.currencies)} />
                 </div>
                 <div className="form-group">
                   <label htmlFor="tax_mode" className="form-label">Tax</label>
-                  <select id="tax_mode" name="tax_mode" className="form-select" value={taxMode} onChange={(e) => setTaxMode(e.target.value)}>
-                    {s.tax_modes.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-                  </select>
+                  <Dropdown id="tax_mode" name="tax_mode" value={taxMode} onChange={setTaxMode} data={choices(s.tax_modes)} />
                 </div>
                 <div className="form-group" style={taxed ? undefined : { display: 'none' }}>
                   <label htmlFor="tax_rate" className="form-label">GST rate (%)</label>
@@ -311,10 +304,8 @@ export function Editor({ data }: { data: EditorData }) {
                     </div>
                     <div className="form-group">
                       <label htmlFor="advance_basis" className="form-label">Advance on</label>
-                      <select id="advance_basis" name="advance_basis" className="form-select" defaultValue={s.advance_basis}>
-                        <option value="pre_tax">Value before tax</option>
-                        <option value="total">Total with tax</option>
-                      </select>
+                      <Dropdown id="advance_basis" name="advance_basis" defaultValue={s.advance_basis}
+                                data={[{ value: 'pre_tax', label: 'Value before tax' }, { value: 'total', label: 'Total with tax' }]} />
                     </div>
                   </>
                 )}

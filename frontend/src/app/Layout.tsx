@@ -1,6 +1,7 @@
 // The app's frame, drawn as base.html draws the server pages' (the same classes, so main.css styles both): the
 // sidebar for this role, the header with the screen's breadcrumbs and buttons (PageHeader), and the messages the
 // last page left. On a phone the sidebar slides in from the menu button.
+import { Dropdown } from '../mantine/Dropdown';
 import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import { Icon } from '../icons';
@@ -75,9 +76,8 @@ function Sidebar({ boot, open, path }: { boot: Boot; open: boolean; path: string
         {boot.orgs.length > 1 && (
           <div className="org-switcher">
             <label htmlFor="orgSelect" className="sr-only">Organization</label>
-            <select id="orgSelect" className="form-select" value={me.org.id} onChange={(e) => switchOrg(boot.links.select_org, e.target.value)}>
-              {boot.orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
+            <Dropdown id="orgSelect" value={me.org.id} onChange={(v) => switchOrg(boot.links.select_org, v)}
+                      data={boot.orgs.map((o) => ({ value: o.id, label: o.name }))} />
           </div>
         )}
         <div className="flex-between" style={{ flexWrap: 'nowrap' }}>

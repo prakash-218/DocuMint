@@ -1,3 +1,4 @@
+import { Dropdown, choices } from '../../mantine/Dropdown';
 import { useId, useState, type FormEvent } from 'react';
 import { day, money } from '../../format';
 import { Icon } from '../../icons';
@@ -8,6 +9,10 @@ export const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv,.tx
 /** The project's files (drawings, POs, email attachments), and the prototype's drop zone to add more: dropped or
     chosen files are uploaded straight away (static/js/app.js), each one's kind guessed from its name; its tag opens
     a small form to say what it is and its number. */
+
+/** A project status's dot: open (mint), completed (blue), cancelled (grey) */
+const STATUS_DOTS: Record<string, string> = { open: 'var(--mint)', completed: 'var(--info)', cancelled: 'var(--neutral)' };
+
 export function Files({ page, onSave }: { page: Page; onSave?: (fileId: string, kind: string, referenceNo: string) => Promise<boolean> }) {
   const { files, upload, project } = page;
   const id = useId();
@@ -77,9 +82,7 @@ export function FileForm({ file, kinds, onSave, onCancel, move }: FileFormProps)
     <div className="file-form">
       <form className="stack-form" onSubmit={submit} aria-label={`What ${file.name} is`}>
         <label htmlFor={`${id}-kind`} className="form-label">What it is</label>
-        <select id={`${id}-kind`} className="form-select" value={kind} onChange={(e) => setKind(e.target.value)}>
-          {Object.entries(kinds).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-        </select>
+        <Dropdown id={`${id}-kind`} value={kind} onChange={setKind} data={choices(Object.entries(kinds))} />
         <label htmlFor={`${id}-ref`} className="form-label">Number <span className="muted">(PO or drawing no.)</span></label>
         <input id={`${id}-ref`} className="form-input" value={ref} maxLength={100} onChange={(e) => setRef(e.target.value)} />
         <div className="form-actions-row">
@@ -91,10 +94,8 @@ export function FileForm({ file, kinds, onSave, onCancel, move }: FileFormProps)
         <form method="post" action={move.action} className="stack-form">
           <label htmlFor={`${id}-project`} className="form-label">In the project</label>
           <div className="add-existing-row">
-            <select id={`${id}-project`} name="project_id" className="form-select" defaultValue={move.current ?? ''}>
-              <option value="">Not in a project</option>
-              {move.projects.map((p) => <option key={p.id} value={p.id}>{p.label} {p.title}</option>)}
-            </select>
+            <Dropdown id={`${id}-project`} name="project_id" defaultValue={move.current ?? ''}
+                      data={[{ value: '', label: 'Not in a project' }, ...move.projects.map((p) => ({ value: p.id, label: `${p.label} ${p.title}` }))]} />
             <button type="submit" className="btn btn-secondary btn-xs">Move</button>
           </div>
         </form>
@@ -179,15 +180,10 @@ export function Details({ page, onSave }: { page: Page; onSave: (fields: DetailF
           <input id={`${id}-ref`} className="form-input" value={editing.reference} maxLength={100}
                  onChange={(e) => setEditing({ ...editing, reference: e.target.value })} />
           <label htmlFor={`${id}-fy`} className="form-label">Financial year</label>
-          <select id={`${id}-fy`} className="form-select" value={editing.fiscal_year}
-                  onChange={(e) => setEditing({ ...editing, fiscal_year: e.target.value })}>
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <Dropdown id={`${id}-fy`} value={editing.fiscal_year} onChange={(v) => setEditing({ ...editing, fiscal_year: v })} data={choices(years)} />
           <label htmlFor={`${id}-status`} className="form-label">Status</label>
-          <select id={`${id}-status`} className="form-select" value={editing.status}
-                  onChange={(e) => setEditing({ ...editing, status: e.target.value })}>
-            {Object.entries(statuses).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-          </select>
+          <Dropdown id={`${id}-status`} value={editing.status} onChange={(v) => setEditing({ ...editing, status: v })}
+                    data={Object.entries(statuses).map(([k, label]) => ({ value: k, label, dot: STATUS_DOTS[k] }))} />
           <label htmlFor={`${id}-notes`} className="form-label">Notes</label>
           <textarea id={`${id}-notes`} className="form-textarea" rows={3} value={editing.notes}
                     onChange={(e) => setEditing({ ...editing, notes: e.target.value })} />

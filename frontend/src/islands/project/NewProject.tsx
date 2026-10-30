@@ -1,6 +1,7 @@
+import { Dropdown, choices } from '../../mantine/Dropdown';
 import { PageHeader } from '../../app/PageHeader';
 import { Loading, useLoad } from '../../app/ui';
-import { CustomerOptions } from '../editor/Editor';
+import { customerChoices } from '../editor/Editor';
 import type { CustomerGroup } from '../editor/types';
 
 // A new project (GET /api/new-project, project_view.new_project): who it's for, its name, the customer's reference,
@@ -23,10 +24,8 @@ export function NewProjectForm({ data }: { data: Data }) {
         <div className="card-body">
           <div className="form-group">
             <label htmlFor="customer_id" className="form-label">Customer *</label>
-            <select id="customer_id" name="customer_id" className="form-select" required defaultValue={data.customer_id}>
-              <option value="">Select a customer</option>
-              <CustomerOptions groups={data.customers} />
-            </select>
+            <Dropdown id="customer_id" name="customer_id" required placeholder="Select a customer" searchable defaultValue={data.customer_id}
+                      data={customerChoices(data.customers)} />
           </div>
           <div className="form-group">
             <label htmlFor="title" className="form-label">Project name *</label>
@@ -39,9 +38,7 @@ export function NewProjectForm({ data }: { data: Data }) {
             </div>
             <div className="form-group">
               <label htmlFor="fiscal_year" className="form-label">Financial year</label>
-              <select id="fiscal_year" name="fiscal_year" className="form-select">
-                {data.years.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
+              <Dropdown id="fiscal_year" name="fiscal_year" defaultValue={data.years[0]} data={choices(data.years)} />
             </div>
           </div>
           <div className="form-group">

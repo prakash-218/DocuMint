@@ -1,3 +1,4 @@
+import { Dropdown, choices } from '../../mantine/Dropdown';
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../api';
 import { PageHeader } from '../../app/PageHeader';
@@ -107,9 +108,8 @@ function ChangeDialog({ change }: { change: Change }) {
                 {r.templates.length > 1 && (
                   <>
                     <label htmlFor="revise_template" className="form-label">Template</label>
-                    <select id="revise_template" name="template_id" className="form-select form-select-sm" defaultValue={r.current_template}>
-                      {r.templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.same ? ' (same as now)' : ''}</option>)}
-                    </select>
+                    <Dropdown id="revise_template" name="template_id" size="xs" defaultValue={r.current_template}
+                              data={r.templates.map((t) => ({ value: t.id, label: `${t.name}${t.same ? ' (same as now)' : ''}` }))} />
                   </>
                 )}
                 <button type="submit" className="btn btn-secondary btn-sm"><Icon name="fileDiff" />Make {r.number}</button>
@@ -164,9 +164,7 @@ function RecordForm({ form }: { form: NonNullable<Payments['record']> }) {
       </div>
       <div className="form-group">
         <label htmlFor={`${id}-method`} className="form-label">Method</label>
-        <select id={`${id}-method`} name="method" className="form-select">
-          {form.methods.map((m) => <option key={m}>{m}</option>)}
-        </select>
+        <Dropdown id={`${id}-method`} name="method" defaultValue={form.methods[0]} data={choices(form.methods)} />
       </div>
       <div className="form-group">
         <label htmlFor={`${id}-ref`} className="form-label">Reference <span className="text-tertiary">(optional)</span></label>
@@ -244,16 +242,14 @@ function Convert({ convert }: { convert: NonNullable<DocumentData['convert']> })
         <form method="post" action={convert.action}>
           <div className="form-group">
             <label htmlFor={`${id}-target`} className="form-label">Convert to</label>
-            <select id={`${id}-target`} name="target" className="form-select"
-                    onChange={(e) => { const t = convert.targets.find((x) => x.key === e.target.value)?.template; if (t) setTemplate(t); }}>
-              {convert.targets.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-            </select>
+            <Dropdown id={`${id}-target`} name="target" defaultValue={convert.targets[0]?.key}
+                      data={convert.targets.map((t) => ({ value: t.key, label: t.label }))}
+                      onChange={(v) => { const t = convert.targets.find((x) => x.key === v)?.template; if (t) setTemplate(t); }} />
           </div>
           <div className="form-group">
             <label htmlFor={`${id}-template`} className="form-label">Using template</label>
-            <select id={`${id}-template`} name="template_id" className="form-select" value={template} onChange={(e) => setTemplate(e.target.value)}>
-              {convert.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+            <Dropdown id={`${id}-template`} name="template_id" value={template} onChange={setTemplate}
+                      data={convert.templates.map((t) => ({ value: t.id, label: t.name }))} />
           </div>
           <button type="submit" className="btn btn-primary btn-block"><Icon name="arrowRightLeft" />Convert</button>
         </form>
@@ -310,10 +306,8 @@ function ProjectCard({ card, current }: { card: DocumentData['project']; current
                     <form method="post" action={card.change.action} className="stack-form">
                       <label htmlFor={`${id}-project`} className="form-label">{p ? 'Move it to' : 'Put it in'}</label>
                       <div className="add-existing-row">
-                        <select id={`${id}-project`} name="project_id" className="form-select" required defaultValue="">
-                          <option value="" disabled>Choose a project</option>
-                          {others.map((o) => <option key={o.id} value={o.id}>{o.no} · {o.title}{o.fy ? ` · FY ${o.fy}` : ''}{o.status !== 'open' ? ` (${o.status})` : ''}</option>)}
-                        </select>
+                        <Dropdown id={`${id}-project`} name="project_id" required placeholder="Choose a project"
+                                  data={others.map((o) => ({ value: o.id, label: `${o.no} · ${o.title}`, sub: [o.fy ? `FY ${o.fy}` : '', o.status !== 'open' ? o.status : ''].filter(Boolean).join(' · ') || undefined }))} />
                         <button type="submit" className="btn btn-secondary btn-sm">{p ? 'Move' : 'Add'}</button>
                       </div>
                     </form>

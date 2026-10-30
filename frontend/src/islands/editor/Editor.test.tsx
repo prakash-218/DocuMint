@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { optionsOf, pick, render, screen } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { evaluate, lineCells, totals } from './calc';
@@ -91,12 +91,12 @@ describe('Editor', () => {
   it('takes the tax the customer usually gets, and shows GST on the total', async () => {
     render(<Editor data={DATA} />);
     expect(screen.queryByText('GST 18%')).not.toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Customer'), 'C-1');
-    expect(screen.getByLabelText('Tax')).toHaveValue('cgst_sgst');
+    await pick(screen.getByLabelText('Customer'), 'Gear Cutters Ltd');
+    expect(screen.getByLabelText('Tax')).toHaveValue('CGST + SGST (same state)');
     expect(screen.getByText('CGST 9% + SGST 9%')).toBeInTheDocument();
     expect(screen.getByText('GST 18%').nextElementSibling).toHaveTextContent('₹450.00');
-    const sites = within(screen.getByLabelText('Customer')).getByRole('group', { name: 'Gear Cutters Ltd' });
-    expect(within(sites).getAllByRole('option').map((o) => o.textContent)).toEqual(['Gear Cutters Ltd', 'Hosur plant']);
+    expect(await optionsOf(screen.getByLabelText('Customer'))).toEqual(['Gear Cutters Ltd', 'Hosur plant', 'Axle Works']);
+    expect(document.querySelector('[class*="groupLabel"]')).toHaveTextContent('Gear Cutters Ltd');          // its sites, under it
   });
 
   it('says what correcting a sent document means, and keeps it from being renumbered by accident', () => {

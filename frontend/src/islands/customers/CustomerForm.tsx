@@ -1,3 +1,4 @@
+import { Dropdown } from '../../mantine/Dropdown';
 import { useEffect } from 'react';
 import { PageHeader } from '../../app/PageHeader';
 import { Loading, useLoad, usePosted } from '../../app/ui';
@@ -39,10 +40,8 @@ export function CustomerFormView({ data }: { data: Data }) {
               <div className="form-row">
                 <div className="form-group">
                   <label htmlFor="parent_id" className="form-label">Site of</label>
-                  <select id="parent_id" name="parent_id" className="form-select" defaultValue={v('parent_id')}>
-                    <option value="">— A customer of its own —</option>
-                    {data.parents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                  <Dropdown id="parent_id" name="parent_id" defaultValue={v('parent_id')}
+                            data={[{ value: '', label: 'A customer of its own' }, ...data.parents.map((p) => ({ value: p.id, label: p.name }))]} />
                   <p className="form-text">A plant, branch, division or sister company of another customer.</p>
                 </div>
                 <Text name="site_name" label="Site name" value={v('site_name')} maxLength={100} placeholder="Gears Division, Madurai plant"

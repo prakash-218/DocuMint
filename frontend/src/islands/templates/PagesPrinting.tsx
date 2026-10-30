@@ -1,3 +1,4 @@
+import { Dropdown } from '../../mantine/Dropdown';
 import { useState } from 'react';
 import { PageHeader } from '../../app/PageHeader';
 import { Loading, useLoad } from '../../app/ui';
@@ -96,11 +97,9 @@ export function LayoutForm({ data }: { data: Data }) {
               <p className="form-text">New documents of these types offer this template{data.guessed ? ' (now guessed from its name)' : ''}. Leave all unticked to offer it for every type.</p>
             </fieldset>
             <label htmlFor="export" className="form-label">Used for exports</label>
-            <select id="export" name="export" className="form-select" style={{ maxWidth: 520 }} defaultValue={data.export}>
-              <option value="auto">Automatic ({data.auto_export ? 'yes: foreign currency or "export" in the name' : 'no: home currency'})</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
+            <Dropdown id="export" name="export" style={{ maxWidth: 520 }} defaultValue={data.export}
+                      data={[{ value: 'auto', label: 'Automatic', sub: data.auto_export ? 'Yes: a foreign currency, or "export" in the name' : 'No: the home currency' },
+                             { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
             <p className="form-text">Invoices made with an export template print as Export Invoice, under LUT, with shipping details and the packing list.</p>
           </div>
         </section>

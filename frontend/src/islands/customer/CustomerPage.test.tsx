@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '../../test/render';
+import { fireEvent, pick, render, screen, waitFor, within } from '../../test/render';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CustomerPage from './CustomerPage';
 import type { CustomerData } from './types';
@@ -106,7 +106,7 @@ describe('CustomerPage', () => {
     expect(table.queryByText('Advance on PI 007, applied to 058')).not.toBeInTheDocument();
     expect(table.getByText('Balance due').closest('tr')).toHaveTextContent('₹70,000');
     expect(table.getByRole('link', { name: /PDF/ })).toHaveAttribute('href', '/customers/C-1/statement.pdf?fy=26-27&currency=INR');
-    fireEvent.change(table.getByLabelText('Financial year'), { target: { value: '' } });
+    await pick(table.getByLabelText('Financial year'), 'Every year');
     expect(table.getByText('Advance on PI 007, applied to 058')).toBeInTheDocument();
     expect(table.queryByText('Opening balance')).not.toBeInTheDocument();
     expect(table.getByRole('link', { name: /PDF/ })).toHaveAttribute('href', '/customers/C-1/statement.pdf?fy=all&currency=INR');
@@ -125,7 +125,7 @@ describe('CustomerPage', () => {
     const fetch = serve();
     render(<CustomerPage customerId="C-1" />);
     fireEvent.click(await screen.findByRole('tab', { name: /Contacts/ }));
-    fireEvent.change(screen.getByLabelText('What Ravi Kumar usually gets'), { target: { value: 'billing' } });
+    await pick('What Ravi Kumar usually gets', 'Invoices and payments');
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/customers/C-1/contacts/K-1', expect.objectContaining({ method: 'POST' })));
     const saves = () => fetch.mock.calls.filter((c) => c[0] === '/api/customers/C-1/contacts/K-1' && c[1]?.method === 'POST');
     expect(JSON.parse(String(saves()[0][1]!.body)).gets).toBe('billing');
@@ -158,7 +158,7 @@ describe('CustomerPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Drawing: change what arbor.pdf is' }));
     const move = screen.getByLabelText('In the project').closest('form')!;
     expect(move).toHaveAttribute('action', '/projects/files/A-1/link');
-    expect(screen.getByLabelText('In the project')).toHaveValue('P-1');
+    expect(move.querySelector('input[name=project_id]')).toHaveValue('P-1');                 // the hidden input it posts
     expect(screen.getByRole('button', { name: 'Delete the file' }).closest('form')).toHaveAttribute('action', '/projects/files/A-1/delete');
 
     fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));

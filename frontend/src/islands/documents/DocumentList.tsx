@@ -1,3 +1,4 @@
+import { Dropdown } from '../../mantine/Dropdown';
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../../api';
 import { day, money, totals } from '../../format';
@@ -151,15 +152,11 @@ function ListScreen({ group, tab: firstTab = 'all', query: firstQuery = '' }: { 
         <label htmlFor="dl-q" className="sr-only">Search {what}</label>
         <input id="dl-q" type="search" placeholder="Search number, subject, customer, project or PO" value={query} onChange={(e) => setQuery(e.target.value)} />
         <label htmlFor="dl-customer" className="sr-only">Customer</label>
-        <select id="dl-customer" value={customer} onChange={(e) => setCustomer(e.target.value)}>
-          <option value="">All customers</option>
-          {customers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-        </select>
+        <Dropdown id="dl-customer" value={customer} onChange={setCustomer}
+                  data={[{ value: '', label: 'All customers' }, ...customers.map(([id, name]) => ({ value: id, label: name }))]} />
         <label htmlFor="dl-year" className="sr-only">Financial year</label>
-        <select id="dl-year" value={year} onChange={(e) => setYear(e.target.value)}>
-          <option value="">All years</option>
-          {years.map((y) => <option key={y} value={y}>FY {y}</option>)}
-        </select>
+        <Dropdown id="dl-year" value={year} onChange={setYear}
+                  data={[{ value: '', label: 'All years' }, ...years.map((y) => ({ value: y, label: `FY ${y}` }))]} />
       </div>
 
       <Rows data={data} rows={shown} />

@@ -19,13 +19,15 @@ import '@mantine/core/styles/Avatar.css';
 import '@mantine/core/styles/Tooltip.css';
 import '@mantine/core/styles/Text.css';
 import '@mantine/core/styles/Mark.css';
+import '@mantine/core/styles/ColorSwatch.css';
 import './mantine.css';
 import { useEffect, useState, type ReactNode } from 'react';
 import { MantineProvider } from '@mantine/core';
 import { colorScheme, resolver, theme } from './theme';
 
-/** env 'test': no transitions or portals (src/test/render.tsx) */
-export function Mantine({ children, env }: { children: ReactNode; env?: 'test' }) {
+/** testing (src/test/render.tsx): Mantine's test mode (no transitions or portals; a closed dropdown's list stays in the
+ *  page, hidden), and no style tags in the rendered markup */
+export function Mantine({ children, testing }: { children: ReactNode; testing?: boolean }) {
   const [scheme, setScheme] = useState(colorScheme);
   useEffect(() => {
     const update = () => setScheme(colorScheme());
@@ -38,7 +40,12 @@ export function Mantine({ children, env }: { children: ReactNode; env?: 'test' }
       media?.removeEventListener('change', update);
     };
   }, []);
-  return <MantineProvider theme={theme} cssVariablesResolver={resolver} forceColorScheme={scheme} env={env}>{children}</MantineProvider>;
+  return (
+    <MantineProvider theme={theme} cssVariablesResolver={resolver} forceColorScheme={scheme} env={testing ? 'test' : 'default'}
+                     withCssVariables={!testing} withGlobalClasses={!testing}>
+      {children}
+    </MantineProvider>
+  );
 }
 
 /** For dropdowns in a <dialog>: drawn inside it (the top layer, above the page), placed fixed to the window so the

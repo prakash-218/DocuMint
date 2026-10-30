@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import DocumentPage, { Pdf } from './DocumentPage';
@@ -111,7 +111,9 @@ describe('DocumentPage', () => {
     render(<DocumentPage invoiceId="D-7" />);
     await userEvent.click(await screen.findByText('Move to another project'));
     const select = await screen.findByLabelText('Move it to');
-    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Choose a project', 'PRJ-009 · Spare clamps · FY 26-27']);
+    expect(select).toHaveAttribute('placeholder', 'Choose a project');
+    await userEvent.click(select);
+    expect(screen.getByRole('option', { name: /PRJ-009 · Spare clamps/ })).toHaveTextContent('FY 26-27');
     expect(select.closest('form')).toHaveAttribute('action', '/projects/for-document/D-7');
     expect(screen.getByRole('button', { name: 'Remove from the project' })).toHaveAttribute('value', '');
   });

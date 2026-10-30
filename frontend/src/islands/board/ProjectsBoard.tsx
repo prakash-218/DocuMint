@@ -1,3 +1,4 @@
+import { Dropdown } from '../../mantine/Dropdown';
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../../api';
 import { day, money, totals } from '../../format';
@@ -140,23 +141,17 @@ function ProjectsScreen() {
         <label htmlFor="pb-q" className="sr-only">Search projects</label>
         <input id="pb-q" type="search" placeholder="Search name, number, customer or document" value={query} onChange={(e) => setQuery(e.target.value)} />
         <label htmlFor="pb-customer" className="sr-only">Customer</label>
-        <select id="pb-customer" value={customer} onChange={(e) => setCustomer(e.target.value)}>
-          <option value="">All customers</option>
-          {data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <Dropdown id="pb-customer" value={customer} onChange={setCustomer}
+                  data={[{ value: '', label: 'All customers' }, ...data.customers.map((c) => ({ value: c.id, label: c.name }))]} />
         <label htmlFor="pb-year" className="sr-only">Financial year</label>
-        <select id="pb-year" value={year} onChange={(e) => setYear(e.target.value)}>
-          <option value="">All years</option>
-          {data.years.map((y) => <option key={y} value={y}>FY {y}</option>)}
-        </select>
+        <Dropdown id="pb-year" value={year} onChange={setYear}
+                  data={[{ value: '', label: 'All years' }, ...data.years.map((y) => ({ value: y, label: `FY ${y}` }))]} />
         {view === 'list' && (
           <>
             <label htmlFor="pb-sort" className="sr-only">Sort</label>
-            <select id="pb-sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-              <option value="activity">Latest activity</option>
-              <option value="newest">Newest project</option>
-              {!data.can.sales && <option value="due">Most due</option>}
-            </select>
+            <Dropdown id="pb-sort" value={sort} onChange={(v) => setSort(v as Sort)}
+                      data={[{ value: 'activity', label: 'Latest activity' }, { value: 'newest', label: 'Newest project' },
+                             ...(data.can.sales ? [] : [{ value: 'due', label: 'Most due' }])]} />
           </>
         )}
         <div className="seg2" role="group" aria-label="View">

@@ -1,3 +1,4 @@
+import { Dropdown, choices } from '../../mantine/Dropdown';
 import { PageHeader } from '../../app/PageHeader';
 import { ask, Loading, useLoad } from '../../app/ui';
 import { day } from '../../format';
@@ -34,9 +35,8 @@ function Requests({ data }: { data: Data }) {
               <form id={`approve-form-${r.user_id}`} action={data.team} method="post">
                 <input type="hidden" name="user_id" value={r.user_id} />
                 <label className="sr-only" htmlFor={`role-${r.user_id}`}>Role</label>
-                <select id={`role-${r.user_id}`} name="role" className="form-select form-select-sm" defaultValue="member">
-                  {data.roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
+                <Dropdown id={`role-${r.user_id}`} name="role" size="xs" data={choices(data.roles)}
+                          defaultValue={data.roles.some(([value]) => value === 'member') ? 'member' : data.roles[0]?.[0]} />
               </form>
               <button type="submit" form={`approve-form-${r.user_id}`} name="action" value="approve" className="btn btn-primary btn-sm">Approve</button>
               <form action={data.team} method="post" onSubmit={ask(`Reject ${r.email}?`)}>
@@ -68,10 +68,7 @@ function Team({ data }: { data: Data }) {
                   <input type="hidden" name="user_id" value={m.user_id} />
                   <input type="hidden" name="action" value="change_role" />
                   <label className="sr-only" htmlFor={`mrole-${m.user_id}`}>Role</label>
-                  <select id={`mrole-${m.user_id}`} name="role" className="form-select form-select-sm" defaultValue={m.role}
-                          onChange={(e) => e.currentTarget.form?.requestSubmit()}>
-                    {data.roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
+                  <Dropdown id={`mrole-${m.user_id}`} name="role" size="xs" defaultValue={m.role} submitOnChange data={choices(data.roles)} />
                 </form>
                 <form action={data.team} method="post" onSubmit={m.status === 'active' ? ask(`Deactivate ${m.email}?`) : undefined}>
                   <input type="hidden" name="user_id" value={m.user_id} />

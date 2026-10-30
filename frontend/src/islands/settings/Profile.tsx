@@ -1,3 +1,4 @@
+import { Dropdown, choices } from '../../mantine/Dropdown';
 import { useState } from 'react';
 import { PageHeader } from '../../app/PageHeader';
 import { Loading, useLoad } from '../../app/ui';
@@ -159,9 +160,7 @@ export function ProfileForm({ data }: { data: Data }) {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="default_currency" className="form-label">Main currency</label>
-                <select id="default_currency" name="default_currency" className="form-select" defaultValue={v.default_currency}>
-                  {data.currencies.map((c) => <option key={c}>{c}</option>)}
-                </select>
+                <Dropdown id="default_currency" name="default_currency" defaultValue={v.default_currency} data={choices(data.currencies)} />
                 <p className="form-text">Dashboard totals are shown in this currency.</p>
               </div>
               <div className="form-group">
@@ -170,16 +169,12 @@ export function ProfileForm({ data }: { data: Data }) {
               </div>
               <div className="form-group">
                 <label htmlFor="fy_start_month" className="form-label">Financial year starts</label>
-                <select id="fy_start_month" name="fy_start_month" className="form-select" defaultValue={v.fy_start_month}>
-                  {data.months.map(([n, name]) => <option key={n} value={n}>{name}</option>)}
-                </select>
+                <Dropdown id="fy_start_month" name="fy_start_month" defaultValue={v.fy_start_month} data={choices(data.months)} />
               </div>
               <div className="form-group">
                 <label htmlFor="advance_basis" className="form-label">Proforma advance usually on</label>
-                <select id="advance_basis" name="advance_basis" className="form-select" defaultValue={v.advance_basis}>
-                  <option value="pre_tax">Value before tax</option>
-                  <option value="total">Total including tax</option>
-                </select>
+                <Dropdown id="advance_basis" name="advance_basis" defaultValue={v.advance_basis}
+                          data={[{ value: 'pre_tax', label: 'Value before tax' }, { value: 'total', label: 'Total including tax' }]} />
               </div>
               <div className="form-group">
                 <label htmlFor="payment_days" className="form-label">Usual payment terms (days)</label>
