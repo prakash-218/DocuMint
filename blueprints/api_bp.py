@@ -11,7 +11,7 @@ import re
 
 from flask import Blueprint, g, jsonify, request, session, url_for
 
-from auth import get_current_org_role, require_org
+from auth import get_current_membership, require_org
 from db import DatabaseError, db
 import activity
 import contacts
@@ -47,7 +47,9 @@ def json_bodies_only():
 @require_org
 def me():
     """Who is signed in, in which organization, their role and what it lets them do (permissions.PERMISSIONS)."""
-    return jsonify(email=session.get('email'), role=get_current_org_role(),
+    membership = get_current_membership() or {}
+    return jsonify(email=session.get('email'), role=membership.get('role'),
+                   role_label=permissions.role_label(membership.get('role'), membership.get('role_name')),
                    org={'id': g.current_org_id, 'name': session.get('org_name')},
                    permissions=sorted(permissions.granted()), can=permissions.flags())
 
@@ -499,6 +501,122 @@ def business_profile():
     """The business profile's form (settings_view.profile); owners and admins."""
     import settings_view
     return jsonify(project_view._plain(settings_view.profile(g.current_org_id, url_for)))
+
+
+# ---------------------------------------------------------------- Roles: the built-in ones and the organization's own
+
+@api_bp.route('/settings/roles')
+@require_org
+def roles():
+    """The roles page (roles_view.listing)."""
+    import roles_view
+    return jsonify(roles_view.listing(g.current_org_id, permissions.granted(), url_for))
+
+
+@api_bp.route('/settings/roles/new', defaults={'role_id': None})
+@api_bp.route('/settings/roles/<role_id>')
+@require_org
+def role_form(role_id):
+    """A role's editor (roles_view.editor); new, ?from=member starts from a built-in role's permissions."""
+    import roles_view
+    data = roles_view.editor(g.current_org_id, role_id, request.args.get('from'), permissions.granted(), url_for)
+    if data is None:
+        return jsonify(error='Not found'), 404
+    return jsonify(data)
+
+
+def _role_fields(data: dict):
+    """(name, description, permissions) from {name, description, permissions: [...]}, or (None, a JSON refusal): a
+    name nobody else's role has, and only permissions a custom role can grant that they have themselves."""
+    name = ' '.join((data.get('name') or '').split())[:60]
+    names = data.get('permissions')
+    if not name:
+        return None, (jsonify(error='Give the role a name.'), 400)
+    if name.lower() in permissions.ROLES:
+        return None, (jsonify(error=f'{name} is a built-in role. Call yours something else.'), 400)
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        return None, (jsonify(error='Send the permissions as a list of names.'), 400)
+    unknown = [n for n in names if n not in permissions.PERMISSIONS]
+    if unknown:
+        return None, (jsonify(error=f"There's no permission called {unknown[0]}."), 400)
+    owners = [n for n in names if n in permissions.OWNERS_ONLY]
+    if owners:
+        return None, (jsonify(error=f"Only owners can {permissions.PERMISSIONS[owners[0]][0].lower()}"
+                                    f"{permissions.PERMISSIONS[owners[0]][1:]}: a role can't give that."), 400)
+    chosen = permissions.with_implied(names)
+    beyond = sorted(chosen - permissions.granted())
+    if beyond:
+        return None, (jsonify(error=f"You can't give what your own role doesn't have "
+                                    f"({permissions.PERMISSIONS[beyond[0]][0].lower()}{permissions.PERMISSIONS[beyond[0]][1:]})."), 403)
+    return (name, (data.get('description') or '').strip()[:255], sorted(chosen)), None
+
+
+def _save_role(role_id, fields):
+    """(its id, None), or (None, a JSON refusal)."""
+    name, description, names = fields
+    try:
+        row = db.execute_proc_single('sp_save_role', (g.current_org_id, role_id, name, description, names))
+    except DatabaseError as e:
+        if 'uq_org_role_name' in str(e):
+            return None, (jsonify(error=f'There is already a role called {name}.'), 409)
+        if 'gone' in str(e):
+            return None, (jsonify(error=str(e)), 404)
+        logger.exception('Could not save role %s', role_id)
+        return None, (jsonify(error='Could not save the role.'), 500)
+    return row['role_id'], None
+
+
+def _own_role(role_id):
+    """(role, None), or (None, a JSON refusal) when it isn't this organization's or has more than they may give."""
+    import roles_view
+    row = db.execute_proc_single('sp_get_role', (g.current_org_id, role_id))
+    if not row:
+        return None, (jsonify(error='Not found'), 404)
+    if not permissions.may_give(roles_view._custom(row)):
+        return None, (jsonify(error="This role has more than your own role does, so you can't change it."), 403)
+    return row, None
+
+
+@api_bp.route('/settings/roles', methods=['POST'])
+@require_org
+def create_role():
+    """A new role of the organization's own: {name, description, permissions: [names]}; 201 {id, url}."""
+    fields, refused = _role_fields(_body())
+    if refused:
+        return refused
+    saved, refused = _save_role(None, fields)
+    if refused:
+        return refused
+    return jsonify(id=saved, url=url_for('settings_bp.role', role_id=saved)), 201
+
+
+@api_bp.route('/settings/roles/<role_id>', methods=['PATCH'])
+@require_org
+def update_role(role_id):
+    """Change a role: its name, description and permissions (all three are sent). Everyone with it has the new
+    permissions on their next request."""
+    _, refused = _own_role(role_id)
+    if refused:
+        return refused
+    fields, refused = _role_fields(_body())
+    if refused:
+        return refused
+    _, refused = _save_role(role_id, fields)
+    return refused or jsonify(ok=True)
+
+
+@api_bp.route('/settings/roles/<role_id>', methods=['DELETE'])
+@require_org
+def delete_role(role_id):
+    """Delete a role nobody has (409 while someone does)."""
+    _, refused = _own_role(role_id)
+    if refused:
+        return refused
+    try:
+        db.execute_proc('sp_delete_role', (g.current_org_id, role_id), fetch=False)
+    except DatabaseError as e:
+        return jsonify(error=str(e)), 409
+    return jsonify(ok=True)
 
 
 # ---------------------------------------------------------------- Costings and templates

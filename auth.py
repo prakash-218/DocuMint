@@ -130,16 +130,18 @@ def require_org(f):
     return decorated_function
 
 
-def get_current_org_role():
-    """Get current user's role in the current organization"""
+def get_current_membership():
+    """Their membership of the current organization (sp_get_user_organizations' row: role, and for a custom role its
+    role_id, role_name and role_permissions), or None."""
     if not session.get('user_organizations') or not hasattr(g, 'current_org_id'):
         return None
-    
-    org_id = g.current_org_id
-    for org in session.get('user_organizations', []):
-        if str(org.get('org_id')) == str(org_id):
-            return org.get('role')
-    return None
+    return next((o for o in session['user_organizations'] if str(o.get('org_id')) == str(g.current_org_id)), None)
+
+
+def get_current_org_role():
+    """Their role in the current organization: a built-in one, or 'custom' (get_current_membership has which)."""
+    membership = get_current_membership()
+    return membership.get('role') if membership else None
 
 
 def register_user(email: str, password: str, org_name: str, org_domain: str) -> dict:

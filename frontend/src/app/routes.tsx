@@ -6,7 +6,7 @@ import type { SkeletonKind } from '../Skeleton';
 import { AuditLogScreen, CostingScreen, CustomerScreen, CustomersScreen, DocumentScreen, EditCustomerScreen, EditDocumentScreen,
          EditTemplateScreen, HomeScreen, InboxScreen, ListScreen, NewCustomerScreen, NewDocumentScreen, NewProjectScreen,
          NewTemplateScreen, NotificationsScreen, OrgScreen, PackingScreen, ProfileScreen, ProjectScreen, ProjectsScreen,
-         RatesScreen, SettingsScreen, TemplateLayoutScreen, TemplateScreen, TemplatesScreen, ThreadScreen } from './screens';
+         RatesScreen, RoleScreen, RolesScreen, SettingsScreen, TemplateLayoutScreen, TemplateScreen, TemplatesScreen, ThreadScreen } from './screens';
 
 export interface AppRoute {
   path: string;
@@ -47,6 +47,9 @@ export const ROUTES: AppRoute[] = [
   { path: '/settings/profile', screen: ProfileScreen, skeleton: 'page', label: 'Business profile' },
   { path: '/settings/audit-log', screen: AuditLogScreen, skeleton: 'list', label: 'Audit log' },
   { path: '/settings/organizations/:orgId/edit', screen: OrgScreen, skeleton: 'page', label: 'Name & address', ids: ['orgId'] },
+  { path: '/settings/roles', screen: RolesScreen, skeleton: 'list', label: 'Roles' },
+  { path: '/settings/roles/new', screen: RoleScreen, skeleton: 'page', label: 'New role' },
+  { path: '/settings/roles/:roleId', screen: RoleScreen, skeleton: 'page', label: 'Role', ids: ['roleId'] },
   { path: '/costings/rates', screen: RatesScreen, skeleton: 'page', label: 'Rates list' },
   { path: '/costings/:costingId', screen: CostingScreen, skeleton: 'page', label: 'Costing', ids: ['costingId'] },
   { path: '/templates', screen: TemplatesScreen, skeleton: 'list', label: 'Templates' },

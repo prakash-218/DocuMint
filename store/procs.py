@@ -91,8 +91,11 @@ def create_user(conn, email, password_hash, _out=None):
 
 @proc('sp_get_user_organizations')
 def get_user_organizations(conn, user_id):
-    return [_rows(conn, """SELECT uo.org_id, o.name, o.domain, uo.role, uo.status
+    """Their memberships; with a custom role, its name and permissions too."""
+    return [_rows(conn, """SELECT uo.org_id, o.name, o.domain, uo.role, uo.status, uo.role_id, r.name AS role_name,
+                                  r.permissions AS role_permissions
                            FROM user_organization uo JOIN organization o ON uo.org_id = o.org_id
+                           LEFT JOIN org_role r ON r.role_id = uo.role_id
                            WHERE uo.user_id = :u ORDER BY uo.created_at DESC, o.name""", u=user_id)]
 
 
@@ -145,7 +148,8 @@ def assign_user_to_org(conn, user_id, org_id, role, status):
     _require(conn, "SELECT 1 FROM organization WHERE org_id = :o", 'Organization does not exist', o=org_id)
     _exec(conn, """INSERT INTO user_organization (user_id, org_id, role, status)
                    VALUES (:u, :o, COALESCE(:r, 'member'), COALESCE(:s, 'pending'))
-                   ON CONFLICT (user_id, org_id) DO UPDATE SET role = COALESCE(:r, user_organization.role)""",
+                   ON CONFLICT (user_id, org_id) DO UPDATE SET role = COALESCE(:r, user_organization.role),
+                       role_id = CASE WHEN CAST(:r AS text) IS NULL THEN user_organization.role_id END""",
           u=user_id, o=org_id, r=role, s=status)
     return []
 
@@ -157,13 +161,27 @@ def _active_owners(conn, org_id, except_user=None):
     return row['n']
 
 
+def _role_name(conn, role, role_id):
+    """What the audit log calls a role: a custom one by its name."""
+    if role != 'custom':
+        return role
+    return (_one(conn, "SELECT name FROM org_role WHERE role_id = CAST(:r AS uuid)", r=role_id) or {}).get('name') or 'custom'
+
+
 @proc('sp_update_member_status')
-def update_member_status(conn, org_id, user_id, status, role):
+def update_member_status(conn, org_id, user_id, status, role, role_id=None):
+    """role: a built-in role, or 'custom' with role_id (one of this organization's roles); None keeps theirs."""
     _require(conn, "SELECT 1 FROM users WHERE user_id = :u", 'User does not exist', u=user_id)
     _require(conn, "SELECT 1 FROM organization WHERE org_id = :o", 'Organization does not exist', o=org_id)
-    current = _one(conn, "SELECT role, status FROM user_organization WHERE org_id = :o AND user_id = :u", o=org_id, u=user_id)
+    current = _one(conn, "SELECT role, role_id, status FROM user_organization WHERE org_id = :o AND user_id = :u",
+                   o=org_id, u=user_id)
     if not current:
         return []
+    if role == 'custom':
+        _require(conn, "SELECT 1 FROM org_role WHERE org_id = :o AND role_id = CAST(:r AS uuid)", 'That role is gone',
+                 o=org_id, r=role_id)
+    else:
+        role_id = None
     losing_owner = current['role'] == 'owner' and current['status'] == 'active' and (
         status in ('rejected', 'deactivated', 'pending') or (role and role != 'owner'))
     if losing_owner and _active_owners(conn, org_id, except_user=user_id) == 0:
@@ -173,10 +191,12 @@ def update_member_status(conn, org_id, user_id, status, role):
     if status == 'rejected':
         _exec(conn, "DELETE FROM user_organization WHERE org_id = :o AND user_id = :u", o=org_id, u=user_id)
     else:
-        _exec(conn, """UPDATE user_organization SET status = :s, role = COALESCE(:r, role)
-                       WHERE org_id = :o AND user_id = :u""", o=org_id, u=user_id, s=status, r=role)
-        if role and role != current['role']:
-            _audit(conn, org_id, 'user_organization', f'{user_id}:{org_id}', 'UPDATE', 'role', current['role'], role, info)
+        _exec(conn, """UPDATE user_organization SET status = :s, role = COALESCE(:r, role),
+                           role_id = CASE WHEN CAST(:r AS text) IS NULL THEN role_id ELSE CAST(:rid AS uuid) END
+                       WHERE org_id = :o AND user_id = :u""", o=org_id, u=user_id, s=status, r=role, rid=role_id)
+        if role and (role != current['role'] or str(role_id or '') != str(current['role_id'] or '')):
+            _audit(conn, org_id, 'user_organization', f'{user_id}:{org_id}', 'UPDATE', 'role',
+                   _role_name(conn, current['role'], current['role_id']), _role_name(conn, role, role_id), info)
         if status != current['status']:
             _audit(conn, org_id, 'user_organization', f'{user_id}:{org_id}', 'UPDATE', 'status', current['status'], status, info)
     return []
@@ -184,17 +204,78 @@ def update_member_status(conn, org_id, user_id, status, role):
 
 @proc('sp_get_pending_members')
 def get_pending_members(conn, org_id):
-    return [_rows(conn, """SELECT u.user_id, u.email, uo.role, uo.created_at AS joined_at
+    return [_rows(conn, """SELECT u.user_id, u.email, uo.role, uo.role_id, uo.created_at AS joined_at
                            FROM user_organization uo JOIN users u ON uo.user_id = u.user_id
                            WHERE uo.org_id = :o AND uo.status = 'pending' ORDER BY uo.created_at DESC""", o=org_id)]
 
 
 @proc('sp_get_org_members')
 def get_org_members(conn, org_id):
-    return [_rows(conn, """SELECT u.user_id, u.email, uo.role, uo.status, uo.created_at AS joined_at
+    return [_rows(conn, """SELECT u.user_id, u.email, uo.role, uo.role_id, r.name AS role_name,
+                                  r.permissions AS role_permissions, uo.status, uo.created_at AS joined_at
                            FROM user_organization uo JOIN users u ON uo.user_id = u.user_id
+                           LEFT JOIN org_role r ON r.role_id = uo.role_id
                            WHERE uo.org_id = :o AND uo.status IN ('active', 'deactivated')
                            ORDER BY uo.role, u.email""", o=org_id)]
+
+
+# ---------------------------------------------------------------- An organization's own roles
+
+ROLE_COLUMNS = """r.role_id, r.name, r.description, r.permissions, r.created_at,
+                  (SELECT COUNT(*) FROM user_organization uo WHERE uo.role_id = r.role_id) AS members"""
+
+
+@proc('sp_list_roles')
+def list_roles(conn, org_id):
+    """The organization's own roles, with how many people have each."""
+    return [_rows(conn, f"SELECT {ROLE_COLUMNS} FROM org_role r WHERE r.org_id = :o ORDER BY lower(r.name)", o=org_id)]
+
+
+@proc('sp_get_role')
+def get_role(conn, org_id, role_id):
+    return [_rows(conn, f"SELECT {ROLE_COLUMNS} FROM org_role r WHERE r.org_id = :o AND r.role_id = CAST(:r AS uuid)",
+                  o=org_id, r=role_id)]
+
+
+@proc('sp_save_role')
+def save_role(conn, org_id, role_id, name, description, permissions):
+    """Make a role (role_id None) or change one: its name, description and permissions (a list of names)."""
+    perms = sorted(set(permissions or []))
+    if role_id:
+        current = _one(conn, """SELECT name, description, permissions FROM org_role
+                                WHERE org_id = :o AND role_id = CAST(:r AS uuid) FOR UPDATE""", o=org_id, r=role_id)
+        if not current:
+            raise ProcError('That role is gone')
+        _exec(conn, """UPDATE org_role SET name = :n, description = :d, permissions = CAST(:p AS jsonb)
+                       WHERE role_id = CAST(:r AS uuid)""", r=role_id, n=name, d=description or None, p=json.dumps(perms))
+        if current['name'] != name:
+            _audit(conn, org_id, 'org_role', role_id, 'UPDATE', 'name', current['name'], name, f'Role: {name}')
+        before = sorted(current['permissions'] or [])
+        if before != perms:
+            added, removed = sorted(set(perms) - set(before)), sorted(set(before) - set(perms))
+            _audit(conn, org_id, 'org_role', role_id, 'UPDATE', 'permissions', ', '.join(removed) or None,
+                   ', '.join(added) or None, f'Role: {name}')
+    else:
+        role_id = _one(conn, """INSERT INTO org_role (org_id, name, description, permissions)
+                                VALUES (:o, :n, :d, CAST(:p AS jsonb)) RETURNING role_id""",
+                       o=org_id, n=name, d=description or None, p=json.dumps(perms))['role_id']
+        _audit(conn, org_id, 'org_role', role_id, 'INSERT', 'permissions', None, ', '.join(perms) or None, f'Role: {name}')
+    return [[{'role_id': str(role_id)}]]
+
+
+@proc('sp_delete_role')
+def delete_role(conn, org_id, role_id):
+    """Delete a role nobody has."""
+    role = _one(conn, f"SELECT {ROLE_COLUMNS} FROM org_role r WHERE r.org_id = :o AND r.role_id = CAST(:r AS uuid)",
+                o=org_id, r=role_id)
+    if not role:
+        raise ProcError('That role is gone')
+    if role['members']:
+        n = role['members']
+        raise ProcError(f"{n} {'person has' if n == 1 else 'people have'} this role. Give them another role first.")
+    _exec(conn, "DELETE FROM org_role WHERE role_id = CAST(:r AS uuid)", r=role_id)
+    _audit(conn, org_id, 'org_role', role_id, 'DELETE', 'name', role['name'], None, f"Role: {role['name']}")
+    return []
 
 
 @proc('sp_get_audit_log')
@@ -1212,19 +1293,22 @@ def delete_attachment(conn, attachment_id, org_id):
 
 @proc('sp_record_event')
 def record_event(conn, org_id, project_id, kind, title, body, link, actor_user_id, notify=True):
-    """An event, plus (unless notify is False) an unread notification for each active owner
-    and admin, except whoever did it."""
+    """An event, plus (unless notify is False) an unread notification for each active member whose role gets
+    notified (notifications.read: owners, admins, and custom roles with it), except whoever did it."""
     eid = _new_id()
     _exec(conn, """INSERT INTO event (event_id, org_id, project_id, actor_user_id, kind, title, body, link)
                    VALUES (:e, :o, :p, :a, :k, :t, :b, :l)""",
           e=eid, o=org_id, p=project_id or None, a=actor_user_id or None, k=kind, t=title[:300], b=body, l=link)
     if not notify:
         return [[{'event_id': eid}]]
+    import permissions
+    notified = [role for role, perms in permissions.ROLES.items() if 'notifications.read' in perms]
     _exec(conn, """INSERT INTO notification (event_id, user_id)
-                   SELECT :e, uo.user_id FROM user_organization uo
-                   WHERE uo.org_id = :o AND uo.status = 'active' AND uo.role IN ('owner', 'admin')
+                   SELECT :e, uo.user_id FROM user_organization uo LEFT JOIN org_role r ON r.role_id = uo.role_id
+                   WHERE uo.org_id = :o AND uo.status = 'active'
+                     AND (uo.role = ANY(:roles) OR uo.role = 'custom' AND r.permissions ? 'notifications.read')
                      AND (CAST(:a AS uuid) IS NULL OR uo.user_id <> CAST(:a AS uuid))""",
-          e=eid, o=org_id, a=actor_user_id or None)
+          e=eid, o=org_id, a=actor_user_id or None, roles=notified)
     return [[{'event_id': eid}]]
 
 

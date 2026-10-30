@@ -3,17 +3,17 @@ import { ask, Loading, useLoad } from '../../app/ui';
 import { day } from '../../format';
 import { Icon } from '../../icons';
 
-// The settings page (GET /api/settings, settings_view.index): for owners and admins its links, the requests to join
-// and the team; for everyone the organizations they're in. The team's forms post to settings_bp.approve_member,
-// switching posts to settings_bp.select_org.
+// The settings page (GET /api/settings, settings_view.index): its links, and for those who manage the team the requests
+// to join and the team; for everyone the organizations they're in. The team's forms post to settings_bp.approve_member
+// (a role is a built-in one's name or a custom one's id: roles they may give), switching posts to settings_bp.select_org.
 
 interface Data {
   title: string;
   links: { title: string; sub: string; href: string }[];
   team: string;
-  roles: [string, string][];
+  roles: [string, string][];          // [value, label]: the roles they may give
   requests: { user_id: string; email: string; asked: string | null }[];
-  members: { user_id: string; email: string; role: string; status: string; you: boolean }[];
+  members: { user_id: string; email: string; role: string; role_label: string; status: string; you: boolean; manage: boolean }[];
   orgs: { id: string; name: string; domain: string; role: string; current: boolean }[];
   switch: string;
   join: string;
@@ -60,9 +60,9 @@ function Team({ data }: { data: Data }) {
           <li key={m.user_id}>
             <div className="pick-main">
               <span className="pick-title">{m.email}{m.you && <span className="text-tertiary"> (you)</span>}</span>
-              <span className="pick-sub">{title(m.role)}{m.status !== 'active' && ` · ${title(m.status)}`}</span>
+              <span className="pick-sub">{m.role_label}{m.status !== 'active' && ` · ${title(m.status)}`}</span>
             </div>
-            {!m.you && (
+            {m.manage && (
               <div className="member-actions">
                 <form action={data.team} method="post">
                   <input type="hidden" name="user_id" value={m.user_id} />
@@ -70,7 +70,7 @@ function Team({ data }: { data: Data }) {
                   <label className="sr-only" htmlFor={`mrole-${m.user_id}`}>Role</label>
                   <select id={`mrole-${m.user_id}`} name="role" className="form-select form-select-sm" defaultValue={m.role}
                           onChange={(e) => e.currentTarget.form?.requestSubmit()}>
-                    {data.roles.map(([value]) => <option key={value} value={value}>{title(value)}</option>)}
+                    {data.roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </form>
                 <form action={data.team} method="post" onSubmit={m.status === 'active' ? ask(`Deactivate ${m.email}?`) : undefined}>
@@ -122,7 +122,7 @@ function SettingsView({ data }: { data: Data }) {
               <li key={o.id}>
                 <div className="pick-main">
                   <span className="pick-title">{o.name}{o.current && <> <span className="badge badge-info">Current</span></>}</span>
-                  <span className="pick-sub">{o.domain} · {title(o.role)}</span>
+                  <span className="pick-sub">{o.domain} · {o.role}</span>
                 </div>
                 {!o.current && (
                   <form method="post" action={data.switch}>

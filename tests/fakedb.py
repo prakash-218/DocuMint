@@ -6,6 +6,7 @@ tests run without MySQL. Only the procedures the tests exercise are modelled.
 import copy
 
 from auth import hash_password
+from db import DatabaseError
 
 ORG_A, ORG_B = 'a' * 36, 'b' * 36
 PASSWORD = 'secret123'
@@ -56,6 +57,8 @@ class FakeDB:
         }
         self.payments = {'INV-A': [{'amount': 10, 'payment_date': '2026-01-01', 'method': 'card',
                                     'reference_number': 'R1'}]}
+        self.roles = {}            # an organization's own roles: role_id -> {role_id, org_id, name, description, permissions}
+        self.team = []             # sp_get_org_members' rows
 
     def written(self):
         writes = ('sp_save_invoice_value', 'sp_update_invoice_total', 'sp_update_invoice_status',
@@ -125,8 +128,12 @@ class FakeDB:
             return [[{'customer_id': 'C-A', 'org_id': ORG_A, 'name': 'Acme', 'tax_id': None, 'street_address': None,
                       'city': 'Boston', 'state': 'MA', 'zip_code': None, 'country': 'US', 'created_at': None}], []] \
                 if args[0] == 'C-A' else None
-        if proc in ('sp_get_customer_users', 'sp_get_pending_members', 'sp_get_audit_log', 'sp_get_org_members'):
+        if proc == 'sp_get_org_members':
+            return copy.deepcopy(self.team)
+        if proc in ('sp_get_customer_users', 'sp_get_pending_members', 'sp_get_audit_log'):
             return []
+        if proc in ('sp_list_roles', 'sp_get_role', 'sp_save_role', 'sp_delete_role'):
+            return self._roles(proc, args)
         if proc == 'sp_get_organization_details':
             return [{'org_id': ORG_A, 'name': 'Org A', 'domain': 'a.com'}]
         if proc == 'sp_check_template_version_has_invoices':
@@ -135,6 +142,35 @@ class FakeDB:
             invoice_id, field_id, _, number, _, _, ordinal = args
             self.values[(invoice_id, field_id, ordinal or 0)] = number
         return None
+
+    def _role_members(self, role_id):
+        return sum(1 for orgs in self.members.values() for m in orgs if m.get('role_id') == role_id)
+
+    def _roles(self, proc, args):
+        org_id = args[0]
+        if proc == 'sp_list_roles':
+            return [{**r, 'members': self._role_members(r['role_id'])} for r in self.roles.values() if r['org_id'] == org_id]
+        role = self.roles.get(args[1]) if args[1] else None
+        if role and role['org_id'] != org_id:
+            role = None
+        if proc == 'sp_get_role':
+            return [{**role, 'members': self._role_members(role['role_id'])}] if role else None
+        if proc == 'sp_delete_role':
+            if not role:
+                raise DatabaseError('That role is gone')
+            if self._role_members(role['role_id']):
+                raise DatabaseError('1 person has this role. Give them another role first.')
+            del self.roles[role['role_id']]
+            return None
+        _, role_id, name, description, names = args            # sp_save_role
+        if role_id and not role:
+            raise DatabaseError('That role is gone')
+        if any(r['name'] == name and r['org_id'] == org_id and r['role_id'] != role_id for r in self.roles.values()):
+            raise DatabaseError('Duplicate entry (uq_org_role_name)')
+        role_id = role_id or f'R-{len(self.roles) + 1}'
+        self.roles[role_id] = {'role_id': role_id, 'org_id': org_id, 'name': name, 'description': description,
+                               'permissions': sorted(names)}
+        return [{'role_id': role_id}]
 
     def execute_proc_single(self, proc, args=None):
         result = self.execute_proc(proc, args)

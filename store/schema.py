@@ -61,18 +61,33 @@ users = Table(
     _created(),
 )
 
-ROLES = ('owner', 'admin', 'member', 'viewer', 'sales')
+# The built-in roles (permissions.ROLES), and custom: one of the organization's own roles (role_id)
+ROLES = ('owner', 'admin', 'member', 'viewer', 'sales', 'custom')
 MEMBER_STATUSES = ('active', 'pending', 'rejected', 'deactivated')
+
+# An organization's own roles: a name and the permissions it grants (permissions.PERMISSIONS)
+org_role = Table(
+    'org_role', metadata,
+    _id('role_id'),
+    _ref('org_id', 'organization.org_id', 'CASCADE'),
+    Column('name', String(60), nullable=False),
+    Column('description', String(255)),
+    Column('permissions', JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    _created(),
+    UniqueConstraint('org_id', 'name', name='uq_org_role_name'),
+)
 
 user_organization = Table(
     'user_organization', metadata,
     _ref('user_id', 'users.user_id', 'CASCADE'),
     _ref('org_id', 'organization.org_id', 'CASCADE'),
     Column('role', String(20), nullable=False, server_default='viewer'),
+    _ref('role_id', 'org_role.role_id', 'RESTRICT', nullable=True),     # a custom role (role = 'custom')
     Column('status', String(20), nullable=False, server_default='pending'),
     _created(),
     PrimaryKeyConstraint('user_id', 'org_id'),
     CheckConstraint(f"role IN {ROLES}", name='role'),
+    CheckConstraint("(role = 'custom') = (role_id IS NOT NULL)", name='custom_role'),
     CheckConstraint(f"status IN {MEMBER_STATUSES}", name='status'),
 )
 

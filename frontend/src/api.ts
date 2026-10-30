@@ -33,7 +33,9 @@ export const api = {
 /** GET /api/me */
 export interface Me {
   email: string;
-  role: 'owner' | 'admin' | 'member' | 'viewer' | 'sales';
+  /** A built-in role, or custom: one of the organization's own (role_label is its name) */
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'sales' | 'custom';
+  role_label: string;
   org: { id: string; name: string };
   /** Every permission they have (permissions.py: quotes.read, projects.write, ...) */
   permissions: string[];

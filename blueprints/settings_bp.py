@@ -4,11 +4,10 @@ Settings blueprint - Organization settings and preferences
 
 import logging
 import re
-from flask import Blueprint, request, render_template, redirect, url_for, flash, session, g, jsonify
+from flask import Blueprint, abort, request, render_template, redirect, url_for, flash, session, g, jsonify
 from db import db, DatabaseError
-from auth import get_current_org_role, require_auth, require_org
+from auth import get_current_membership, require_auth, require_org
 import permissions
-from store.schema import ROLES
 from access import safe_referrer
 import nav
 
@@ -363,73 +362,117 @@ def edit_organization(org_id):
         return redirect(url_for('settings_bp.index'))
     
 
+def _role_choice(org_id, value):
+    """A role from the team's forms: (role, role_id, its permissions) for a built-in role (by name) or one of the
+    organization's own (by id); (None, None, None) when none was sent; (False, None, None) when it isn't a role."""
+    if not value:
+        return None, None, None
+    if value in permissions.ROLES:
+        return value, None, permissions.ROLES[value]
+    try:
+        row = db.execute_proc_single('sp_get_role', (org_id, value))
+    except DatabaseError:
+        row = None
+    if not row:
+        return False, None, None
+    return 'custom', str(row['role_id']), permissions.of({'role': 'custom', 'role_permissions': row.get('permissions')})
+
+
 @settings_bp.route('/members/approve', methods=['POST'])
 @require_org
 def approve_member():
-    """Approve, Reject, Deactivate, Reactivate, or Change Role of a member"""
+    """Approve, reject, deactivate, reactivate, or change the role of a member. Nobody gives a role, or changes the
+    role of someone, beyond their own permissions (permissions.may_give): admins can't make or change owners."""
     org_id = g.current_org_id
     user_id = request.form.get('user_id')
-    role = request.form.get('role') 
     action = request.form.get('action')
-    
-    current_role = get_current_org_role()
-
+    back = redirect(safe_referrer('settings_bp.index'))
     if not user_id or not action:
         flash('Invalid request', 'error')
-        return redirect(safe_referrer('settings_bp.index'))
+        return back
 
-    if role and role not in ROLES:
+    value = None if action in ('reject', 'deactivate') else request.form.get('role') or ('member' if action == 'reactivate' else None)
+    role, role_id, given = _role_choice(org_id, value)
+    if role is False:
         flash('Invalid role', 'error')
-        return redirect(safe_referrer('settings_bp.index'))
+        return back
+    target = next((m for m in db.execute_proc('sp_get_org_members', (org_id,)) or []
+                   if str(m.get('user_id')) == str(user_id)), None)
+    theirs = permissions.of(target) if target else frozenset()
+    if not permissions.may_give(given or ()) or not permissions.may_give(theirs):
+        owners = 'team.owners' in (given or frozenset()) | theirs
+        flash('Only an owner can make or change owners' if owners else "That's more than your own role can give.", 'error')
+        return back
 
-    # Those who manage the team without team.owners (admins) manage everyone but the owners
-    if not permissions.can('team.owners'):
-        target = next((m for m in db.execute_proc('sp_get_org_members', (org_id,)) or []
-                       if str(m.get('user_id')) == str(user_id)), None)
-        if role == 'owner' or (target and target.get('role') == 'owner'):
-            flash('Only an owner can make or change owners', 'error')
-            return redirect(safe_referrer('settings_bp.index'))
-
+    me = get_current_membership() or {}
     if str(user_id) == str(g.current_user['user_id']) and (
-            action in ('reject', 'deactivate') or (action == 'change_role' and role != current_role)):
+            action in ('reject', 'deactivate')
+            or (action == 'change_role' and (role, role_id or None) != (me.get('role'), str(me['role_id']) if me.get('role_id') else None))):
         flash('You cannot remove or demote yourself. Ask another owner to do it.', 'error')
-        return redirect(safe_referrer('settings_bp.index'))
+        return back
 
     try:
         if action == 'approve':
             if not role:
                 flash('Role is required', 'error')
-                return redirect(safe_referrer('settings_bp.index'))
-            db.execute_proc('sp_update_member_status', (org_id, user_id, 'active', role), fetch=False)
+                return back
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'active', role, role_id), fetch=False)
             flash('Member approved', 'success')
-            
+
         elif action == 'reject':
             db.execute_proc('sp_update_member_status', (org_id, user_id, 'rejected', 'viewer'), fetch=False)
             flash('User rejected and removed', 'info')
-            
+
         elif action == 'deactivate':
             db.execute_proc('sp_update_member_status', (org_id, user_id, 'deactivated', None), fetch=False)
             flash('Member deactivated. They can no longer access this organization.', 'warning')
-            
+
         elif action == 'reactivate':
-            db.execute_proc('sp_update_member_status', (org_id, user_id, 'active', 'member'), fetch=False)
+            db.execute_proc('sp_update_member_status', (org_id, user_id, 'active', role, role_id), fetch=False)
             flash('Member reactivated successfully', 'success')
-            
+
         elif action == 'change_role':
             if not role:
                 flash('Role is required', 'error')
-                return redirect(safe_referrer('settings_bp.index'))
-            # Get current member status to preserve it
-            members = db.execute_proc('sp_get_org_members', (org_id,))
-            current_member = next((m for m in (members or []) if m.get('user_id') == user_id), None)
-            current_status = current_member.get('status', 'active') if current_member else 'active'
-            db.execute_proc('sp_update_member_status', (org_id, user_id, current_status, role), fetch=False)
-            flash(f'Member role changed to {role.title()} successfully', 'success')
+                return back
+            status = (target or {}).get('status') or 'active'           # as they are: active or deactivated
+            db.execute_proc('sp_update_member_status', (org_id, user_id, status, role, role_id), fetch=False)
+            name = (db.execute_proc_single('sp_get_role', (org_id, role_id)) or {}).get('name') if role_id else None
+            flash(f'Member role changed to {permissions.role_label(role, name)}', 'success')
 
     except DatabaseError as e:
         flash(f'Error updating member: {str(e)}', 'error')
 
-    return redirect(safe_referrer('settings_bp.index'))
+    return back
+
+
+# ---------------------------------------------------------------- Roles: the built-in ones and the organization's own
+
+@settings_bp.route('/roles')
+@require_org
+def roles():
+    """The roles, in the React app (roles_view.listing)."""
+    return nav.spa('Roles', 'list')
+
+
+@settings_bp.route('/roles/new')
+@require_org
+def new_role():
+    """A new role of the organization's own (roles_view.editor); ?from=member starts from a built-in one."""
+    return nav.spa('New role', 'page')
+
+
+@settings_bp.route('/roles/<role_id>')
+@require_org
+def role(role_id):
+    """One of the organization's roles in its editor (roles_view.editor)."""
+    try:
+        row = db.execute_proc_single('sp_get_role', (g.current_org_id, role_id))
+    except DatabaseError:
+        row = None
+    if not row:
+        abort(404)
+    return nav.spa(row['name'], 'page')
 
 
 @settings_bp.route('/audit-log')

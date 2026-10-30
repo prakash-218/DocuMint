@@ -145,6 +145,14 @@ someone's. The built-in roles are sets of them:
 | Team: approve, deactivate, change roles (admins can't touch owners) | ✓ | ✓ | | | |
 | Organization name and address; make owners | ✓ | | | | |
 
+An organization can also make **roles of its own** under Settings → Roles (`org_role`; a member with one has
+role `custom` and its `role_id`). A role is any set of permissions except the two only owners have (the name and
+address, and making owners), plus what each needs (making quotations needs seeing them). Nobody gives a role, or
+changes the role of someone, beyond their own permissions, so an admin can't make an owner. Changing a role changes
+what everyone with it may do on their next request. A role can't be deleted while someone has it. The roles API is
+`/api/settings/roles`: GET lists them; POST `{name, description, permissions}` makes one; PATCH and DELETE
+`/api/settings/roles/<id>` change or delete one.
+
 `permissions.ENDPOINTS` says what each page and API endpoint needs, and `auth.require_org` checks it before
 the view runs; an endpoint that isn't listed is refused, so a new page stays closed until it's added there
 (`tests/test_permissions.py` fails until it is). A request about a document also needs reading that

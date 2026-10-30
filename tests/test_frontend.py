@@ -24,8 +24,8 @@ def test_me_says_what_the_role_can_do(owner, fake_db, role, can):
     fake_db.members['U-A'][0]['role'] = role
     response = owner.get('/api/me')
     assert response.status_code == 200
-    assert response.get_json() == {'email': 'alice@a.com', 'role': role, 'org': {'id': ORG_A, 'name': 'Org A'}, 'can': can,
-                                   'permissions': sorted(permissions.ROLES[role])}
+    assert response.get_json() == {'email': 'alice@a.com', 'role': role, 'role_label': permissions.ROLE_LABELS[role],
+                                   'org': {'id': ORG_A, 'name': 'Org A'}, 'can': can, 'permissions': sorted(permissions.ROLES[role])}
 
 
 def test_refusals_are_json_not_redirects(client, login_as):

@@ -11,6 +11,10 @@ each with read, write (create, edit, send, revise, reopen) and delete (drafts). 
     sales   projects and their files, quotations and customers; nothing about money beyond what's quoted
     viewer  reads documents, projects, files, customers and templates, and changes nothing
 
+An organization can make roles of its own (custom roles, org_role): any permissions but the owners' (GRANTABLE), plus
+what those need (IMPLIES). Nobody gives a role beyond their own permissions, or changes the role of someone whose
+permissions go beyond theirs (may_give).
+
 ENDPOINTS says what each page and API endpoint needs, and auth.require_org checks it before the view runs (check()).
 An endpoint missing from it is refused, so a new page stays closed until it's listed (tests/test_permissions.py checks
 that every route is). Views still ask can() for what they show: a button for what you may do, and no more.
@@ -74,27 +78,89 @@ ROLES: Dict[str, FrozenSet[str]] = {
 }
 ROLE_LABELS = {'owner': 'Owner', 'admin': 'Admin', 'member': 'Member', 'sales': 'Sales (projects and quotations)',
                'viewer': 'Viewer'}
+ROLE_SUMMARIES = {
+    'owner': 'Everything, including the name and address and who the owners are',
+    'admin': "Everything but the organization's name and address, and making or changing owners",
+    'member': 'Every document, payments, projects and files, reading customers and the mailbox, sending email',
+    'sales': "Projects and their files, quotations and customers; nothing about money beyond what's quoted",
+    'viewer': 'Reads documents, projects, files, customers and templates, and changes nothing',
+}
 
-Perms = Union[str, None, Iterable[str]]
+# Custom roles: an organization's own (org_role), any set of these. What only owners have stays with them, so an
+# organization keeps its owners.
+OWNERS_ONLY = frozenset({'organization.write', 'team.owners'})
+GRANTABLE = _ALL - OWNERS_ONLY
+# The custom role editor's groups, in this order
+AREAS = [('quotes', 'Quotations'), ('proformas', 'Proforma invoices'), ('invoices', 'Invoices'), ('documents', 'Sent documents'),
+         ('payments', 'Payments'), ('projects', 'Projects'), ('files', 'Files'), ('customers', 'Customers'),
+         ('contacts', 'Contacts'), ('emails', 'Email'), ('notifications', 'Notifications'), ('costings', 'Costings'),
+         ('templates', 'Templates'), ('business', 'Business profile'), ('team', 'Team'), ('audit', 'Audit log')]
+# What a permission is no use without: making quotations needs seeing them. A role with one has these too.
+IMPLIES: Dict[str, FrozenSet[str]] = {
+    'quotes.write': frozenset({'quotes.read'}), 'quotes.delete': frozenset({'quotes.read'}),
+    'proformas.write': frozenset({'proformas.read'}), 'proformas.delete': frozenset({'proformas.read'}),
+    'invoices.write': frozenset({'invoices.read'}), 'invoices.delete': frozenset({'invoices.read'}),
+    'projects.write': frozenset({'projects.read'}), 'projects.delete': frozenset({'projects.read'}),
+    'files.write': frozenset({'files.read'}),
+    'customers.write': frozenset({'customers.read'}), 'customers.manage': frozenset({'customers.read'}),
+    'contacts.write': frozenset({'customers.read'}),
+    'emails.sync': frozenset({'emails.read'}),
+    'costings.write': frozenset({'costings.read'}),
+    'templates.write': frozenset({'templates.read'}),
+}
+
+Perms = Union[str, None, Iterable[str], Dict]
 CURRENT = 'current person'      # perms=CURRENT (the default): the current person's, from the request
 
 
 def of(role_or_perms: Perms) -> FrozenSet[str]:
-    """A role's permissions (a built-in role's name), or the permissions themselves; CURRENT: the current person's."""
+    """A role's permissions (a built-in role's name, or a membership: sp_get_user_organizations' row), or the
+    permissions themselves; CURRENT: the current person's."""
     if role_or_perms is CURRENT:
         return granted()
     if role_or_perms is None:
         return frozenset()
+    if isinstance(role_or_perms, dict):
+        return of_membership(role_or_perms)
     if isinstance(role_or_perms, str):
         return ROLES.get(role_or_perms, frozenset())
     return frozenset(role_or_perms)
 
 
+def with_implied(names: Iterable[str]) -> FrozenSet[str]:
+    """These permissions and what they're no use without (IMPLIES)."""
+    names = set(names)
+    return frozenset(names.union(*(IMPLIES.get(n, frozenset()) for n in names)))
+
+
+def of_membership(membership: Optional[Dict]) -> FrozenSet[str]:
+    """What a membership grants: its built-in role's permissions, or its custom role's (only those a custom role can
+    give, and what they imply)."""
+    if not membership:
+        return frozenset()
+    if membership.get('role') == 'custom':
+        return with_implied(set(membership.get('role_permissions') or ()) & GRANTABLE)
+    return ROLES.get(membership.get('role') or '', frozenset())
+
+
+def role_label(role: Optional[str], role_name: Optional[str] = None) -> str:
+    """A role in words: a built-in one's label, a custom one's name."""
+    if role == 'custom':
+        return role_name or 'Custom role'
+    return ROLE_LABELS.get(role or '', (role or '').title())
+
+
+def may_give(given: Perms, perms: Perms = CURRENT) -> bool:
+    """Whether they may give someone a role with these permissions, or change the role of someone who has them: only
+    within their own permissions, so nobody hands out more than they hold (admins can't make or change owners)."""
+    return of(given) <= of(perms)
+
+
 def granted() -> FrozenSet[str]:
     """The current person's permissions in the organization they're in (cached for the request)."""
     if 'permissions' not in g:
-        from auth import get_current_org_role
-        g.permissions = of(get_current_org_role())
+        from auth import get_current_membership
+        g.permissions = of_membership(get_current_membership())
     return g.permissions
 
 
@@ -253,6 +319,9 @@ ENDPOINTS: Dict[str, Rule] = {
     'settings_bp.audit_log': 'audit.read',
     'settings_bp.business_profile': 'business.write',
     'settings_bp.starter_templates': 'templates.write',
+    'settings_bp.roles': 'team.manage',
+    'settings_bp.new_role': 'team.manage',
+    'settings_bp.role': 'team.manage',
     'search_bp.items': ANYONE,                          # finds only what they may open (search.palette_items)
     # The app's JSON (blueprints/api_bp.py)
     'api_bp.me': ANYONE,
@@ -295,6 +364,11 @@ ENDPOINTS: Dict[str, Rule] = {
     'api_bp.template': 'templates.read',
     'api_bp.template_layout': 'templates.write',
     'api_bp.template_fields': 'templates.write',
+    'api_bp.roles': 'team.manage',
+    'api_bp.role_form': 'team.manage',
+    'api_bp.create_role': 'team.manage',
+    'api_bp.update_role': 'team.manage',
+    'api_bp.delete_role': 'team.manage',
 }
 
 # Endpoints that need no organization (signing in, choosing one, the customer portal): require_org isn't on them
