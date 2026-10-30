@@ -19,7 +19,8 @@ export interface Section {
   title: string;
   name: string;              // the section's name in formulas (lower case)
   fields: Field[];
-  rows?: { row: number; values: Record<string, Value> }[];
+  amount_field?: string | null;  // a line's amount, which its discount comes off (null: lines can't be discounted)
+  rows?: { row: number; values: Record<string, Value>; discount?: string }[];
   values?: Record<string, Value>;
 }
 
@@ -56,6 +57,7 @@ export interface EditorData {
   issue_date: string;
   due_date: string;
   sections: Section[];
+  discount: string;          // on the whole document, as typed: '10%', '5000', ''
   details: {
     fields: { key: string; label: string; kind: 'text' | 'date' | 'textarea'; placeholder: string; group: string }[];
     values: Record<string, string>;

@@ -5,6 +5,9 @@
 <div class="card">
     <div class="card-body">
         <dl class="summary-list">
+            {% if summary.discount %}
+            <div><dt>Discount{% if summary.discount.percent %} ({{ '%g' | format(summary.discount.percent) }}%){% endif %}</dt><dd>-{{ summary.discount.amount | currency(cur) }}</dd></div>
+            {% endif %}
             {% if summary.tax_lines %}
             <div><dt>Value before tax</dt><dd>{{ summary.taxable | currency(cur) }}</dd></div>
             <div><dt>Tax</dt><dd>{{ summary.tax_total | currency(cur) }}</dd></div>

@@ -1,15 +1,30 @@
 import { Dropdown, choices, type Choice, type ChoiceGroup } from '../../mantine/Dropdown';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../../app/PageHeader';
 import { Icon } from '../../icons';
-import { amount, lineCells, totals } from './calc';
+import { amount, lineCells, parseDiscount, totals } from './calc';
 import type { CustomerGroup, EditorData, Field, Section, Value } from './types';
 
 // A document in the editor, as the server page drew it: customer, number and dates; the template's line items (add
 // and remove lines, amounts worked out as you type) and other fields; the document's details; and beside them the
-// totals and the currency, tax and advance. It posts the same form the server page did (editor_page.py says what).
+// totals and the currency, tax, discount and advance. It posts the same form the server page did (editor_page.py
+// says what). A line's discount, and the document's, are an amount (5000) or a percent (10%).
 
-type Rows = Record<string, { row: number; values: Record<string, Value> }[]>;
+type Rows = Record<string, { row: number; values: Record<string, Value>; discount?: string }[]>;
+
+/** A discount as typed; the browser won't send the form while it isn't an amount or a percent (calc.parseDiscount) */
+function DiscountInput({ id, name, label, value, onChange, placeholder }: {
+  id?: string; name: string; label?: string; value: string; onChange: (v: string) => void; placeholder: string;
+}) {
+  const invalid = parseDiscount(value) === 'invalid';
+  return (
+    <input type="text" inputMode="decimal" id={id} name={name} value={value} aria-label={label} placeholder={placeholder} autoComplete="off"
+           className={`form-input discount-input${invalid ? ' is-invalid' : ''}`} aria-invalid={invalid || undefined}
+           title="An amount, like 5000, or a percent, like 10%"
+           ref={(el) => el?.setCustomValidity(invalid ? 'Type an amount, like 5000, or a percent, like 10%.' : '')}
+           onChange={(e) => onChange(e.target.value)} />
+  );
+}
 
 function colClass(f: Field): string {
   if (f.formula) return 'calc num';
@@ -63,6 +78,9 @@ function ItemsCard({ section, rows, currency, setRows }: {
 }) {
   const focusRow = useRef<number | null>(null);
   const body = useRef<HTMLTableSectionElement>(null);
+  const [discounting, setDiscounting] = useState(false);
+  const canDiscount = !!section.amount_field;
+  const withDiscount = canDiscount && (discounting || rows.some((r) => r.discount));
   useEffect(() => {
     if (focusRow.current === null) return;
     const tr = body.current?.querySelector(`tr[data-row="${focusRow.current}"]`);
@@ -86,19 +104,32 @@ function ItemsCard({ section, rows, currency, setRows }: {
           <thead>
             <tr>
               <th className="col-no">#</th>
-              {section.fields.map((f) => <th key={f.id} className={colClass(f)}>{f.label}</th>)}
+              {section.fields.map((f) => (
+                <Fragment key={f.id}>
+                  {withDiscount && f.id === section.amount_field && <th className="short col-discount">Discount</th>}
+                  <th className={colClass(f)}>{f.label}</th>
+                </Fragment>
+              ))}
               <th className="col-x"><span className="sr-only">Remove</span></th>
             </tr>
           </thead>
           <tbody ref={body}>
             {rows.map((r, i) => {
-              const cells = lineCells(section, r.values);
+              const cells = lineCells(section, r.values, r.discount);
               return (
                 <tr key={r.row} data-row={r.row}>
                   <td className="col-no" data-label="#"><span className="row-no">{i + 1}</span></td>
                   {section.fields.map((f) => (
-                    <Cell key={f.id} section={section} field={f} row={r.row} value={r.values[f.id]} calc={cells[f.id]} currency={currency}
-                          onChange={(v) => setRows(rows.map((x) => (x.row === r.row ? { ...x, values: { ...x.values, [f.id]: v } } : x)))} />
+                    <Fragment key={f.id}>
+                      {withDiscount && f.id === section.amount_field && (            // before the amount it comes off, as printed
+                        <td className="short col-discount" data-label="Discount">
+                          <DiscountInput name={`line_discount_${section.id}_${r.row}`} label={`Discount on line ${i + 1}`} value={r.discount ?? ''}
+                                         placeholder="—" onChange={(v) => setRows(rows.map((x) => (x.row === r.row ? { ...x, discount: v } : x)))} />
+                        </td>
+                      )}
+                      <Cell section={section} field={f} row={r.row} value={r.values[f.id]} calc={cells[f.id]} currency={currency}
+                            onChange={(v) => setRows(rows.map((x) => (x.row === r.row ? { ...x, values: { ...x.values, [f.id]: v } } : x)))} />
+                    </Fragment>
                   ))}
                   <td className="col-x">
                     <button type="button" className="btn btn-ghost btn-xs remove-row" aria-label={`Remove line ${i + 1}`} onClick={() => remove(r.row)}>
@@ -113,6 +144,9 @@ function ItemsCard({ section, rows, currency, setRows }: {
       </div>
       <div className="items-foot">
         <button type="button" className="btn btn-ghost btn-sm add-row" onClick={add}><Icon name="plus" />Add line</button>
+        {canDiscount && !withDiscount && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDiscounting(true)}>Discount a line</button>
+        )}
       </div>
     </section>
   );
@@ -194,7 +228,10 @@ export function Editor({ data }: { data: EditorData }) {
   const [currency, setCurrency] = useState(s.currency);
   const [taxMode, setTaxMode] = useState(s.tax_mode);
   const [taxRate, setTaxRate] = useState(s.tax_rate);
-  const sum = useMemo(() => totals(data.sections, rows, normals, taxMode, taxRate), [data.sections, rows, normals, taxMode, taxRate]);
+  const [discount, setDiscount] = useState(data.discount ?? '');
+  const sum = useMemo(() => totals(data.sections, rows, normals, taxMode, taxRate, discount),
+                      [data.sections, rows, normals, taxMode, taxRate, discount]);
+  const discounted = sum.discount > 0;
   const taxed = taxMode === 'cgst_sgst' || taxMode === 'igst';
   const rate = parseFloat(taxRate) || 0;
   const t = data.type;
@@ -271,9 +308,15 @@ export function Editor({ data }: { data: EditorData }) {
               <div className="card-header"><h2 className="card-title">Summary</h2></div>
               <div className="card-body">
                 <dl className="kv editor-summary">
-                  {sum.fields.map((f) => <span key={f.id} style={{ display: 'contents' }}><dt>{f.label}</dt><dd><output>{amount(f.value, currency)}</output></dd></span>)}
+                  {sum.fields.map((f, i) => (
+                    <span key={f.id} style={{ display: 'contents' }}>
+                      <dt>{discounted && i === sum.fields.length - 1 ? 'Sub total' : f.label}</dt><dd><output>{amount(f.value, currency)}</output></dd>
+                    </span>
+                  ))}
+                  {discounted && <><dt className="discount-line">{sum.discountLabel}</dt><dd className="discount-line"><output>-{amount(sum.discount, currency)}</output></dd></>}
+                  {discounted && taxed && <><dt>Taxable value</dt><dd><output>{amount(sum.taxable, currency)}</output></dd></>}
                   {taxed && <><dt className="tax-line">{sum.taxLabel}</dt><dd className="tax-line"><output>{amount(sum.tax, currency)}</output></dd></>}
-                  {(taxed || !sum.fields.length) && (
+                  {(taxed || discounted || !sum.fields.length) && (
                     <><dt className="grand"><strong>Total</strong></dt><dd className="grand"><strong><output>{amount(sum.grand, currency)}</output></strong></dd></>
                   )}
                 </dl>
@@ -284,6 +327,11 @@ export function Editor({ data }: { data: EditorData }) {
                 <div className="form-group">
                   <label htmlFor="currency" className="form-label">Currency</label>
                   <Dropdown id="currency" name="currency" value={currency} onChange={setCurrency} data={choices(s.currencies)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="discount" className="form-label">Discount on the total</label>
+                  <DiscountInput id="discount" name="discount" value={discount} onChange={setDiscount} placeholder="None" />
+                  <p className="form-text">An amount (5000) or a percent (10%), taken off before tax.</p>
                 </div>
                 <div className="form-group">
                   <label htmlFor="tax_mode" className="form-label">Tax</label>

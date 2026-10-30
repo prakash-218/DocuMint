@@ -468,8 +468,10 @@ def convert(invoice_id):
         return redirect(_back(invoice_id))
 
     _, profile = get_org_profile(org_id)
+    notes = []
     try:
-        new_id = convert_document(source, values, target, org_id, profile, template_id)
+        new_id = convert_document(source, values, target, org_id, profile, template_id,
+                                  discount='spread' if request.form.get('discount') == 'spread' else 'keep', notes=notes)
     except DocumentError as e:
         flash(str(e), 'error')
         return redirect(_back(invoice_id))
@@ -491,6 +493,8 @@ def convert(invoice_id):
     flash(f'Created {get_type(target).label.lower()} from {source.get("doc_number") or "this document"}'
           + (f', with its advance of {format_money(carried, source.get("currency_code"))}' if carried else '')
           + '. Check the details, then finalize it.', 'success')
+    for note in notes:
+        flash(note, 'warning')
     return redirect(_editor(new_id, invoice_id))
 
 

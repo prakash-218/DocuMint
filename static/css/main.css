@@ -1627,3 +1627,8 @@ details.versions li { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; co
 .perm-area .form-check { display: flex; align-items: flex-start; padding: 4px 0; line-height: 1.35; }
 .perm-area .form-check input { margin-top: 1px; flex-shrink: 0; }
 .perm-area .form-check.unavailable { color: var(--ink-3); cursor: not-allowed; }
+/* Discounts: a line's, in the editor's table, and the whole document's, beside its totals (discounts.py) */
+.items-editor .col-discount { width: 104px; }
+.discount-input.is-invalid, .discount-input.is-invalid:focus { border-color: var(--critical); }
+.convert-discount { margin: 0 0 var(--spacing-md); padding: 0; border: 0; }
+.convert-discount .form-check { display: flex; margin-top: 6px; }

@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 CellKey = Tuple[str, int]
 
 FUNCTION_NAMES = ('SUM', 'AVG', 'COUNT', 'MIN', 'MAX', 'ROUND', 'ABS', 'GET')
+# What a line's amount column is called (a calculated one with one of these names, else a section's last calculated one)
+AMOUNT_NAMES = ('amount', 'total', 'line_total', 'value', 'total_amount')
 _REF_FUNC = 'REF__'
 
 
@@ -152,6 +154,22 @@ class InvoiceModel:
                     if field.formula:
                         cells.append(((field.field_id, ordinal), field))
         return cells
+
+
+def amount_field(fields: Iterable[Dict]) -> Optional[str]:
+    """In one line-item section's fields, the one holding a line's amount: a calculated field named like an amount,
+    else the last calculated one. None when the lines' amounts aren't worked out (then a line can't be discounted)."""
+    calculated = [f for f in fields if (f.get('calculation_formula') or '').strip().lower() not in ('', 'none')]
+    named = next((f for f in calculated if normalize_name(f.get('field_name') or f.get('name')) in AMOUNT_NAMES), None)
+    pick = named or (calculated[-1] if calculated else None)
+    return pick['field_id'] if pick else None
+
+
+def _discounted(value: float, spec) -> float:
+    """A line's amount after its discount (discounts.parse's ('percent', 10.0) or ('amount', 5000.0)), to the paisa."""
+    kind, rate = spec
+    taken = value * rate / 100 if kind == 'percent' else rate
+    return round(value - min(max(taken, 0.0), max(value, 0.0)), 2)
 
 
 def _prepare(formula: str) -> str:
@@ -302,7 +320,7 @@ class _Evaluator:
         return max(values) if values else 0.0
 
 
-def calculate(fields: Iterable[Dict], values: Iterable[Dict]) -> Dict[CellKey, float]:
+def calculate(fields: Iterable[Dict], values: Iterable[Dict], discounts: Optional[Dict] = None) -> Dict[CellKey, float]:
     """
     Evaluate every formula cell of an invoice.
 
@@ -311,6 +329,9 @@ def calculate(fields: Iterable[Dict], values: Iterable[Dict]) -> Dict[CellKey, f
                 (sp_get_template_fields_by_version). May be empty, in which case
                 the field metadata on the value rows is used.
         values: invoice value rows (sp_get_invoice_details, second result set)
+        discounts: line discounts, {(section name, ordinal): ('percent', 10.0) or ('amount', 5000.0)}
+                   (discounts.for_engine): each comes off that line's amount (amount_field) before
+                   anything adds the lines up
 
     Returns:
         {(field_id, ordinal): value} for each formula cell that evaluated.
@@ -318,6 +339,14 @@ def calculate(fields: Iterable[Dict], values: Iterable[Dict]) -> Dict[CellKey, f
     """
     model = InvoiceModel(fields, values)
     formula_cells = model.formula_cells()
+    amounts: Dict[str, str] = {}            # amount field id -> its section's name, where a line can be discounted
+    if discounts:
+        for section in model.sections.values():
+            if section.type == 'line_item':
+                picked = amount_field([{'field_id': f.field_id, 'field_name': f.name, 'calculation_formula': f.formula}
+                                       for f in section.fields])
+                if picked:
+                    amounts[picked] = section.name
     results: Dict[CellKey, float] = {}
 
     # Re-evaluate until nothing changes, so formulas can depend on each other
@@ -334,6 +363,9 @@ def calculate(fields: Iterable[Dict], values: Iterable[Dict]) -> Dict[CellKey, f
                     changed = True
                 logger.debug("Formula %r for field %s failed: %s", field.formula, field.name, e)
                 continue
+            spec = discounts.get((amounts[key[0]], key[1])) if key[0] in amounts else None
+            if spec:
+                value = _discounted(value, spec)
             if key not in results or abs(results[key] - value) > 1e-9:
                 results[key] = value
                 model.cells[key] = value

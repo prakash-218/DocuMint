@@ -131,13 +131,35 @@ def customer_tax_hints(doc_type: str, org: Dict, customers: List[Dict]) -> Dict[
     return {c['customer_id']: suggest_tax_mode(doc_type, org, c) for c in customers}
 
 
-def _details_with_currency(doc_type: str, form) -> Dict:
+def _details_with_currency(doc_type: str, form, invoice_id=None) -> Dict:
+    """The details the editor posted, with the currency and the discounts (on lines and on the whole)."""
     from money import SYMBOLS
     details = details_from_form(doc_type, form)
     currency = (form.get('currency') or '').upper()
     if currency in SYMBOLS:
         details['currency'] = currency
+    if invoice_id:
+        found = _discounts_from_form(invoice_id, form)
+        if found:
+            details['discounts'] = found
     return details
+
+
+def _discounts_from_form(invoice_id, form) -> Optional[Dict]:
+    """discounts.from_form, with the document's line-item sections by id (the editor's line_discount_<id>_<row>)."""
+    import discounts
+    from access import fetch_invoice
+    from invoice_service import get_template_fields
+    header, _ = fetch_invoice(invoice_id)
+    names = {}
+    if header and header.get('template_id'):
+        for f in get_template_fields(header['template_id'], header.get('template_version')) or []:
+            if (f.get('section_type') or 'normal') == 'line_item' and f.get('section_id'):
+                names[str(f['section_id'])] = f.get('section_name') or f.get('section_display_name') or ''
+    try:
+        return discounts.from_form(form, names)
+    except discounts.DiscountError as e:
+        raise DocumentError(f'Discount: {e}') from None
 
 
 def apply_document_form(invoice_id, org_id, doc_type: str, form, profile: Dict, *, new: bool,
@@ -166,7 +188,7 @@ def apply_document_form(invoice_id, org_id, doc_type: str, form, profile: Dict, 
         db.execute_proc('sp_update_document_settings', (
             invoice_id, org_id, number, settings['tax_mode'], settings['tax_rate'],
             settings['advance_percent'], settings['advance_basis'],
-            json.dumps(_details_with_currency(doc_type, form)),
+            json.dumps(_details_with_currency(doc_type, form, invoice_id)),
         ), fetch=False)
     except DatabaseError as e:
         if 'Duplicate entry' in str(e) or '1062' in str(e):
@@ -250,7 +272,10 @@ def _copy_document(source: Dict, source_values: List[Dict], target_type: str, or
     """Create a draft of target_type with source's line items and the given settings. Returns its id.
 
     Values are copied by (section name, field name, with synonyms), so this works
-    across template versions and between templates that name columns differently."""
+    across template versions and between templates that name columns differently. Line discounts follow their
+    lines into the target's sections."""
+    import discounts
+    from calculations import normalize_name
     from invoice_service import get_template_fields, recalculate_invoice
     from access import get_org_invoice
 
@@ -258,17 +283,22 @@ def _copy_document(source: Dict, source_values: List[Dict], target_type: str, or
     new_id = result[0]['invoice_id']
     try:
         target_fields = get_template_fields(template_id)
+        sections = {}
         for v in source_values:
             if v.get('calculation_formula'):
                 continue  # recalculated on the new document
             target = _matching_field(v, target_fields)
             if not target:
                 continue
+            if target.get('section_type') == 'line_item':
+                sections.setdefault(normalize_name(v.get('section_name')), normalize_name(target.get('section_name')))
             ordinal = (v.get('value_ordinal') or 0) if target.get('section_type') == 'line_item' else None
             db.execute_proc('sp_save_invoice_value', (
                 new_id, target['field_id'], v.get('val_string'), v.get('val_number'),
                 v.get('val_date'), v.get('val_boolean'), ordinal), fetch=False)
 
+        if details.get('discounts'):
+            details = {**details, 'discounts': discounts.remap(details['discounts'], sections)}
         db.execute_proc('sp_update_invoice_dates', (new_id, date.today().isoformat(), None), fetch=False)
         db.execute_proc('sp_init_document', (new_id, org_id, target_type, number, fy, source['invoice_id']), fetch=False)
         db.execute_proc('sp_update_document_settings', (
@@ -288,10 +318,15 @@ def _copy_document(source: Dict, source_values: List[Dict], target_type: str, or
 
 
 def convert_document(source: Dict, source_values: List[Dict], target_type: str, org_id,
-                     profile: Dict, template_id: Optional[str] = None) -> str:
+                     profile: Dict, template_id: Optional[str] = None, discount: str = 'keep',
+                     notes: Optional[List[str]] = None) -> str:
     """
     Create a new draft document of target_type from source (e.g. quote -> proforma).
     The source is marked 'converted' when it's a quote or proforma.
+
+    discount, when the source has discounts: 'keep' gives the new document the same ones; 'spread' takes them into
+    its line prices instead (discounts.spread), so it shows net prices and the same total. notes gets a word about
+    any rounding left over.
     """
     if target_type == 'export_invoice':
         target_type = 'invoice'
@@ -312,6 +347,21 @@ def convert_document(source: Dict, source_values: List[Dict], target_type: str, 
     tax_mode = source.get('tax_mode') or 'none'
     if target_type == 'export_invoice' and tax_mode in ('cgst_sgst', 'igst'):
         tax_mode = 'lut'
+    import discounts
+    if discounts.any_of(source):
+        if discount == 'spread':
+            from invoice_service import get_template_fields
+            from money import format_money
+            try:
+                source_values, left = discounts.spread(source, get_template_fields(source['template_id'], source.get('template_version')),
+                                                       source_values)
+            except discounts.DiscountError as e:
+                raise DocumentError(str(e)) from None
+            if left and notes is not None:
+                notes.append(f"Rounding the prices leaves the total {format_money(abs(left), source.get('currency_code'))} "
+                             f"{'under' if left > 0 else 'over'}; adjust a price if it matters.")
+        else:
+            details['discounts'] = source_details.get('discounts')
     new_id = _copy_document(source, source_values, target_type, org_id, template_id or source['template_id'],
                             number, fy, details, tax_mode, source.get('tax_rate'),
                             source.get('advance_percent') if target_type == 'proforma' else None,

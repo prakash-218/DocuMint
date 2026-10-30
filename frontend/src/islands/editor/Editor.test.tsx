@@ -1,12 +1,12 @@
 import { optionsOf, pick, render, screen } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { evaluate, lineCells, totals } from './calc';
+import { evaluate, lineCells, parseDiscount, takeOff, totals } from './calc';
 import { Editor } from './Editor';
 import type { EditorData, Section } from './types';
 
 const ITEMS: Section = {
-  id: 'S-1', type: 'line_item', title: 'Items', name: 'items', fields: [
+  id: 'S-1', type: 'line_item', title: 'Items', name: 'items', amount_field: 'F-a', fields: [
     { id: 'F-d', name: 'description', label: 'Description', data_type: 'string', formula: null, money: false, required: true, long: true },
     { id: 'F-q', name: 'qty', label: 'Qty', data_type: 'number', formula: null, money: false, required: false, long: false },
     { id: 'F-r', name: 'rate', label: 'Rate', data_type: 'number', formula: null, money: true, required: false, long: false },
@@ -32,7 +32,7 @@ const DATA: EditorData = {
   customer: { fixed: null, groups: [{ label: 'Gear Cutters Ltd', options: [{ id: 'C-1', label: 'Gear Cutters Ltd' }, { id: 'C-2', label: 'Hosur plant' }] },
                                     { label: null, options: [{ id: 'C-9', label: 'Axle Works' }] }] },
   number: { value: 'TF/Q/031', required: false }, issue_date: '2026-10-29', due_date: '',
-  sections: [ITEMS, TOTALS],
+  sections: [ITEMS, TOTALS], discount: '',
   details: { fields: [{ key: 'subject', label: 'Subject', kind: 'text', placeholder: '', group: '' },
                       { key: 'incoterms', label: 'Incoterms', kind: 'text', placeholder: 'FOB Chennai', group: 'export' }],
              values: { subject: 'Spline gauges' }, groups: [{ key: 'export', label: 'Export terms', fields: ['incoterms'], open: false }] },
@@ -56,6 +56,25 @@ describe('the live amounts', () => {
                      { 'F-f': '500' }, 'cgst_sgst', '18');
     expect(t.fields).toEqual([{ id: 'F-t', label: 'Total', value: 2800 }]);
     expect([t.tax, t.grand, t.taxLabel]).toEqual([504, 3304, 'GST 18%']);
+  });
+});
+
+describe('discounts', () => {
+  it('reads an amount or a percent, and nothing else', () => {
+    expect(['10%', '12.5 %', '5,000', '₹5000', 'Rs. 5000', '', '0'].map(parseDiscount)).toEqual([
+      { kind: 'percent', value: 10 }, { kind: 'percent', value: 12.5 }, { kind: 'amount', value: 5000 }, { kind: 'amount', value: 5000 },
+      { kind: 'amount', value: 5000 }, null, null]);
+    expect(['10x', '150%', 'abc'].map(parseDiscount)).toEqual(['invalid', 'invalid', 'invalid']);
+    expect([takeOff(300000, { kind: 'amount', value: 45000 }), takeOff(1000, { kind: 'percent', value: 12.5 }),
+            takeOff(100, { kind: 'amount', value: 500 })]).toEqual([45000, 125, 100]);    // never more than there is
+  });
+
+  it("takes a line's discount off its amount, and the document's off the total before tax", () => {
+    expect(lineCells(ITEMS, { 'F-q': '3', 'F-r': '1000' }, '10%')).toEqual({ 'F-a': 2700 });
+    const t = totals([ITEMS, TOTALS], { 'S-1': [{ row: 1, values: { 'F-q': '2', 'F-r': '1000' }, discount: '500' },
+                                                 { row: 2, values: { 'F-q': '1', 'F-r': '300' } }] },
+                     { 'F-f': '500' }, 'cgst_sgst', '18', '10%');
+    expect([t.total, t.discount, t.taxable, t.tax, t.grand, t.discountLabel]).toEqual([2300, 230, 2070, 372.6, 2442.6, 'Discount (10%)']);
   });
 });
 
@@ -97,6 +116,29 @@ describe('Editor', () => {
     expect(screen.getByText('GST 18%').nextElementSibling).toHaveTextContent('₹450.00');
     expect(await optionsOf(screen.getByLabelText('Customer'))).toEqual(['Gear Cutters Ltd', 'Hosur plant', 'Axle Works']);
     expect(document.querySelector('[class*="groupLabel"]')).toHaveTextContent('Gear Cutters Ltd');          // its sites, under it
+  });
+
+  it('takes a discount on a line and on the whole, posts them, and shows them in the totals', async () => {
+    render(<Editor data={DATA} />);
+    expect(screen.queryByLabelText('Discount on line 1')).toBeNull();               // until a line is discounted
+    await userEvent.click(screen.getByRole('button', { name: 'Discount a line' }));
+    await userEvent.type(screen.getByLabelText('Discount on line 1'), '10%');
+    expect(screen.getByText('₹1,800.00')).toHaveClass('calc');                     // 2 × 1,000 less 10%
+    await userEvent.type(screen.getByLabelText('Discount on the total'), '300');
+    expect(posted()).toMatchObject({ 'line_discount_S-1_3': '10%', discount: '300' });
+    expect(screen.getByText('Sub total').nextElementSibling).toHaveTextContent('₹2,300.00');
+    expect(screen.getByText('Discount', { selector: 'dt' }).nextElementSibling).toHaveTextContent('-₹300.00');
+    expect(screen.getAllByText('Total').at(-1)!.parentElement!.nextElementSibling).toHaveTextContent('₹2,000.00');
+    await userEvent.clear(screen.getByLabelText('Discount on the total'));
+    await userEvent.type(screen.getByLabelText('Discount on the total'), 'ten');
+    expect(screen.getByLabelText('Discount on the total')).toBeInvalid();             // the form won't go
+  });
+
+  it('opens with the discounts a document has', () => {
+    render(<Editor data={{ ...DATA, discount: '5%', sections: [{ ...ITEMS, rows: [{ ...ITEMS.rows![0], discount: '250' }] }, TOTALS] }} />);
+    expect(screen.getByLabelText('Discount on line 1')).toHaveValue('250');
+    expect(screen.getByLabelText('Discount on the total')).toHaveValue('5%');
+    expect(screen.getByText('Discount (5%)').nextElementSibling).toHaveTextContent('-₹112.50');
   });
 
   it('says what correcting a sent document means, and keeps it from being renumbered by accident', () => {

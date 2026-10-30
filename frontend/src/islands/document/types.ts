@@ -65,7 +65,8 @@ export interface DocumentData {
   chain: { kind: string; number: string; pill: { text: string; tone: Tone }; total: number; currency: string; url: string; here: boolean; paid: boolean }[];
   people: { list: { name: string; role: string | null; email: string | null; initials: string }[]; url: string | null; empty: string } | null;
   activity: { title: string; body: string | null; when: string | null; who: string | null; icon: string; tone: string }[];
-  convert: { label: string; action: string; targets: { key: string; label: string; template: string }[]; templates: { id: string; name: string }[] } | null;
+  convert: { label: string; action: string; targets: { key: string; label: string; template: string }[]; templates: { id: string; name: string }[];
+             discount: string | null } | null;     // its discounts in words, when it has any: keep them, or take them into the prices
   project: {
     project: { title: string; label: string; fy: string | null; reference: string | null; url: string } | null;
     others: { number: string; url: string; kind: string; versions: number }[];

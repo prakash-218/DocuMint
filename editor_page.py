@@ -5,7 +5,7 @@ existing one (?correct=1 to correct a sent one). The editor posts the same form 
 invoices_bp.create_invoice and edit_invoice, which save it, so what's saved and checked is unchanged:
     line_item_<section>_<row>_field_<field>, field_<field>, detail_<key>, customer_id, doc_number, issue_date, due_date,
     currency, tax_mode, tax_rate, advance_percent, advance_basis, doc_type, suggested_number, template_id, project_id,
-    correct.
+    correct; and the discounts (discounts.py): line_discount_<section>_<row> for a line, discount for the whole.
 """
 
 from datetime import date
@@ -62,8 +62,12 @@ def sections_with_values(invoice_id: str, header: Dict) -> Dict:
     return sections
 
 
-def _sections(sections_data: Dict) -> List[Dict]:
-    """The template's sections for the editor: line item tables with their rows, and the other fields with values."""
+def _sections(sections_data: Dict, line_discounts: Optional[Dict] = None) -> List[Dict]:
+    """The template's sections for the editor: line item tables with their rows (each with its discount, as typed), the
+    field a line's discount comes off (amount_field; None: its lines can't be discounted), and the other fields with
+    values. line_discounts: discounts.of(header)['lines']."""
+    import discounts
+    from calculations import amount_field, normalize_name
     out = []
     for section_id, s in sections_data.items():
         first_string = next((f for f in s['fields'] if f.get('data_type') == 'string'), None)
@@ -76,8 +80,12 @@ def _sections(sections_data: Dict) -> List[Dict]:
                  'name': ((s['fields'][0].get('section_name') or '') if s['fields'] else '').lower()}
         if s['type'] == 'line_item':
             ordinals = sorted({o for f in s['fields'] for o in (f.get('values') or {})}) or [1]
+            off = (line_discounts or {}).get(normalize_name(s['fields'][0].get('section_name')) if s['fields'] else '', {})
+            picked = amount_field(s['fields'])
+            entry['amount_field'] = str(picked) if picked else None
             entry['rows'] = [{'row': o, 'values': {str(f['field_id']): _value(f, (f.get('values') or {}).get(o))
-                                                   for f in s['fields'] if not f.get('calculation_formula')}} for o in ordinals]
+                                                   for f in s['fields'] if not f.get('calculation_formula')},
+                              'discount': discounts.text(off.get(o))} for o in ordinals]
         else:
             entry['values'] = {str(f['field_id']): _value(f, f.get('value')) for f in s['fields'] if not f.get('calculation_formula')}
         out.append(entry)
@@ -110,9 +118,11 @@ def _project(project: Optional[Dict], url: Callable) -> Optional[Dict]:
 
 def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[Dict], header: Optional[Dict] = None,
             correcting: bool = False, customers: Optional[List[Dict]] = None, template_id: str = '', template_name: str = '') -> Dict:
+    import discounts
     t, v = doc['type'], doc['values']
     details = v.get('details') or {}
     editing = bool(header)
+    found = discounts.of(header) if editing else {'document': None, 'lines': {}}
     from documents import display_number
     number = (display_number(header) if editing else None) or doc['number']
     verb = 'Correct ' if correcting else 'Edit '
@@ -154,7 +164,8 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
         'number': {'value': number or '', 'required': bool(doc['number'] and not doc['suggested_number'])},
         'issue_date': str((header.get('issue_date') if editing else date.today().isoformat()) or ''),
         'due_date': str((header.get('due_date') if editing else '') or ''),
-        'sections': _sections(sections_data),
+        'sections': _sections(sections_data, found['lines']),
+        'discount': discounts.text(found['document']),
         'details': {'fields': [{'key': f.key, 'label': f.label, 'kind': f.kind, 'placeholder': f.placeholder, 'group': f.group} for f in t.details],
                     'values': {k: str(val) for k, val in details.items() if val is not None}, 'groups': groups},
         'settings': {'currencies': doc['currencies'], 'currency': doc['currency'], 'tax_modes': [[k, label] for k, label in doc['tax_modes'].items()],
