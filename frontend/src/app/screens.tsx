@@ -21,6 +21,8 @@ const Settings = lazy(() => import('../islands/settings/Settings'));
 const Profile = lazy(() => import('../islands/settings/Profile'));
 const AuditLog = lazy(() => import('../islands/settings/AuditLog'));
 const OrgForm = lazy(() => import('../islands/settings/OrgForm'));
+const Roles = lazy(() => import('../islands/settings/Roles'));
+const RoleEditor = lazy(() => import('../islands/settings/Roles').then((m) => ({ default: m.RoleEditor })));
 const CostingPage = lazy(() => import('../islands/costing/CostingEditor'));
 const RatesPage = lazy(() => import('../islands/costing/Rates'));
 const TemplateList = lazy(() => import('../islands/templates/TemplateList'));
@@ -144,6 +146,17 @@ export function ProfileScreen() {
 export function AuditLogScreen() {
   const { key, search } = useListKey();
   return <AuditLog key={key} search={search} />;
+}
+
+export function RolesScreen() {
+  return <Roles />;
+}
+
+/** /settings/roles/new (?from=member: starting from a built-in role) and /settings/roles/<id> */
+export function RoleScreen() {
+  const { roleId = null } = useParams();
+  const { search } = useLocation();
+  return <RoleEditor key={(roleId ?? 'new') + search} roleId={roleId} search={search} />;
 }
 
 /** /settings/organizations/<id>/edit */

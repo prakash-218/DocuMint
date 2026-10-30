@@ -16,15 +16,16 @@ def index(user: Dict, org_id, org_name: str, perms, url: Callable) -> Dict:
     """perms: the person's permissions (permissions.granted(), or a built-in role's name): the links are the ones they
     may open, and the team is there for those who manage it."""
     import permissions
+    import roles_view
     from db import db
     manage = permissions.can('team.manage', perms=perms)
     requests, members = [], []
     if manage:
         requests = db.execute_proc('sp_get_pending_members', (org_id,)) or []
         members = [m for m in db.execute_proc('sp_get_org_members', (org_id,)) or [] if m.get('status') in ('active', 'deactivated')]
-    roles = ['viewer', 'sales', 'member', 'admin'] + (['owner'] if permissions.can('team.owners', perms=perms) else [])
     links = [('Business profile', 'GSTIN, bank details, numbering, logo, quotation terms', 'business.write', url('settings_bp.business_profile')),
              ('Name & address', org_name or '', 'organization.write', url('settings_bp.edit_organization', org_id=org_id)),
+             ('Roles', 'What each role may do, and roles of your own', 'team.manage', url('settings_bp.roles')),
              ('Templates', 'Columns, formulas and printed pages', 'templates.write', url('templates_bp.list_templates')),
              ('Audit log', 'Who changed what', 'audit.read', url('settings_bp.audit_log'))]
     me = str(user['user_id'])
@@ -32,11 +33,15 @@ def index(user: Dict, org_id, org_name: str, perms, url: Callable) -> Dict:
         'title': 'Settings',
         'links': [{'title': title, 'sub': sub, 'href': href} for title, sub, need, href in links if permissions.can(need, perms=perms)],
         'team': url('settings_bp.approve_member'),
-        'roles': [[r, permissions.ROLE_LABELS[r]] for r in roles],
+        'roles': roles_view.choices(org_id, perms) if manage else [],
         'requests': [{'user_id': str(r['user_id']), 'email': r.get('email') or '', 'asked': r.get('joined_at')} for r in requests],
-        'members': [{'user_id': str(m['user_id']), 'email': m.get('email') or '', 'role': m.get('role') or '',
-                     'status': m.get('status') or '', 'you': str(m['user_id']) == me} for m in members],
-        'orgs': [{'id': str(o['org_id']), 'name': o.get('name') or '', 'domain': o.get('domain') or '', 'role': o.get('role') or '',
+        'members': [{'user_id': str(m['user_id']), 'email': m.get('email') or '',
+                     'role': str(m['role_id']) if m.get('role') == 'custom' else m.get('role') or '',
+                     'role_label': permissions.role_label(m.get('role'), m.get('role_name')),
+                     'status': m.get('status') or '', 'you': str(m['user_id']) == me,
+                     'manage': str(m['user_id']) != me and permissions.may_give(m, perms)} for m in members],
+        'orgs': [{'id': str(o['org_id']), 'name': o.get('name') or '', 'domain': o.get('domain') or '',
+                  'role': permissions.role_label(o.get('role'), o.get('role_name')),
                   'current': str(o['org_id']) == str(org_id)} for o in db.execute_proc('sp_get_user_organizations', (user['user_id'],)) or []],
         'switch': url('settings_bp.select_org'),
         'join': url('settings_bp.join_organization'),

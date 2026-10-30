@@ -36,6 +36,7 @@ PAGES = [
     ('Customers', 'customers_bp.list_customers', {}, 'users', 'clients buyers'),
     ('Templates', 'templates_bp.list_templates', {}, 'layout-template', 'formats'),
     ('Settings', 'settings_bp.index', {}, 'settings', 'business profile bank seal signature numbering team'),
+    ('Roles', 'settings_bp.roles', {}, 'shield', 'permissions access custom roles team'),
     ('Audit log', 'settings_bp.audit_log', {}, 'history', 'history changes'),
 ]
 ACTIONS = [

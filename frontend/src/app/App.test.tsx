@@ -11,7 +11,7 @@ const PROJECT = '6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f';
 const CUSTOMER = '0a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d';
 
 const BOOT: Boot = {
-  me: { email: 'ravi@gearco.example', role: 'owner', org: { id: 'O-1', name: 'Gear Cutters Ltd' }, permissions: ['projects.read'],
+  me: { email: 'ravi@gearco.example', role: 'owner', role_label: 'Owner', org: { id: 'O-1', name: 'Gear Cutters Ltd' }, permissions: ['projects.read'],
         can: { edit: true, edit_customers: true, manage: true, read_mail: true, quotations_only: false } },
   sidebar: [
     { title: null, items: [

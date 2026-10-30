@@ -82,10 +82,13 @@ def boot(role: Optional[str], unread: int, posted: Optional[Dict] = None) -> Dic
     """What the React app starts with: who's signed in, the sidebar, the links it needs, and the page's messages.
     posted: a form that didn't save (spa(posted=...)), so its screen starts from what was typed."""
     import permissions
+    from auth import get_current_membership
     perms = permissions.granted()
     orgs = session.get('user_organizations') or []
+    membership = get_current_membership() or {}
     return {
         'me': {'email': session.get('email'), 'role': role,
+               'role_label': permissions.role_label(role, membership.get('role_name')),
                'org': {'id': str(session.get('org_id') or ''), 'name': session.get('org_name') or ''},
                'permissions': sorted(perms), 'can': permissions.flags(perms)},
         'sidebar': sidebar(perms, unread),
