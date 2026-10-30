@@ -1,0 +1,56 @@
+{% from "_macros.html" import flash_messages %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {# A page outside the app (nav.public): signing in, registering, choosing an organization, the portal's login. The
+       frame and its messages are drawn here; frontend/src/public/ draws the form in #public from the boot data. #}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} · DocuMint</title>
+    <script>
+        try { var t = localStorage.getItem('dm-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
+    <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+    <link rel="icon" href="{{ url_for('static', filename='img/favicon-32.png') }}" sizes="32x32" type="image/png">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js" defer></script>
+</head>
+<body>
+    <div class="auth-shell">
+        <aside class="auth-aside">
+            <a href="{{ url_for('index') }}" class="sidebar-logo">
+                <span class="logo-icon"><img src="{{ url_for('static', filename='img/documint-icon.svg') }}" alt=""></span>
+                <span class="logo-text">DocuMint</span>
+            </a>
+            <div style="position: relative; z-index: 1;">
+                <h2>Quotes to invoices, without the spreadsheet.</h2>
+                <p>Quotations, proforma, GST and export invoices that add up and print the way your customers expect.</p>
+                <ul class="auth-points">
+                    <li><i data-lucide="briefcase"></i><span>Each project keeps the quote, PO, proforma and invoice together</span></li>
+                    <li><i data-lucide="receipt-indian-rupee"></i><span>CGST/SGST, IGST and LUT exports, in any currency</span></li>
+                    <li><i data-lucide="globe"></i><span>A portal where customers download their documents</span></li>
+                </ul>
+            </div>
+            <p style="font-size: var(--font-size-xs); color: #898781; margin: 0; position: relative; z-index: 1;">© DocuMint</p>
+        </aside>
+        <main class="auth-main">
+            <div class="auth-card">
+                <a href="{{ url_for('index') }}" class="sidebar-logo auth-mobile-logo">
+                    <span class="logo-icon"><img src="{{ url_for('static', filename='img/documint-icon.svg') }}" alt=""></span>
+                    <span class="logo-text">DocuMint</span>
+                </a>
+                {{ flash_messages() }}
+                <div id="public"><noscript><p>DocuMint needs JavaScript.</p></noscript></div>
+            </div>
+        </main>
+    </div>
+    <script type="application/json" id="boot">{{ boot | tojson }}</script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {{ frontend_assets() }}
+</body>
+</html>

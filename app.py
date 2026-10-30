@@ -3,14 +3,13 @@ Main Flask application.
 """
 
 import logging
-from flask import Flask, g, jsonify, render_template, request, session
+from flask import Flask, jsonify, render_template, request, session
 from dotenv import load_dotenv
 import os
 import pathlib
 from app_helpers import invoice_is_overdue, to_date
-from documents import DOC_TYPES, display_number, get_type, load_json
-from money import amount_in_words, format_money
-
+from documents import display_number, get_type, load_json
+from money import format_money
 
 
 env_path = pathlib.Path(__file__).parent / '.env'
@@ -18,7 +17,7 @@ load_dotenv(dotenv_path=env_path)
 
 from config import config, DEFAULT_SECRET_KEY
 from db import db
-from auth import CUSTOMER_EDITORS, EDITORS, MAIL_READERS, MANAGERS, SALES, can_delete_invoice, get_current_user
+from auth import get_current_user
 
 
 from blueprints.auth_bp import auth_bp
@@ -75,61 +74,19 @@ def create_app(config_name=None):
 
     @app.context_processor
     def inject_user():
-        from auth import get_current_customer
+        """What the pages (spa.html, _palette.html) need: the role in the current organization and its unread count."""
         user = get_current_user()
-        customer = get_current_customer()
         org_id = session.get('org_id')
         membership = next((o for o in session.get('user_organizations') or []
                            if str(o.get('org_id')) == str(org_id)), None)
-        role = membership.get('role') if membership else None
-        return {
-            'doc_nav_group': _doc_nav_group(),
-            'current_user': user,
-            'current_customer': customer,
-            'current_org_id': org_id,
-            'nav_role': role,
-            'quotations_only': role == SALES,              # Sales: projects, quotations and customers only
-            'editor_roles': EDITORS, 'customer_editor_roles': CUSTOMER_EDITORS, 'manager_roles': MANAGERS,
-            'mail_reader_roles': MAIL_READERS,
-            'unread_notifications': _unread(user, org_id, membership),
-        }
+        return {'nav_role': membership.get('role') if membership else None,
+                'unread_notifications': _unread(user, org_id, membership)}
 
     def _unread(user, org_id, membership):
         if not user or not org_id or not membership or membership.get('role') not in ('owner', 'admin'):
             return 0
         from activity import unread_count
         return unread_count(user['user_id'], org_id)
-
-    EVENT_ICONS = {'document_created': 'file-plus', 'document_sent': 'send', 'document_converted': 'arrow-right-left',
-                   'quote_accepted': 'circle-check', 'quote_declined': 'circle-x', 'quote_revised': 'file-diff',
-                   'document_corrected': 'pencil', 'document_reopened': 'undo-2',
-                   'payment': 'banknote', 'file_uploaded': 'paperclip', 'email_received': 'mail',
-                   'email_sent': 'mail-check', 'project_created': 'briefcase', 'project_status': 'flag',
-                   'note': 'sticky-note'}
-    app.add_template_global(lambda kind: EVENT_ICONS.get(kind, 'bell'), 'event_icon')
-
-    @app.template_filter('when')
-    def when_filter(value):
-        """'just now', '5 min ago', 'today 14:05', '12 Oct' - for activity lists."""
-        from datetime import datetime, timezone
-        if not value:
-            return ''
-        now = datetime.now(timezone.utc)
-        value = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-        seconds = (now - value).total_seconds()
-        if seconds < 60:
-            return 'just now'
-        if seconds < 3600:
-            return f'{int(seconds // 60)} min ago'
-        local = value.astimezone()
-        if seconds < 86400 and local.date() == now.astimezone().date():
-            return local.strftime('today %H:%M')
-        return local.strftime('%d %b %Y' if local.year != now.year else '%d %b, %H:%M')
-
-
-    def _doc_nav_group():
-        """Which documents nav entry is active: the /quotes, /proformas or /invoices section"""
-        return {'quotes': 'quote', 'proformas': 'proforma'}.get(getattr(g, 'doc_path', None), 'invoices')
 
     @app.template_filter('currency')
     def currency_filter(value, code=None, decimals=True):
@@ -191,17 +148,9 @@ def create_app(config_name=None):
             return format_money(0, 'USD')
         return ' · '.join(format_money(v, k) for k, v in totals.items())
 
-    @app.template_filter('amount_words')
-    def amount_words_filter(value, code=None):
-        return amount_in_words(value, code or 'USD')
-
     @app.template_filter('doc_number')
     def doc_number_filter(doc):
         return display_number(doc or {})
-
-    @app.template_filter('doc_label')
-    def doc_label_filter(doc_type):
-        return get_type(doc_type).label
 
     @app.template_filter('image_width')
     def image_width_filter(data_uri, height):
@@ -209,25 +158,6 @@ def create_app(config_name=None):
         given only a height across a table cell."""
         from app_helpers import image_ratio
         return round(height * image_ratio(data_uri), 1)
-
-    @app.template_filter('doc_type_plural')
-    def doc_type_plural_filter(doc_type):
-        return get_type(doc_type).plural
-
-    @app.template_filter('project_label')
-    def project_label_filter(project):
-        from projects import project_label
-        return project_label(project or {})
-
-    @app.template_filter('customer_label')
-    def customer_label_filter(row):
-        import customers
-        return customers.label(row or {})
-
-    @app.template_filter('filesize')
-    def filesize_filter(n):
-        from projects import human_size
-        return human_size(n)
 
     @app.template_filter('fromjson')
     def fromjson_filter(value):
@@ -246,18 +176,6 @@ def create_app(config_name=None):
         except (ValueError, TypeError):
             return '0'
 
-    @app.template_filter('compact_currency')
-    def compact_currency_filter(value):
-        """$950, $12.9K, $4.2M"""
-        try:
-            num = float(value or 0)
-        except (ValueError, TypeError):
-            return '$0'
-        for size, suffix in ((1e6, 'M'), (1e3, 'K')):
-            if abs(num) >= size:
-                return f'${num / size:,.1f}'.rstrip('0').rstrip('.') + suffix
-        return f'${num:,.0f}'
-
     @app.template_filter('date')
     def date_filter(value):
         """Format a date or ISO date string as 'Jan 5, 2026'"""
@@ -266,30 +184,14 @@ def create_app(config_name=None):
             return value or ''
         return f"{d.strftime('%b')} {d.day}, {d.year}"
 
-    from pagination import page_url
-    app.add_template_global(page_url, 'page_url')
     app.add_template_global(invoice_is_overdue, 'is_overdue')
-    app.add_template_global(DOC_TYPES, 'DOC_TYPES')
     app.add_template_global(get_type, 'doc_type_info')
     import nav
-    app.add_template_global(nav.sidebar, 'nav_sidebar')
-    app.add_template_global(nav.active, 'nav_active')
     app.add_template_global(nav.boot, 'spa_boot')
-    app.add_template_global(can_delete_invoice, 'can_delete_invoice')
     app.add_template_global(frontend_assets, 'frontend_assets')
     from layout import printed_customer_fields, printed_org_fields
     app.add_template_global(printed_org_fields, 'printed_org_fields')
     app.add_template_global(printed_customer_fields, 'printed_customer_fields')
-
-    @app.template_filter('is_currency_field')
-    def is_currency_field_filter(field_label):
-        """Check if field label suggests it's a currency field"""
-        if not field_label:
-            return False
-        currency_keywords = ['amount', 'price', 'total', 'cost', 'fee', 'charge', 'payment', 'paid', 'due', 'balance', 'revenue', 'income', 'expense', 'discount', 'tax', 'subtotal']
-        label_lower = field_label.lower()
-        return any(keyword in label_lower for keyword in currency_keywords)
-
 
     @app.errorhandler(404)
     def not_found(error):
@@ -310,7 +212,8 @@ def create_app(config_name=None):
         if user:
             from flask import redirect, url_for
             return redirect(url_for('dashboard_bp.index'))
-        return render_template('auth/login.html')
+        from blueprints.auth_bp import _login_page
+        return _login_page()
 
     return app
 

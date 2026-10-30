@@ -1,4 +1,3 @@
-{% from "_skeletons.html" import skeleton as skeleton_shapes %}
 {% macro flash_messages() %}
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -23,10 +22,6 @@
     {% endif %}
 {% endmacro %}
 
-{% macro invoice_number(invoice_id) -%}
-    INV-{{ (invoice_id or '')[:8] | upper }}
-{%- endmacro %}
-
 {# Render one stored invoice value according to its data type #}
 {% macro field_value(value, code=None) -%}
     {%- if not value -%}
@@ -43,38 +38,3 @@
         {{ value.val_string | multiline if value.val_string else '—' }}
     {%- endif -%}
 {%- endmacro %}
-
-{% macro empty_state(icon, title, text='', action_url=None, action_label=None) %}
-<div class="empty-state">
-    <span class="empty-icon"><i data-lucide="{{ icon }}"></i></span>
-    <h3>{{ title }}</h3>
-    {% if text %}<p>{{ text }}</p>{% endif %}
-    {% if action_url %}<a href="{{ action_url }}" class="btn btn-primary"><i data-lucide="plus"></i>{{ action_label }}</a>{% endif %}
-</div>
-{% endmacro %}
-
-{# Page links under a list: "26–50 of 312   ‹ 1 2 [3] 4 … 13 ›". p is a pagination.Page #}
-{% macro pager(p, noun='') %}
-{% if p and p.pages > 1 %}
-<nav class="pager" aria-label="Pages">
-    <span class="pager-count">{{ p.first }}–{{ p.last }} of {{ p.total }}{% if noun %} {{ noun }}{% endif %}</span>
-    <span class="pager-links">
-        {% if p.has_prev %}<a href="{{ page_url(p.page - 1) }}" rel="prev" aria-label="Previous page"><i data-lucide="chevron-left"></i></a>{% else %}<span class="disabled" aria-hidden="true"><i data-lucide="chevron-left"></i></span>{% endif %}
-        {% for n in p.numbers() %}
-        {% if n is none %}<span class="gap">…</span>
-        {% elif n == p.page %}<span class="current" aria-current="page">{{ n }}</span>
-        {% else %}<a href="{{ page_url(n) }}">{{ n }}</a>{% endif %}
-        {% endfor %}
-        {% if p.has_next %}<a href="{{ page_url(p.page + 1) }}" rel="next" aria-label="Next page"><i data-lucide="chevron-right"></i></a>{% else %}<span class="disabled" aria-hidden="true"><i data-lucide="chevron-right"></i></span>{% endif %}
-    </span>
-</nav>
-{% endif %}
-{% endmacro %}
-
-{# A React screen (frontend/src/islands.ts) mounted here, with these props. skeleton (list, page, home, doc): the grey
-   shapes of what it will show (_skeletons.html), there until the script replaces them #}
-{% macro island(name, props={}, label='', skeleton=None) %}
-<div data-island="{{ name }}" data-props="{{ props | tojson | forceescape }}"{% if label %} aria-label="{{ label }}"{% endif %}>
-    {%- if skeleton %}{{ skeleton_shapes(skeleton, label) }}{% endif -%}
-</div>
-{% endmacro %}

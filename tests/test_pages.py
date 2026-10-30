@@ -49,11 +49,9 @@ def test_draft_invoice_edit_page_renders(client, login_as, fake_db):
 def test_screens_show_their_shapes_until_the_script_replaces_them(app, client, login_as, fake_db):
     from flask import render_template_string
     with app.test_request_context():
-        page = render_template_string("{% from '_macros.html' import island %}{{ island('home', {}, label='Home', skeleton='home') }}")
-        bare = render_template_string("{% from '_macros.html' import island %}{{ island('email-composer', {'projectId': 'P-1'}) }}")
-    assert page.strip().startswith('<div data-island="home"') and 'class="ui skeleton" aria-busy="true" role="status"' in page
+        page = render_template_string("{% from '_skeletons.html' import skeleton %}{{ skeleton('home', 'Home') }}")
+    assert 'class="ui skeleton" aria-busy="true" role="status"' in page
     assert 'Home: loading…' in page and 'class="stats"' in page and 'aria-hidden="true"' in page
-    assert 'skeleton' not in bare and bare.strip().endswith('></div>')
     login_as('U-A', ORG_A, 'alice@a.com')
     html = client.get('/projects/').get_data(as_text=True)                  # the React app's page: the frame and the list's shapes
     assert '<div id="app">' in html and 'Projects: loading…' in html and '<style>.skeleton { display: none; }</style>' in html

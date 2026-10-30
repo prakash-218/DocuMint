@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from tests.fakedb import ORG_A, ORG_B, PASSWORD
@@ -9,6 +11,19 @@ def test_existing_user_flag_requires_password(client):
     with client.session_transaction() as s:
         assert s.get('user_id') is None
     assert '/register/verify' in response.headers['Location']
+
+
+def test_choosing_an_organization_keeps_a_verified_account_verified(client):
+    from urllib.parse import parse_qs, urlsplit
+    from tests.spa import boot_of
+    client.post('/auth/register/verify', data={'email': 'alice@a.com', 'domain': 'a.com', 'password': PASSWORD})
+    page = boot_of(client.get('/auth/register/select-org?email=alice@a.com&domain=a.com&existing_user=true').get_data(as_text=True))
+    assert page['screen'] == 'choose_org' and page['props']['existing_user']
+    assert parse_qs(urlsplit(page['props']['action']).query)['existing_user'] == ['true']
+    response = client.post(page['props']['action'], data={'email': 'alice@a.com', 'domain': 'a.com', 'action': 'join', 'org_id': ORG_A})
+    assert 'existing_user=true' in response.headers['Location']          # so the next step doesn't ask for a new password
+    joining = boot_of(client.get(response.headers['Location']).get_data(as_text=True))
+    assert joining['screen'] == 'register_org' and joining['props']['existing_user'] and 'password' not in json.dumps(joining)
 
 
 def test_verified_existing_user_can_continue(client):

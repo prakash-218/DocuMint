@@ -61,14 +61,16 @@ def test_customer_cannot_see_drafts(client, fake_db):
         s.update(customer_user_id='CU', customer_id='C-A', customer_email='c@a.com', customer_name='Acme')
     response = client.get('/customer/invoices/INV-A')
     assert response.status_code == 302
+    assert client.get('/customer/api/documents/INV-A').status_code == 404
 
 
 def test_customer_sees_own_finalized_invoice(client, fake_db):
     with client.session_transaction() as s:
         s.update(customer_user_id='CU', customer_id='C-A', customer_email='c@a.com', customer_name='Acme')
     response = client.get('/customer/invoices/INV-A')
-    assert response.status_code == 200
-    assert b'$38.50' in response.data
+    assert response.status_code == 200 and b'<div id="portal">' in response.data      # the portal's app
+    document = client.get('/customer/api/documents/INV-A').get_json()
+    assert '$38.50' in document['document_html'] and document['pdf'] == '/customer/invoices/INV-A/pdf'
     assert fake_db.written() == []
 
 

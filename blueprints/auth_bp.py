@@ -10,6 +10,48 @@ import traceback
 auth_bp = Blueprint('auth_bp', __name__)
 
 
+# ---------------------------------------------------------------- The pages (nav.public: frontend/src/public/ draws them)
+
+def _login_page():
+    import nav
+    return nav.public('login', 'Log in', action=url_for('auth_bp.login'), register=url_for('auth_bp.register'),
+                      portal=url_for('customer_portal_bp.login'))
+
+
+def _register_page():
+    import nav
+    return nav.public('register', 'Register', action=url_for('auth_bp.register'), login=url_for('auth_bp.login'))
+
+
+def _verify_page(email, domain):
+    import nav
+    return nav.public('verify', 'Verify your account', email=email, domain=domain or '',
+                      action=url_for('auth_bp.verify_existing_user', email=email, domain=domain),
+                      register=url_for('auth_bp.register'), login=url_for('auth_bp.login'))
+
+
+def _choose_org_page(email, domain, existing_orgs, existing_user):
+    import nav
+    orgs = [{'id': str(o.get('org_id')), 'name': o.get('name') or '', 'domain': o.get('domain') or '',
+             'created': str(o.get('created_at') or '')} for o in existing_orgs or []]
+    # existing_user stays on the form's address: the next step trusts it only after verify_existing_user
+    return nav.public('choose_org', 'Choose your organization', email=email, domain=domain or '', orgs=orgs,
+                      existing_user=bool(existing_user), register=url_for('auth_bp.register'),
+                      action=url_for('auth_bp.select_org_register', email=email, domain=domain,
+                                     existing_user='true' if existing_user else None))
+
+
+def _register_org_page(email, domain, existing_org_id=None, existing_org=None, existing_user=False):
+    import nav
+    org = {'name': existing_org.get('name') or '', 'domain': existing_org.get('domain') or ''} if existing_org else None
+    back = ({'href': url_for('auth_bp.select_org_register', email=email, domain=domain), 'label': 'Back to organization selection'}
+            if existing_org_id else {'href': url_for('auth_bp.register'), 'label': 'Back to email'})
+    return nav.public('register_org', 'Set up your organization', email=email, domain=domain or '',
+                      org_id=str(existing_org_id or ''), org=org, existing_user=bool(existing_user), back=back,
+                      action=url_for('auth_bp.register_org', email=email, domain=domain, org_id=existing_org_id,
+                                     existing_user='true' if existing_user else None))
+
+
 def _is_verified_existing_user(email):
     """The existing_user flag comes from the client, so only trust it for an
     email whose password was checked in verify_existing_user this session."""
@@ -25,7 +67,7 @@ def login():
 
         if not email or not password:
             flash('Email and password are required', 'error')
-            return render_template('auth/login.html')
+            return _login_page()
 
         try:
 
@@ -33,12 +75,12 @@ def login():
 
             if not user_result:
                 flash('Invalid email or password', 'error')
-                return render_template('auth/login.html')
+                return _login_page()
 
 
             if not verify_password(password, user_result['password_hash']):
                 flash('Invalid email or password', 'error')
-                return render_template('auth/login.html')
+                return _login_page()
 
 
             orgs = db.execute_proc('sp_get_user_organizations', (user_result['user_id'],))
@@ -63,9 +105,9 @@ def login():
 
         except DatabaseError as e:
             flash('Login failed. Please try again.', 'error')
-            return render_template('auth/login.html')
+            return _login_page()
 
-    return render_template('auth/login.html')
+    return _login_page()
 
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
@@ -76,12 +118,12 @@ def register():
 
         if not email:
             flash('Email is required', 'error')
-            return render_template('auth/register.html')
+            return _register_page()
 
 
         if '@' not in email or '.' not in email.split('@')[1]:
             flash('Please enter a valid email address', 'error')
-            return render_template('auth/register.html')
+            return _register_page()
 
 
         email_exists = False
@@ -115,9 +157,9 @@ def register():
                     return redirect(url_for('auth_bp.register_org', email=email, domain=email_domain))
         else:
             flash('Invalid email format', 'error')
-            return render_template('auth/register.html')
+            return _register_page()
 
-    return render_template('auth/register.html')
+    return _register_page()
 
 
 @auth_bp.route('/register/verify', methods=['GET', 'POST'])
@@ -141,7 +183,7 @@ def verify_existing_user():
 
         if not password:
             flash('Password is required', 'error')
-            return render_template('auth/verify_existing_user.html', email=email, domain=domain)
+            return _verify_page(email, domain)
 
         try:
 
@@ -154,7 +196,7 @@ def verify_existing_user():
             from auth import verify_password
             if not verify_password(password, user_result[0]['password_hash']):
                 flash('Incorrect password. Please try again.', 'error')
-                return render_template('auth/verify_existing_user.html', email=email, domain=domain)
+                return _verify_page(email, domain)
 
             session['verified_registration_email'] = email.lower()
 
@@ -173,9 +215,9 @@ def verify_existing_user():
 
         except DatabaseError as e:
             flash(f'Error verifying account: {str(e)}', 'error')
-            return render_template('auth/verify_existing_user.html', email=email, domain=domain)
+            return _verify_page(email, domain)
 
-    return render_template('auth/verify_existing_user.html', email=email, domain=domain)
+    return _verify_page(email, domain)
 
 
 @auth_bp.route('/register/select-org', methods=['GET', 'POST'])
@@ -218,7 +260,7 @@ def select_org_register():
         except DatabaseError:
             pass
 
-    return render_template('auth/select_org_register.html', email=email, domain=domain, existing_orgs=existing_orgs, existing_user=existing_user)
+    return _choose_org_page(email, domain, existing_orgs, existing_user)
 
 
 @auth_bp.route('/register/org', methods=['GET', 'POST'])
@@ -262,7 +304,7 @@ def register_org():
                             existing_org = next((o for o in org_result if o.get('org_id') == existing_org_id or o['org_id'] == existing_org_id), None)
                     except DatabaseError:
                         pass
-                return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=existing_org_id, existing_org=existing_org, existing_user=existing_user)
+                return _register_org_page(email=email, domain=domain, existing_org_id=existing_org_id, existing_org=existing_org, existing_user=existing_user)
 
             if password != confirm_password:
                 flash('Passwords do not match', 'error')
@@ -274,7 +316,7 @@ def register_org():
                             existing_org = next((o for o in org_result if o.get('org_id') == existing_org_id or o['org_id'] == existing_org_id), None)
                     except DatabaseError:
                         pass
-                return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=existing_org_id, existing_org=existing_org, existing_user=existing_user)
+                return _register_org_page(email=email, domain=domain, existing_org_id=existing_org_id, existing_org=existing_org, existing_user=existing_user)
 
             if len(password) < 8:
                 flash('Password must be at least 8 characters', 'error')
@@ -286,7 +328,7 @@ def register_org():
                             existing_org = next((o for o in org_result if o.get('org_id') == existing_org_id or o['org_id'] == existing_org_id), None)
                     except DatabaseError:
                         pass
-                return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=existing_org_id, existing_org=existing_org, existing_user=existing_user)
+                return _register_org_page(email=email, domain=domain, existing_org_id=existing_org_id, existing_org=existing_org, existing_user=existing_user)
 
         try:
 
@@ -382,7 +424,7 @@ def register_org():
 
             if not org_name:
                 flash('Organization name is required', 'error')
-                return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
+                return _register_org_page(email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
 
             if not org_domain:
                 org_domain = domain
@@ -402,7 +444,7 @@ def register_org():
                         for org in existing_orgs:
                             if org.get('name') == org_name or org['name'] == org_name:
                                 flash(f'An organization named "{org_name}" with domain "{org_domain}" already exists. Please choose a different name or domain.', 'error')
-                                return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
+                                return _register_org_page(email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
                 except DatabaseError:
                     pass
 
@@ -426,14 +468,14 @@ def register_org():
                     ))
                     if not org_result or len(org_result) == 0:
                         flash('Failed to create organization', 'error')
-                        return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
+                        return _register_org_page(email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
                 except DatabaseError as e:
                     error_msg = str(e)
                     if 'Duplicate entry' in error_msg or '1062' in error_msg:
                         flash(f'An organization with domain "{org_domain}" already exists. Please choose a different domain or join the existing organization.', 'error')
                     else:
                         flash(f'Failed to create organization: {error_msg}', 'error')
-                    return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
+                    return _register_org_page(email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
 
                 new_org_id = org_result[0].get('org_id')
                 db.execute_proc('sp_assign_user_to_org', (user_id, new_org_id, 'owner','active'), fetch=False)
@@ -464,7 +506,7 @@ def register_org():
                         for org in existing_orgs:
                             if org.get('name') == org_name or org['name'] == org_name:
                                 flash(f'An organization named "{org_name}" with domain "{org_domain}" already exists. Please choose a different name or domain.', 'error')
-                                return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
+                                return _register_org_page(email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
                 except DatabaseError:
                     pass
 
@@ -480,11 +522,11 @@ def register_org():
                             flash(f'Registration failed: {error_msg}', 'error')
                     else:
                         flash(f'Registration failed: {error_msg}', 'error')
-                    return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
+                    return _register_org_page(email=email, domain=domain, existing_org_id=None, existing_user=existing_user)
 
                 if not user_data or 'user_id' not in user_data:
                     flash('Registration failed: Invalid response from server', 'error')
-                    return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=None)
+                    return _register_org_page(email=email, domain=domain, existing_org_id=None)
 
 
                 orgs = db.execute_proc('sp_get_user_organizations', (user_data['user_id'],))
@@ -507,15 +549,15 @@ def register_org():
 
         except ValueError as e:
             flash(str(e), 'error')
-            return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=existing_org_id)
+            return _register_org_page(email=email, domain=domain, existing_org_id=existing_org_id)
         except DatabaseError as e:
             error_msg = str(e)
             flash(f'Registration failed: {error_msg}', 'error')
-            return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=existing_org_id)
+            return _register_org_page(email=email, domain=domain, existing_org_id=existing_org_id)
         except Exception as e:
             error_msg = str(e)
             flash(f'Unexpected error: {error_msg}', 'error')
-            return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=existing_org_id)
+            return _register_org_page(email=email, domain=domain, existing_org_id=existing_org_id)
 
 
     existing_org = None
@@ -527,7 +569,7 @@ def register_org():
         except DatabaseError:
             pass
 
-    return render_template('auth/register_org.html', email=email, domain=domain, existing_org_id=org_id, existing_org=existing_org, existing_user=existing_user)
+    return _register_org_page(email=email, domain=domain, existing_org_id=org_id, existing_org=existing_org, existing_user=existing_user)
 
 
 @auth_bp.route('/logout', methods=['POST'])

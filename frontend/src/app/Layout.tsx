@@ -16,7 +16,7 @@ export function useBoot(): Boot | null {
 
 const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-function toggleTheme() {
+export function toggleTheme() {
   const root = document.documentElement;
   const current = root.getAttribute('data-theme') || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   const next = current === 'dark' ? 'light' : 'dark';

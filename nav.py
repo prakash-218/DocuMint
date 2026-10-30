@@ -1,14 +1,13 @@
 """
 The app's frame: the sidebar's sections and links for this person's role, the header's "New" menu, and the single-page
-app's boot data. The server pages (base.html, through _sidebar.html) and the React app (frontend/src/app/) both draw the
-sidebar from sidebar() here, so the two always match.
+app's boot data, which the React app (frontend/src/app/) draws from.
 
 A link is active when its prefix is the longest one the current path starts with: /settings/audit-log lights Audit
 log, not Settings. frontend/src/app/nav.ts does the same in the browser.
 
-The screens the React app shows are pages that call spa(): Flask still checks access for the address, then sends the
-app's one HTML page, and the app's router draws the screen. Every other page is still a server page; the app opens
-those with an ordinary page load.
+The app's screens are pages that call spa(): Flask still checks access for the address, then sends the app's one HTML
+page, and the app's router draws the screen. Pages outside the app (signing in, registering, choosing an organization)
+call public(); the customer portal calls portal(). PDFs and the error pages are still drawn on the server.
 """
 
 from typing import Dict, List, Optional
@@ -96,3 +95,22 @@ def spa(title: str, skeleton: str = 'page', posted: bool = False):
     answers a form that didn't save, so the screen starts from what was typed (boot's posted) and its message."""
     form = {'path': request.path, 'values': request.form.to_dict()} if posted else None
     return render_template('spa.html', title=title, skeleton=skeleton, path=request.path, posted=form)
+
+
+def public(screen: str, title: str, **props):
+    """A page outside the app: signing in, registering, choosing or making an organization, the portal's login. The
+    sign-in frame and the page's messages come from templates/public.html; frontend/src/public/ draws the screen's form
+    from props, which posts to the same route as before. Never pass a password in props."""
+    return render_template('public.html', title=title, boot={'screen': screen, 'props': props})
+
+
+def portal(title: str, skeleton: str = 'list'):
+    """The customer portal's React app (frontend/src/portal/) for this address: its frame with the page's messages until
+    the app takes over. skeleton (list, doc) is only for that first moment."""
+    from auth import get_current_customer
+    customer = get_current_customer() or {}
+    boot = {'customer': {'name': customer.get('customer_name') or '', 'email': customer.get('email') or ''},
+            'links': {'dashboard': url_for('customer_portal_bp.dashboard'), 'logout': url_for('customer_portal_bp.logout')},
+            'flashes': [{'category': 'info' if c == 'message' else c, 'text': m} for c, m in get_flashed_messages(with_categories=True)]}
+    return render_template('portal.html', title=title, skeleton=skeleton, boot=boot)
+
