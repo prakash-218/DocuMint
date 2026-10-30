@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '../test/render';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import EmailComposer, { type Compose } from './EmailComposer';
@@ -49,7 +49,7 @@ describe('EmailComposer', () => {
     const fetch = serve(CONTEXT);
     await openForm();
     expect(fetch.mock.calls[0][0]).toBe('/api/projects/P-1/compose?invoice_id=Q-1');
-    expect(screen.getByText('Ravi Kumar · ravi@gearco.example')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Ravi Kumar' })).toBeInTheDocument();       // in To, by name
     expect(screen.getByRole('checkbox', { name: /Quotation Q\/041/ })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /Tax Invoice 058/ })).toBeDisabled();
     expect(screen.getByText(/Finalize it first/)).toBeInTheDocument();
@@ -59,12 +59,13 @@ describe('EmailComposer', () => {
     const fetch = serve(CONTEXT);
     await openForm();
     const cc = screen.getByLabelText('Cc');
-    await userEvent.type(cc, 'not an address{Enter}');
-    expect(screen.getByRole('alert')).toHaveTextContent('"not" isn\'t an email address.');
+    await userEvent.type(cc, 'not-an-address{Enter}');
+    expect(screen.getByRole('alert')).toHaveTextContent('"not-an-address" isn\'t an email address.');
     await userEvent.clear(cc);
     await userEvent.type(cc, 'Meera@GearCo.example{Enter}');
-    expect(screen.getByText('Meera Iyer · meera@gearco.example')).toBeInTheDocument();     // known from the emails
-    await userEvent.selectOptions(screen.getByLabelText('Thread'), 'T-1');
+    expect(screen.getByRole('button', { name: 'Remove Meera Iyer' })).toBeInTheDocument();    // known from the emails
+    await userEvent.click(screen.getByLabelText('Thread'));
+    await userEvent.click(await screen.findByRole('option', { name: /PO for hob arbors/ }));
     expect(screen.getByLabelText('Subject')).toHaveValue('Re: PO for hob arbors');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
 
@@ -76,6 +77,32 @@ describe('EmailComposer', () => {
       body: CONTEXT.body, thread_id: 'T-1', invoice_ids: ['Q-1'],
     });
     expect(screen.getByText(/A copy is in the mailbox's Sent folder/)).toBeInTheDocument();
+  });
+
+  it('picks people from the list by name or role, showing who they are', async () => {
+    serve(CONTEXT);
+    await openForm();
+    await userEvent.type(screen.getByLabelText('Cc'), 'accou');
+    const option = await screen.findByRole('option', { name: /Divya/ });
+    expect(option).toHaveTextContent('accounts@gearco.example · proformas and invoices only');
+    expect(screen.queryByRole('option', { name: /Ravi Kumar/ })).toBeNull();                 // already in To
+    expect(within(option.closest('[role="listbox"]') as HTMLElement).getByText('Their contacts')).toBeInTheDocument();
+    await userEvent.click(option);
+    expect(screen.getByRole('button', { name: 'Remove Divya' })).toBeInTheDocument();
+  });
+
+  it('takes several pasted addresses at once, says which are not addresses, and Backspace takes the last off', async () => {
+    serve(CONTEXT);
+    await openForm();
+    const cc = screen.getByLabelText('Cc');
+    await userEvent.click(cc);
+    await userEvent.paste('stores@gearco.example; qa@gearco.example, nobody');
+    expect(screen.getByRole('button', { name: 'Remove stores@gearco.example' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove qa@gearco.example' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('"nobody" isn\'t an email address.');
+    await userEvent.clear(cc);
+    await userEvent.type(cc, '{Backspace}');
+    expect(screen.queryByRole('button', { name: 'Remove qa@gearco.example' })).toBeNull();
   });
 
   it("shows the server's reason when it can't send", async () => {

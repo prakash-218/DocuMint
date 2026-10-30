@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '../../test/render';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CustomerPage from './CustomerPage';
 import type { CustomerData } from './types';

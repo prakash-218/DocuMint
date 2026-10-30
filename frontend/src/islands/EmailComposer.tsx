@@ -1,8 +1,11 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { Select, Text } from '@mantine/core';
 import { api, ApiError } from '../api';
 import { Icon } from '../icons';
+import { IN_DIALOG } from '../mantine/Mantine';
 import { Skeleton } from '../Skeleton';
 import './EmailComposer.css';
+import { RecipientPicker } from './RecipientPicker';
 
 // An "Email" button that opens the email form for a project: who it goes to (the project's people), the
 // thread it replies in, the documents attached as PDFs. It sends through POST /api/projects/<id>/emails.
@@ -79,8 +82,9 @@ export interface ComposerProps {
   onClose: (sent: boolean) => void;
 }
 
-const EMAIL = /^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$/;
 const replySubject = (subject: string) => (/^\s*re\s*:/i.test(subject) ? subject : `Re: ${subject}`);
+const NEW = 'new';            // the Thread picker's "New email"
+const shortDay = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
 /** The island on today's pages: an Email button; after sending, the page reloads to show it. */
 export default function EmailComposer({ projectId, invoiceId, threadId, label = 'Email' }: Props) {
@@ -163,7 +167,7 @@ export function Composer({ projectId, invoiceId, threadId, endpoints, onClose }:
     }
   }
 
-  const known = context ? [...context.people, ...context.found.map((p) => ({ ...p, role: 'found in emails' }))] : [];
+  const known = context ? [...context.people, ...context.found] : [];
   const replies = endpoints?.replies ?? 'Replies come back to this project.';
   const nameOf = (email: string) => known.find((p) => p.email === email)?.name ?? email;
 
@@ -206,17 +210,25 @@ export function Composer({ projectId, invoiceId, threadId, endpoints, onClose }:
                   <span className="dm-field-label">From</span>
                   <span>{context.from_name}{context.from ? ` · ${context.from}` : ''}</span>
                 </div>
-                <Recipients id={`${id}-to`} label="To" value={to} onChange={setTo} known={known} />
-                <Recipients id={`${id}-cc`} label="Cc" value={cc} onChange={setCc} known={known} />
+                <RecipientPicker id={`${id}-to`} label="To" value={to} onChange={setTo} people={context.people} found={context.found} />
+                <RecipientPicker id={`${id}-cc`} label="Cc" value={cc} onChange={setCc} people={context.people} found={context.found} />
                 {context.threads.length > 0 && (
                   <div className="dm-field">
                     <label htmlFor={`${id}-thread`} className="dm-field-label">Thread</label>
-                    <select id={`${id}-thread`} className="form-select" value={thread} onChange={(e) => pickThread(e.target.value)}>
-                      <option value="">New email</option>
-                      {context.threads.map((t) => (
-                        <option key={t.thread_id} value={t.thread_id}>Reply in: {t.subject}</option>
-                      ))}
-                    </select>
+                    <Select id={`${id}-thread`} value={thread || NEW} allowDeselect={false} comboboxProps={IN_DIALOG}
+                            onChange={(v) => pickThread(v && v !== NEW ? v : '')}
+                            data={[{ value: NEW, label: 'New email' },
+                                   ...context.threads.map((t) => ({ value: t.thread_id, label: `Reply in: ${t.subject}` }))]}
+                            renderOption={({ option }) => {
+                              const t = context.threads.find((x) => x.thread_id === option.value);
+                              return (
+                                <div>
+                                  <Text size="sm">{t ? t.subject : option.label}</Text>
+                                  <Text size="xs" c="dimmed">{t ? `Reply in this thread${t.last_message_at ? ` · last message ${shortDay(t.last_message_at)}` : ''}`
+                                                                : 'Starts a thread of its own'}</Text>
+                                </div>
+                              );
+                            }} />
                   </div>
                 )}
                 <div className="dm-field">
@@ -264,79 +276,5 @@ export function Composer({ projectId, invoiceId, threadId, endpoints, onClose }:
         </form>
       </dialog>
     </>
-  );
-}
-
-interface RecipientsProps {
-  id: string;
-  label: string;
-  value: string[];
-  onChange: (value: string[]) => void;
-  known: Person[];
-}
-
-/** Chips for the people an email goes to; type an address (Enter, comma or leaving the box adds it) or pick one. */
-export function Recipients({ id, label, value, onChange, known }: RecipientsProps) {
-  const [draft, setDraft] = useState('');
-  const [problem, setProblem] = useState('');
-  const options = known.filter((p) => !value.includes(p.email));
-
-  function add(raw: string) {
-    const parts = raw.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
-    const bad = parts.find((p) => !EMAIL.test(p));
-    if (bad) {
-      setProblem(`"${bad}" isn't an email address.`);
-      return;
-    }
-    onChange([...value, ...parts.filter((p, i) => !value.includes(p) && parts.indexOf(p) === i)]);
-    setDraft('');
-    setProblem('');
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if ((e.key === 'Enter' || e.key === ',' || e.key === ';') && draft.trim()) {
-      e.preventDefault();
-      add(draft);
-    } else if (e.key === 'Backspace' && !draft && value.length) {
-      onChange(value.slice(0, -1));
-    }
-  }
-
-  return (
-    <div className="dm-field">
-      <label htmlFor={id} className="dm-field-label">{label}</label>
-      <div className="dm-recipients">
-        {value.map((email) => {
-          const person = known.find((p) => p.email === email);
-          return (
-            <span className="dm-chip" key={email} title={email}>
-              <span>{person ? `${person.name} · ${email}` : email}</span>
-              <button type="button" onClick={() => onChange(value.filter((v) => v !== email))}
-                      aria-label={`Remove ${person?.name ?? email}`}>
-                <Icon name="x" size={12} />
-              </button>
-            </span>
-          );
-        })}
-        <input id={id} list={`${id}-people`} type="text" inputMode="email" autoComplete="off" value={draft}
-               placeholder={value.length ? '' : 'Name or email'} onKeyDown={onKeyDown}
-               onBlur={() => { if (draft.trim()) add(draft); }}
-               onChange={(e) => {
-                 const typed = e.target.value;
-                 if (options.some((o) => o.email === typed)) {      // picked from the list
-                   onChange([...value, typed]);
-                   setDraft('');
-                 } else {
-                   setDraft(typed);
-                 }
-               }} />
-        <datalist id={`${id}-people`}>
-          {options.map((p) => (
-            <option key={p.email} value={p.email}>{p.name}{p.role ? ` · ${p.role}` : ''}</option>
-          ))}
-        </datalist>
-      </div>
-      {problem && <span className="dm-error-inline" role="alert">{problem}</span>}
-    </div>
   );
 }
