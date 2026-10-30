@@ -1,3 +1,4 @@
+import { Dropdown, choices as asChoices } from '../../mantine/Dropdown';
 import { useEffect, useState } from 'react';
 import { PageHeader } from '../../app/PageHeader';
 import { Loading, useLoad, usePosted } from '../../app/ui';
@@ -124,9 +125,7 @@ export function BuilderForm({ data }: { data: Data }) {
               </div>
               <div className="form-group">
                 <label htmlFor="currency_code" className="form-label">Currency</label>
-                <select id="currency_code" name="currency_code" className="form-select" defaultValue={posted?.currency_code ?? data.currency}>
-                  {data.currencies.map((c) => <option key={c}>{c}</option>)}
-                </select>
+                <Dropdown id="currency_code" name="currency_code" defaultValue={posted?.currency_code ?? data.currency} data={asChoices(data.currencies)} />
               </div>
               <fieldset className="form-group used-for">
                 <legend className="form-label">Used for</legend>
@@ -148,10 +147,8 @@ export function BuilderForm({ data }: { data: Data }) {
               <div className="card-header builder-head">
                 <input type="text" name={`s${s.i}_title`} value={s.title} className="form-input section-title" placeholder="Section name" aria-label="Section name"
                        onChange={(e) => setSection(s.i, { title: e.target.value })} />
-                <select name={`s${s.i}_type`} value={s.type} className="form-select section-type" aria-label="Section type"
-                        onChange={(e) => setSection(s.i, { type: e.target.value })}>
-                  {data.section_types.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-                </select>
+                <Dropdown name={`s${s.i}_type`} value={s.type} className="section-type" aria-label="Section type"
+                          onChange={(v) => setSection(s.i, { type: v })} data={asChoices(data.section_types)} />
                 <button type="button" className="btn btn-ghost btn-xs" aria-label="Remove section"
                         onClick={() => setSections((all) => all.filter((x) => x.i !== s.i))}><Icon name="trash" /></button>
               </div>
@@ -172,10 +169,9 @@ export function BuilderForm({ data }: { data: Data }) {
                             <code className="field-code">{f.name || slug(f.label)}</code>
                           </td>
                           <td data-label="Type">
-                            <select name={`${q}type`} value={f.type} className="form-select field-type" aria-label="Type"
-                                    onChange={(e) => setField(s.i, f.j, e.target.value === 'number' ? { type: e.target.value } : { type: e.target.value, currency: false, formula: '' })}>
-                              {data.field_types.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-                            </select>
+                            <Dropdown name={`${q}type`} value={f.type} className="field-type" aria-label="Type"
+                                      onChange={(v) => setField(s.i, f.j, v === 'number' ? { type: v } : { type: v, currency: false, formula: '' })}
+                                      data={asChoices(data.field_types)} />
                           </td>
                           <td data-label="Formula" className="formula-cell">
                             <input type="text" name={`${q}formula`} value={f.formula} className="form-input field-formula" placeholder="—" aria-label="Formula"
@@ -209,10 +205,8 @@ export function BuilderForm({ data }: { data: Data }) {
           <div className="card-body form-row">
             <div className="form-group">
               <label htmlFor="total" className="form-label">Document total</label>
-              <select id="total" name="total" className="form-select" value={chosen} onChange={(e) => setTotal(e.target.value)}>
-                {choices.length ? choices.map(([value, label]) => <option key={value} value={value}>{label}</option>)
-                  : <option value="">Add a number field to a fields section</option>}
-              </select>
+              <Dropdown id="total" name="total" value={chosen} onChange={setTotal} data={asChoices(choices)}
+                        placeholder="Add a number field to a fields section" />
             </div>
             <div className="form-group">
               <span className="form-label">Formulas</span>

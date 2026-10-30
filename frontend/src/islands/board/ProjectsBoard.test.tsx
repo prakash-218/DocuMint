@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { pick, render, screen, within } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProjectsBoard, { matches, type Projects, type Row } from './ProjectsBoard';
@@ -65,7 +65,7 @@ describe('ProjectsBoard', () => {
     await userEvent.type(await screen.findByLabelText('Search projects'), 'q/042');
     expect(titles()).toEqual(['Spline gauges']);
     await userEvent.clear(screen.getByLabelText('Search projects'));
-    await userEvent.selectOptions(screen.getByLabelText('Financial year'), '25-26');
+    await pick(screen.getByLabelText('Financial year'), 'FY 25-26');
     expect(titles()).toEqual(['Drill jig']);
     expect(matches(row('9', 'Ball pressing mandrel'), 'mandrel hosur')).toBe(true);
     expect(matches(row('9', 'Ball pressing mandrel'), 'mandrel elsewhere')).toBe(false);

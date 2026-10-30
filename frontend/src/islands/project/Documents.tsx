@@ -1,3 +1,4 @@
+import { Dropdown } from '../../mantine/Dropdown';
 import { day, money } from '../../format';
 import { Icon } from '../../icons';
 import type { Doc, Page, Tone } from './types';
@@ -69,10 +70,8 @@ export function Documents({ docs, newDocument, canEdit, sales, onEmail, current,
           <form method="post" action={documentsUrl} className="add-existing">
             <label htmlFor="pp-add-doc" className="muted">Add one of their documents that's in no project</label>
             <div className="add-existing-row">
-              <select id="pp-add-doc" name="invoice_id" className="form-select" required defaultValue="">
-                <option value="" disabled>Choose a document…</option>
-                {addable.map((d) => <option key={d.invoice_id} value={d.invoice_id}>{d.number} · {d.kind} · {money(d.total, d.currency)}</option>)}
-              </select>
+              <Dropdown id="pp-add-doc" name="invoice_id" required placeholder="Choose a document…"
+                        data={addable.map((d) => ({ value: d.invoice_id, label: `${d.number} · ${d.kind}`, sub: money(d.total, d.currency) }))} />
               <button type="submit" className="btn btn-secondary btn-sm">Add</button>
             </div>
           </form>

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CostingEditor } from './CostingEditor';
@@ -87,7 +87,7 @@ describe('the costing editor', () => {
     render(<CostingEditor data={DATA} />);
     const lines = within(document.querySelector('[data-item="tank1"]') as HTMLElement);
     await userEvent.click(lines.getByRole('button', { name: 'Add cost line' }));
-    const line = lines.getAllByLabelText('Cost line').at(-1)!;
+    const line = lines.getAllByLabelText('Cost line', { selector: 'input' }).at(-1)!;
     await userEvent.type(line, 'LM guide with block — Hiwin');
     act(() => line.blur());
     expect(sheet().items[1].lines[2]).toEqual({ description: 'LM guide with block', make: 'Hiwin', qty: '', unit: 'set', unit_cost: '34000', markup: '10' });

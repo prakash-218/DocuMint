@@ -1,3 +1,4 @@
+import { Dropdown, choices } from '../../mantine/Dropdown';
 import { useId, useState, type FormEvent } from 'react';
 import { Icon } from '../../icons';
 import type { ContactFields } from '../project/People';
@@ -34,9 +35,8 @@ export function Contacts({ people, usually, canEdit, name, onSave, onDelete }: P
           <div className="muted">{p.role}</div>
           <div>
             {canEdit ? (
-              <select value={p.gets} aria-label={`What ${p.name} usually gets`} onChange={(e) => void onSave({ ...fieldsOf(p), gets: e.target.value })}>
-                {Object.entries(usually).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-              </select>
+              <Dropdown size="xs" value={p.gets} aria-label={`What ${p.name} usually gets`} onChange={(v) => void onSave({ ...fieldsOf(p), gets: v })}
+                        data={choices(Object.entries(usually))} />
             ) : <span className="muted">{usually[p.gets]}</span>}
           </div>
           <div className="crow-actions">
@@ -94,9 +94,7 @@ function ContactRow({ initial, usually, submitLabel, onSubmit, onCancel }: RowPr
         {onCancel && (
           <>
             <label htmlFor={`${id}-gets`} className="sr-only">Usually gets</label>
-            <select id={`${id}-gets`} value={f.gets} onChange={set('gets')}>
-              {Object.entries(usually).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-            </select>
+            <Dropdown id={`${id}-gets`} value={f.gets} onChange={(v) => set('gets')({ target: { value: v } })} data={choices(Object.entries(usually))} />
           </>
         )}
         <button type="submit" className="btn btn-secondary" disabled={saving}>{submitLabel === 'Add' && <Icon name="plus" />}{saving ? 'Saving…' : submitLabel}</button>

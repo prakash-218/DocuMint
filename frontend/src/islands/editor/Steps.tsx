@@ -1,8 +1,9 @@
+import { Dropdown } from '../../mantine/Dropdown';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import { PageHeader } from '../../app/PageHeader';
 import { Icon } from '../../icons';
-import { CustomerOptions } from './Editor';
+import { customerChoices } from './Editor';
 import type { ProjectStep as ProjectData, TemplateLink, TemplateStep as TemplateData } from './types';
 
 // The steps before a new document's editor, as the server pages drew them: the project it's for (one of the open
@@ -64,10 +65,8 @@ export function ProjectStep({ data }: { data: ProjectData }) {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="np-customer" className="form-label">Customer</label>
-                <select id="np-customer" name="customer_id" className="form-select" required defaultValue={customer}>
-                  <option value="">Select a customer</option>
-                  <CustomerOptions groups={data.new_project.customers} />
-                </select>
+                <Dropdown id="np-customer" name="customer_id" required placeholder="Select a customer" searchable defaultValue={customer}
+                          data={customerChoices(data.new_project.customers)} />
               </div>
               <div className="form-group">
                 <label htmlFor="np-title" className="form-label">Project name</label>

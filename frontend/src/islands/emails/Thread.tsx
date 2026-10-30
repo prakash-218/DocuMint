@@ -1,3 +1,4 @@
+import { Dropdown } from '../../mantine/Dropdown';
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import { PageHeader } from '../../app/PageHeader';
@@ -39,10 +40,8 @@ function ProjectCard({ data }: { data: Data }) {
                 <form method="post" action={data.link.action} className="stack-form">
                   <label htmlFor="thread-project" className="form-label">{p ? 'Move it to' : 'Put it in'}</label>
                   <div className="add-existing-row">
-                    <select id="thread-project" name="project_id" className="form-select" required defaultValue="">
-                      <option value="" disabled>Choose a project</option>
-                      {others.map((o) => <option key={o.id} value={o.id}>{o.no} · {o.title}{o.fy ? ` · FY ${o.fy}` : ''}{o.status !== 'open' ? ` (${o.status})` : ''}</option>)}
-                    </select>
+                    <Dropdown id="thread-project" name="project_id" required placeholder="Choose a project"
+                              data={others.map((o) => ({ value: o.id, label: `${o.no} · ${o.title}`, sub: [o.fy ? `FY ${o.fy}` : '', o.status !== 'open' ? o.status : ''].filter(Boolean).join(' · ') || undefined }))} />
                     <button type="submit" className="btn btn-secondary btn-sm">{p ? 'Move' : 'Add'}</button>
                   </div>
                 </form>

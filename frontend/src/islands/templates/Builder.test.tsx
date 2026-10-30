@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
@@ -54,9 +54,12 @@ describe('the template builder', () => {
   it('offers the number fields of a fields section as the document total', async () => {
     drawn(DATA);
     const total = screen.getByLabelText('Document total');
-    expect(within(total).getAllByRole('option').map((o) => o.textContent)).toEqual(['Totals › Total']);
+    expect(total).toHaveValue('Totals › Total');
+    await userEvent.click(total);
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Totals › Total']);
     await userEvent.click(screen.getAllByRole('button', { name: 'Remove section' })[1]);
-    expect(within(total).getAllByRole('option').map((o) => o.textContent)).toEqual(['Add a number field to a fields section']);
+    expect(total).toHaveValue('');
+    expect(total).toHaveAttribute('placeholder', 'Add a number field to a fields section');
   });
 
   it('comes back with what was sent when the save is turned down', () => {

@@ -50,8 +50,9 @@ PDFs and the error pages are still drawn on the server.
 
 Dropdowns and pickers use [Mantine](https://mantine.dev) (`frontend/src/mantine/`), themed with the app's colours,
 greys and IBM Plex and following its light/dark toggle. Only the styles of the components used are loaded; Mantine's
-`baseline.css` is left out because `main.css` draws the page. Tests of screens with Mantine render through
-`frontend/src/test/render.tsx`.
+`baseline.css` is left out because `main.css` draws the page. Every dropdown is `frontend/src/mantine/Dropdown.tsx`
+(Mantine's Select, posting through a hidden input in the app's forms); use it rather than a `<select>`. Tests render
+through `frontend/src/test/render.tsx`, whose `pick()` chooses in a dropdown.
 
 The screens read and write through the JSON endpoints in `blueprints/api_bp.py`, with the same login,
 organization and permissions as the pages. You need Node 22 for this part.

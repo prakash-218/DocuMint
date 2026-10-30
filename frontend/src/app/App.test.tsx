@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '../test/render';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppRoutes } from './App';

@@ -1,3 +1,4 @@
+import { Dropdown, choices } from '../../mantine/Dropdown';
 import { useId, useState, type FormEvent } from 'react';
 import { Icon } from '../../icons';
 import type { Page, Person } from './types';
@@ -101,9 +102,8 @@ function PersonRow({ person: p, gets, canEdit, onGets }: { person: Person; gets:
         <div className="pn">{p.name}{p.role && <span> · {p.role}</span>}</div>
         <div className="pe">{[p.email, p.phone].filter(Boolean).join(' · ')}{p.at_parent ? ' · parent company' : ''}</div>
         {canEdit ? (
-          <select value={p.gets} aria-label={`What ${p.name} gets on this project`} onChange={(e) => onGets(p.contact_id, e.target.value)}>
-            {Object.entries(gets).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-          </select>
+          <Dropdown size="xs" value={p.gets} aria-label={`What ${p.name} gets on this project`} onChange={(v) => onGets(p.contact_id, v)}
+                    data={choices(Object.entries(gets))} />
         ) : (
           <div className="pe">{gets[p.gets]}</div>
         )}
@@ -145,9 +145,7 @@ export function ContactForm({ initial, usually, submitLabel, onSubmit, onCancel 
       <label htmlFor={`${id}-phone`} className="form-label">Phone <span className="text-tertiary">(optional)</span></label>
       <input id={`${id}-phone`} className="form-input" type="tel" value={f.phone} maxLength={40} onChange={set('phone')} />
       <label htmlFor={`${id}-gets`} className="form-label">Usually gets</label>
-      <select id={`${id}-gets`} className="form-select" value={f.gets} onChange={set('gets')}>
-        {Object.entries(usually).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-      </select>
+      <Dropdown id={`${id}-gets`} value={f.gets} onChange={(v) => set('gets')({ target: { value: v } })} data={choices(Object.entries(usually))} />
       <div className="form-actions-row">
         <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving…' : submitLabel}</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>

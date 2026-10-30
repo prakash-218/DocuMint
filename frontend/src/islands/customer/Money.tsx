@@ -1,3 +1,4 @@
+import { Dropdown } from '../../mantine/Dropdown';
 import { useId, useMemo, useState } from 'react';
 import { day, money } from '../../format';
 import { Icon } from '../../icons';
@@ -35,16 +36,13 @@ export function Statement({ accounts, links = {} }: { accounts: Account[]; links
         {accounts.length > 1 && (
           <>
             <label htmlFor={`${id}-cur`} className="sr-only">Currency</label>
-            <select id={`${id}-cur`} value={currency} onChange={(e) => { setCurrency(e.target.value); setYear(''); }}>
-              {accounts.map((a) => <option key={a.currency} value={a.currency}>{a.currency}</option>)}
-            </select>
+            <Dropdown id={`${id}-cur`} value={currency} onChange={(v) => { setCurrency(v); setYear(''); }}
+                      data={accounts.map((a) => ({ value: a.currency, label: a.currency }))} />
           </>
         )}
         <label htmlFor={`${id}-fy`} className="sr-only">Financial year</label>
-        <select id={`${id}-fy`} value={fy} onChange={(e) => setYear(e.target.value)}>
-          {years.map((y) => <option key={y} value={y}>FY {y}</option>)}
-          <option value="">Every year</option>
-        </select>
+        <Dropdown id={`${id}-fy`} value={fy} onChange={setYear}
+                  data={[...years.map((y) => ({ value: y, label: `FY ${y}` })), { value: '', label: 'Every year' }]} />
         {links.statement_pdf && (
           <a className="btn btn-secondary btn-sm" href={`${links.statement_pdf}?${which}`} target="_blank" rel="noopener">
             <Icon name="download" size={14} />PDF
