@@ -1,0 +1,12 @@
+/* Mantine beside main.css: inputs as tall as the app's (.form-input, 38px) */
+.mantine-Input-wrapper { --input-height-sm: 38px; }
+
+/* A recipient (RecipientPicker): their initials and name; the address on hover */
+.dm-recipient { padding-inline-start: 2px; }
+.dm-recipient .mantine-Pill-label { display: inline-flex; align-items: center; gap: 6px; }
+.dm-recipient .mantine-Avatar-placeholder { font-size: 9px; }
+
+/* Focus as on the app's inputs (main.css .form-input:focus): the whole box, not the typing field inside it, which
+   main.css's :focus-visible ring would otherwise draw too */
+.mantine-Input-input:focus, .mantine-Input-input:focus-within { border-color: var(--accent); box-shadow: var(--focus-ring); }
+.mantine-PillsInputField-field:focus-visible { box-shadow: none; }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '../../test/render';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Compose } from '../EmailComposer';
 import DocumentNext from './DocumentNext';

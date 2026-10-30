@@ -3,19 +3,9 @@
 
 .dm-composer .k-dialog-body { display: grid; gap: var(--spacing-sm); }
 .dm-field { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: var(--spacing-sm);
-            padding-bottom: var(--spacing-sm); border-bottom: 1px solid var(--line-1); font-size: var(--font-size-sm); }
+            font-size: var(--font-size-sm); }
 .dm-field-label { color: var(--ink-3); font-size: var(--font-size-sm); }
 .dm-field .form-input, .dm-field .form-select { min-width: 0; }
-
-.dm-recipients { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.dm-recipients input { flex: 1 1 160px; min-width: 0; border: 0; background: transparent; color: var(--ink-1);
-                       font: inherit; padding: 4px 2px; outline: none; }
-.dm-recipients:focus-within { box-shadow: 0 2px 0 -1px var(--accent); }
-.dm-chip { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; padding: 2px 2px 2px 10px; border-radius: 999px;
-           background: var(--accent-soft); color: var(--accent-ink); font-size: var(--font-size-xs); }
-.dm-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dm-chip button { display: inline-flex; padding: 3px; border: 0; border-radius: 50%; background: none; color: inherit; cursor: pointer; }
-.dm-chip button:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
 .dm-body { width: 100%; min-height: 190px; resize: vertical; line-height: 1.5; }
 .dm-attach { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; font-size: var(--font-size-sm); }
@@ -28,7 +18,7 @@
 .dm-notice svg { flex: none; margin-top: 2px; }
 .dm-error { margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--critical-soft); color: var(--critical-ink);
             font-size: var(--font-size-sm); }
-.dm-error-inline { grid-column: 2; color: var(--critical-ink); font-size: var(--font-size-xs); }
+.dm-error-inline { display: block; margin-top: 4px; color: var(--critical-ink); font-size: var(--font-size-xs); }
 .dm-foot-note { margin-right: auto; color: var(--ink-3); font-size: var(--font-size-xs); }
 
 .dm-sent { display: flex; gap: var(--spacing-md); align-items: flex-start; }
@@ -39,5 +29,4 @@
 
 @media (max-width: 520px) {
   .dm-field { grid-template-columns: 1fr; gap: 2px; }
-  .dm-error-inline { grid-column: 1; }
 }

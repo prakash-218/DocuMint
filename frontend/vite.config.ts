@@ -16,5 +16,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],
     testTimeout: 20000,         // the editors' tests type a lot; run side by side they can take a while
+    // Mantine is hundreds of small modules: bundled once, a screen that loads it doesn't keep its test waiting
+    deps: { optimizer: { client: { enabled: true, include: ['@mantine/core', '@mantine/hooks'] } } },
   },
 });

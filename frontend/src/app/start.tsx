@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Mantine } from '../mantine/Mantine';
 import { App } from './App';
 import { readBoot } from './boot';
 
@@ -7,7 +8,9 @@ import { readBoot } from './boot';
 export function start(el: HTMLElement) {
   createRoot(el).render(
     <StrictMode>
-      <App boot={readBoot()} />
+      <Mantine>
+        <App boot={readBoot()} />
+      </Mantine>
     </StrictMode>,
   );
 }
