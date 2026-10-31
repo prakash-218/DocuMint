@@ -4,6 +4,7 @@ invoice, from its type and status, with every action that fits; the one that mov
 Actions are links, forms to the existing routes (invoices_bp), the change dialog, or the email form.
 """
 
+import math
 from datetime import date
 from typing import Callable, Dict, List, Optional
 
@@ -221,10 +222,15 @@ def money_strip(doc: Dict, summary: Dict, payments: List[Dict], advance_received
 
 def made_from(here_id, project_docs: List[Dict]) -> List[Dict]:
     """The documents made from a quotation (from any of its versions): its proformas, and the tax invoices made from it
-    or from them. project_docs: the project's, revisions collapsed (each with its earlier 'versions')."""
+    or from them. When it's the project's only quotation, that's every other document in the project: documents made
+    before converting kept the link (source_invoice_id), but imported or uploaded ones don't have it.
+    project_docs: the project's, revisions collapsed (each with its earlier 'versions')."""
     every = [x for d in project_docs for x in (d, *(d.get('versions') or []))]
     ids = {str(x['invoice_id']) for d in project_docs for x in (d, *(d.get('versions') or []))
            if any(str(y['invoice_id']) == str(here_id) for y in (d, *(d.get('versions') or [])))} or {str(here_id)}
+    quotes = [d for d in project_docs if d.get('doc_type') == 'quote']
+    if len(quotes) == 1 and str(quotes[0]['invoice_id']) in ids:
+        return [d for d in every if d.get('doc_type') != 'quote']
     made, grew = [], True
     while grew:
         grew = False
@@ -251,7 +257,8 @@ def quote_strip(doc: Dict, summary: Dict, invoiced: List[Dict]) -> Optional[List
     on = f'on {len(mine)} tax invoice{"" if len(mine) == 1 else "s"}'
     return [{'label': 'Quoted', 'value': quoted, 'cap': 'Before GST'},
             {'label': 'Invoiced', 'value': done,
-             'cap': (f'{round(done / quoted * 100)}% of it, {on}' if quoted else on.capitalize()) if mine else 'Nothing yet'},
+             # rounded down: 99.6% isn't "100%" while something's still to invoice
+             'cap': (f'{math.floor(done / quoted * 100 + 1e-9)}% of it, {on}' if quoted else on.capitalize()) if mine else 'Nothing yet'},
             {'label': 'Still to invoice', 'value': max(0.0, left),
              'cap': f'{money(-left)} more than quoted' if left < -0.5 else 'All invoiced' if left <= 0.5 else 'Before GST'}]
 

@@ -165,6 +165,10 @@ def test_what_was_made_from_a_quotation_and_how_much_is_invoiced():
     assert [d['invoice_id'] for d in made_from('Q-1', docs)] == ['PI-1', 'INV-1']
     assert [d['invoice_id'] for d in made_from('Q-0', docs)] == ['PI-1', 'INV-1']       # from an older version's page too
     assert made_from('Q-9', docs) == [stray]
+    # the project's only quotation: its invoices count, linked or not (imported ones aren't)
+    imported = {'invoice_id': 'INV-2', 'doc_type': 'invoice'}
+    assert [d['invoice_id'] for d in made_from('Q-1', [q1, pi, inv, imported])] == ['PI-1', 'INV-1', 'INV-2']
+    assert [d['invoice_id'] for d in made_from('Q-0', [q1, imported])] == ['INV-2']
 
     accepted = {'status': 'accepted', 'currency_code': 'INR'}
     strip = quote_strip(accepted, {'taxable': 400000, 'total': 400000}, [{'taxable': 160000, 'currency': 'INR'}])
@@ -175,3 +179,6 @@ def test_what_was_made_from_a_quotation_and_how_much_is_invoiced():
     over = quote_strip(accepted, {'taxable': 400000}, [{'taxable': 250000, 'currency': 'INR'}, {'taxable': 160000, 'currency': 'INR'}])
     assert over[2] == {'label': 'Still to invoice', 'value': 0.0, 'cap': '₹10,000 more than quoted'}
     assert quote_strip({'status': 'sent'}, {'taxable': 1}, []) is None                 # only once it's accepted
+    nearly = quote_strip(accepted, {'taxable': 201000}, [{'taxable': 200160, 'currency': 'INR'}])
+    assert (nearly[1]['cap'], nearly[2]['value']) == ('99% of it, on 1 tax invoice', 840.0)   # not "100%" with ₹840 to go
+    assert quote_strip(accepted, {'taxable': 2497}, [{'taxable': 2497, 'currency': 'INR'}])[1]['cap'].startswith('100%')
