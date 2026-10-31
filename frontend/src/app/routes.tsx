@@ -5,7 +5,7 @@ import { matchRoutes } from 'react-router';
 import type { SkeletonKind } from '../Skeleton';
 import { AuditLogScreen, CostingScreen, CustomerScreen, CustomersScreen, DocumentScreen, EditCustomerScreen, EditDocumentScreen,
          EditTemplateScreen, HomeScreen, InboxScreen, ListScreen, NewCustomerScreen, NewDocumentScreen, NewProjectScreen,
-         NewTemplateScreen, NotificationsScreen, OrgScreen, PackingScreen, PaymentsScreen, ProfileScreen, ProjectScreen, ProjectsScreen,
+         NewTemplateScreen, NotificationsScreen, OrgScreen, PackingScreen, PaymentsScreen, SuppliersScreen, ProfileScreen, ProjectScreen, ProjectsScreen,
          RatesScreen, RoleScreen, RolesScreen, SettingsScreen, TemplateLayoutScreen, TemplateScreen, TemplatesScreen, ThreadScreen } from './screens';
 
 export interface AppRoute {
@@ -38,6 +38,7 @@ export const ROUTES: AppRoute[] = [
   { path: '/proformas/:invoiceId/packing', screen: PackingScreen, skeleton: 'page', label: 'Packing', ids: ['invoiceId'] },
   { path: '/invoices/:invoiceId/packing', screen: PackingScreen, skeleton: 'page', label: 'Packing', ids: ['invoiceId'] },
   { path: '/customers', screen: CustomersScreen, skeleton: 'list', label: 'Customers' },
+  { path: '/suppliers', screen: SuppliersScreen, skeleton: 'list', label: 'Suppliers' },
   { path: '/customers/create', screen: NewCustomerScreen, skeleton: 'page', label: 'New customer' },
   { path: '/customers/:customerId/edit', screen: EditCustomerScreen, skeleton: 'page', label: 'Edit customer', ids: ['customerId'] },
   { path: '/projects/new', screen: NewProjectScreen, skeleton: 'page', label: 'New project' },

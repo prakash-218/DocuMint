@@ -14,6 +14,9 @@ export interface CustomerRow {
 
 export interface CustomerList {
   title: string;
+  /** customers, or suppliers (the same companies: one can be both) */
+  kind: 'customer' | 'supplier';
+  new_label: string;
   query: string;
   archived: boolean;
   any: boolean;
@@ -37,4 +40,6 @@ export interface CustomerForm {
   custom: { key: string; label: string; value: string }[];
   /** A GSTIN's first two digits → the state it's registered in ('33' → Tamil Nadu). */
   gst_states: Record<string, string>;
+  /** A company says whether it's a customer, a supplier or both; a site is what its company is. */
+  kinds: boolean;
 }

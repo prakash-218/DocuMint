@@ -67,6 +67,10 @@ export interface CustomerData {
     tax_note: string;
     /** When they pay: '30 days', '45 days, as their parent company', '30 days (your usual terms)'; '' when not set. */
     payment_terms: string;
+    /** Who they are to us: a customer, a supplier, or both. */
+    kinds?: { customer: boolean; supplier: boolean };
+    /** The list they're on: Suppliers for a supplier only, otherwise Customers. */
+    list?: { label: string; href: string };
   };
   can: { edit: boolean; edit_customer: boolean; manage: boolean; sales: boolean };
   /** null for Sales: what a customer owes isn't theirs to see. */

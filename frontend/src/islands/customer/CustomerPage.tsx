@@ -87,7 +87,7 @@ export default function CustomerPage({ customerId }: { customerId: string }) {
     window.history.replaceState(window.history.state, '', `#${t}`);      // the router's state stays
   };
   const balance = Object.fromEntries((m?.statement ?? []).map((a) => [a.currency, a.balance]));
-  const crumbs: Crumb[] = [{ label: 'Customers', href: '/customers/' },
+  const crumbs: Crumb[] = [customer.list ?? { label: 'Customers', href: '/customers/' },
                            ...(customer.parent ? [{ label: customer.parent.name, href: customer.parent.url }] : []),
                            { label: customer.site || customer.name }];
 
@@ -109,6 +109,7 @@ export default function CustomerPage({ customerId }: { customerId: string }) {
             {customer.site && <span>{customer.parent ? <a href={customer.parent.url}>{customer.parent.name}</a> : customer.name}</span>}
             {customer.tax_id && <span className="mono">{customer.tax_id}</span>}
             {customer.tax_note && <span>{customer.tax_note}</span>}
+            {customer.kinds?.supplier && <span>{customer.kinds.customer ? 'A customer and a supplier' : 'A supplier'}</span>}
             {customer.archived && <span>Archived: hidden from the lists</span>}
           </div>
           {m && (

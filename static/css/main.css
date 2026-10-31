@@ -1230,6 +1230,9 @@ input[type="date"].form-input { padding-right: 8px; }
 .member-list { list-style: none; margin: 0; padding: 0; }
 .member-list li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--spacing-sm) var(--spacing-md); padding: 12px var(--spacing-lg); border-top: 1px solid var(--line-1); }
 .member-list li:first-child { border-top: 0; }
+/* Who a company is to us (the customer form): a customer, a supplier, or both */
+.kinds { border: 0; margin: 0 0 var(--spacing-md); padding: 0; display: grid; gap: 6px; }
+.kinds .checkbox { display: flex; gap: 8px; align-items: baseline; font-size: var(--font-size-sm); cursor: pointer; }
 /* Inviting someone, and the link just made (Settings): emailed or not, to copy or send on WhatsApp */
 .invite-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: var(--spacing-sm); align-items: end; }
 .invite-form .form-group { margin: 0; }

@@ -105,6 +105,12 @@ export function CustomersScreen() {
   return <CustomerList key={key} search={search} />;
 }
 
+/** /suppliers/ (?q=, ?include_archived=true, ?page=): the companies we buy from */
+export function SuppliersScreen() {
+  const { key, search } = useListKey();
+  return <CustomerList key={key} search={search} kind="supplier" />;
+}
+
 /** /customers/create (?parent_id= adds a site) */
 export function NewCustomerScreen() {
   const { key, search } = useListKey();
