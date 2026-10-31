@@ -5,7 +5,7 @@ import { matchRoutes } from 'react-router';
 import type { SkeletonKind } from '../Skeleton';
 import { AuditLogScreen, CostingScreen, CustomerScreen, CustomersScreen, DocumentScreen, EditCustomerScreen, EditDocumentScreen,
          EditTemplateScreen, HomeScreen, InboxScreen, ListScreen, NewCustomerScreen, NewDocumentScreen, NewProjectScreen,
-         NewTemplateScreen, NotificationsScreen, OrgScreen, PackingScreen, ProfileScreen, ProjectScreen, ProjectsScreen,
+         NewTemplateScreen, NotificationsScreen, OrgScreen, PackingScreen, PaymentsScreen, ProfileScreen, ProjectScreen, ProjectsScreen,
          RatesScreen, RoleScreen, RolesScreen, SettingsScreen, TemplateLayoutScreen, TemplateScreen, TemplatesScreen, ThreadScreen } from './screens';
 
 export interface AppRoute {
@@ -21,8 +21,9 @@ export const ROUTES: AppRoute[] = [
   { path: '/projects', screen: ProjectsScreen, skeleton: 'list', label: 'Projects' },
   { path: '/projects/:projectId', screen: ProjectScreen, skeleton: 'page', label: 'Project', ids: ['projectId'] },
   { path: '/quotes', screen: ListScreen, skeleton: 'list', label: 'Quotations' },
-  { path: '/proformas', screen: ListScreen, skeleton: 'list', label: 'Proforma invoices' },
+  { path: '/proformas', screen: ListScreen, skeleton: 'list', label: 'Proformas' },
   { path: '/invoices', screen: ListScreen, skeleton: 'list', label: 'Invoices' },
+  { path: '/payments', screen: PaymentsScreen, skeleton: 'list', label: 'Payments' },
   { path: '/customers/:customerId', screen: CustomerScreen, skeleton: 'page', label: 'Customer', ids: ['customerId'] },
   { path: '/quotes/:invoiceId', screen: DocumentScreen, skeleton: 'doc', label: 'Quotation', ids: ['invoiceId'] },
   { path: '/proformas/:invoiceId', screen: DocumentScreen, skeleton: 'doc', label: 'Proforma', ids: ['invoiceId'] },

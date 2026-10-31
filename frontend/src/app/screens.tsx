@@ -7,6 +7,7 @@ const Home = lazy(() => import('../islands/home/Home'));
 const ProjectsBoard = lazy(() => import('../islands/board/ProjectsBoard'));
 const ProjectPage = lazy(() => import('../islands/project/ProjectPage'));
 const DocumentList = lazy(() => import('../islands/documents/DocumentList'));
+const Payments = lazy(() => import('../islands/payments/Payments'));
 const CustomerPage = lazy(() => import('../islands/customer/CustomerPage'));
 const DocumentPage = lazy(() => import('../islands/document/DocumentPage'));
 const EditorPage = lazy(() => import('../islands/editor/EditorPage'));
@@ -50,6 +51,12 @@ export function ListScreen() {
   const group = location.pathname.split('/')[1];
   return <DocumentList key={location.pathname + location.search} group={group} tab={params.get('status') || 'all'}
                        query={(params.get('q') || '').trim()} />;
+}
+
+/** /payments/ (?tab=advance|invoice, ?q=, ?fy=26-27) */
+export function PaymentsScreen() {
+  const [params] = useSearchParams();
+  return <Payments tab={params.get('tab') || 'all'} query={(params.get('q') || '').trim()} year={params.get('fy') || ''} />;
 }
 
 export function CustomerScreen() {

@@ -42,6 +42,8 @@ def sidebar(perms, unread: int = 0) -> List[Dict]:
     for key, label, icon, prefix in DOCUMENT_LINKS:
         if opens('invoices_bp.list_invoices', 'invoice' if key == 'invoices' else key):
             sales.append(_item(key, label, icon, url_for('invoices_bp.list_invoices', type=None if key == 'invoices' else key), prefix))
+    if opens('payments_bp.index'):
+        sales.append(_item('payments', 'Payments', 'wallet', url_for('payments_bp.index'), '/payments'))
     if opens('customers_bp.list_customers'):
         people.append(_item('customers', 'Customers', 'users', url_for('customers_bp.list_customers'), '/customers'))
     if opens('emails_bp.inbox'):

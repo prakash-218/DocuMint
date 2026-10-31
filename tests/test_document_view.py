@@ -151,3 +151,27 @@ def test_beside_the_document_its_chain_who_gets_it_and_what_happened():
               {'kind': 'note', 'title': 'Called', 'body': 'Call back Monday', 'link': '/invoices/I-1'}, {'kind': 'note', 'title': 'Other', 'link': '/x'}]
     act = D.activity(events, 'I-1', ('Axle Works', None))
     assert [(a['title'], a['body'], a['tone']) for a in act] == [('Payment of ₹500 on 058', None, 't-pay'), ('Called', 'Call back Monday', 't-note')]
+
+
+def test_what_was_made_from_a_quotation_and_how_much_is_invoiced():
+    from document_view import made_from, quote_strip
+    q0 = {'invoice_id': 'Q-0', 'doc_type': 'quote', 'status': 'revised'}
+    q1 = {'invoice_id': 'Q-1', 'doc_type': 'quote', 'status': 'accepted', 'source_invoice_id': 'Q-0', 'versions': [q0]}
+    pi = {'invoice_id': 'PI-1', 'doc_type': 'proforma', 'source_invoice_id': 'Q-1'}
+    inv = {'invoice_id': 'INV-1', 'doc_type': 'invoice', 'source_invoice_id': 'PI-1'}
+    other = {'invoice_id': 'Q-9', 'doc_type': 'quote'}
+    stray = {'invoice_id': 'INV-9', 'doc_type': 'invoice', 'source_invoice_id': 'Q-9'}
+    docs = [q1, other, pi, inv, stray]
+    assert [d['invoice_id'] for d in made_from('Q-1', docs)] == ['PI-1', 'INV-1']
+    assert [d['invoice_id'] for d in made_from('Q-0', docs)] == ['PI-1', 'INV-1']       # from an older version's page too
+    assert made_from('Q-9', docs) == [stray]
+
+    accepted = {'status': 'accepted', 'currency_code': 'INR'}
+    strip = quote_strip(accepted, {'taxable': 400000, 'total': 400000}, [{'taxable': 160000, 'currency': 'INR'}])
+    assert [(m['label'], m['value'], m['cap']) for m in strip] == [
+        ('Quoted', 400000.0, 'Before GST'), ('Invoiced', 160000.0, '40% of it, on 1 tax invoice'),
+        ('Still to invoice', 240000.0, 'Before GST')]
+    assert quote_strip(accepted, {'taxable': 400000}, [])[1]['cap'] == 'Nothing yet'
+    over = quote_strip(accepted, {'taxable': 400000}, [{'taxable': 250000, 'currency': 'INR'}, {'taxable': 160000, 'currency': 'INR'}])
+    assert over[2] == {'label': 'Still to invoice', 'value': 0.0, 'cap': '₹10,000 more than quoted'}
+    assert quote_strip({'status': 'sent'}, {'taxable': 1}, []) is None                 # only once it's accepted

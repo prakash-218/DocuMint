@@ -1022,13 +1022,17 @@ def set_payment_details(conn, payment_id, invoice_id, payment_date, received_amo
 
 @proc('sp_list_org_payments')
 def list_org_payments(conn, org_id, since):
+    """The organization's payments since a date (None: all), newest first, each once: on the document it counts on now
+    (an advance on its proforma until it's applied, then on the invoice, with the proforma it came in on)."""
     return [_rows(conn, f"""SELECT p.payment_id, p.invoice_id, p.amount, p.payment_date, p.received_amount,
-                                   p.received_currency, i.doc_type, i.doc_number, c.name AS customer_name,
-                                   {CURRENCY} AS currency_code
+                                   p.received_currency, p.method, p.reference_number, p.advance_of,
+                                   a.doc_number AS advance_number, i.doc_type, i.doc_number, i.customer_id,
+                                   c.name AS customer_name, {CURRENCY} AS currency_code
                             FROM payment p JOIN invoice i ON p.invoice_id = i.invoice_id
                             JOIN customer c ON i.customer_id = c.customer_id {TEMPLATE_JOIN}
+                            LEFT JOIN invoice a ON a.invoice_id = p.advance_of AND p.advance_of <> p.invoice_id
                             WHERE i.org_id = :o AND (CAST(:s AS date) IS NULL OR p.payment_date >= CAST(:s AS date))
-                            ORDER BY p.payment_date DESC""", o=org_id, s=since)]
+                            ORDER BY p.payment_date DESC, p.payment_id""", o=org_id, s=since)]
 
 
 @proc('sp_list_customer_payments')

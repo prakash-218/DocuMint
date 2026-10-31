@@ -171,6 +171,20 @@ def documents(group):
                                        usual_days=usual_days(get_org_profile(g.current_org_id)[1])))
 
 
+@api_bp.route('/payments')
+@require_org
+def payments():
+    """Every payment received (payments_view.build), for someone who may read invoices."""
+    import payments_view
+    try:
+        found = db.execute_proc('sp_list_org_payments', (g.current_org_id, None)) or []
+        docs = db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
+    except DatabaseError:
+        logger.exception("Failed to list payments for org %s", g.current_org_id)
+        return jsonify(error="Couldn't load the payments. Try again in a moment."), 500
+    return jsonify(payments_view.build(found, docs, url_for))
+
+
 # ---------------------------------------------------------------- The project page
 
 @api_bp.route('/projects')

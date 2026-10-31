@@ -55,6 +55,8 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
     assert _send(client, quote, props['next']['actions'][0]).endswith(quote)  # the customer said yes
     props = _page(client, quote)
     assert _labels(props) == ['Raise proforma for the advance*', 'Invoice in full instead', 'Undo: not answered yet']
+    assert [(m['label'], m['value'], m['cap']) for m in props['money']] == [                  # "Invoiced ₹X of ₹Y", before GST
+        ('Quoted', 20000, 'Before GST'), ('Invoiced', 0, 'Nothing yet'), ('Still to invoice', 20000, 'Before GST')]
 
     edit = _send(client, quote, props['next']['actions'][0])                  # the proforma, in the editor
     assert edit.endswith('/edit')
@@ -77,6 +79,8 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
     client.post(f'/invoices/{invoice_id}/finalize')
     props = _page(client, invoice)
     assert _labels(props) == ['Record payment*', 'Email a reminder'] and props['next']['text'].endswith(' due.')
+    assert [(m['label'], m['value'], m['cap']) for m in _page(client, quote)['money']][1:] == [
+        ('Invoiced', 20000, '100% of it, on 1 tax invoice'), ('Still to invoice', 0, 'All invoiced')]   # through its proforma
 
     # Sales open the quotation's new page, not the proforma's; viewers see it all and can do nothing
     _set_role(client, VIEWER, 'sales')

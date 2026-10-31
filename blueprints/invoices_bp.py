@@ -271,6 +271,23 @@ def view_invoice(invoice_id):
     return nav.spa(display_number(header) or get_type(header.get('doc_type')).label, 'doc')
 
 
+def _quote_strip(invoice, summary, project_docs):
+    """An accepted quotation's "Invoiced ₹X of ₹Y" (document_view.quote_strip), for those who may see invoices: the tax
+    invoices made from it, each before GST."""
+    import document_view
+    from access import fetch_invoice
+    if not project_docs or permissions.quotations_only() or not permissions.can_doc('read', 'invoice'):
+        return None
+    invoiced = []
+    for d in document_view.made_from(invoice['invoice_id'], project_docs):
+        if d.get('doc_type') in ('invoice', 'export_invoice') and (d.get('status') or 'draft') != 'draft':
+            header, values = fetch_invoice(d['invoice_id'])
+            if header:
+                invoiced.append({'taxable': invoice_summary(header, build_sections(header, values), [])['taxable'],
+                                 'currency': header.get('currency_code') or 'INR'})
+    return document_view.quote_strip(invoice, summary, invoiced)
+
+
 def page_context(invoice_id):
     """What a document's page shows: its state, what to do next and its money (document_view), the document, and
     beside it the project's documents, who gets it and what happened. A redirect when it can't be shown."""
@@ -295,7 +312,8 @@ def page_context(invoice_id):
     context['files'] = [f for f in context['files'] if permissions.file_kind_allowed(f.get('kind'))]
     context.update(
         doc_pill=document_view.pill(invoice, summary, advance_received),
-        doc_money=document_view.money_strip(invoice, summary, context['payments'], advance_received),
+        doc_money=(_quote_strip(invoice, summary, context['project_docs']) if invoice.get('doc_type') == 'quote'
+                   else document_view.money_strip(invoice, summary, context['payments'], advance_received)),
         doc_chain=document_view.chain(context['project_docs'], invoice_id, url_for) if project else [],
         doc_people=[] if sales and invoice.get('doc_type') != 'quote' else document_view.who_gets_it(invoice, people),
         doc_activity=document_view.activity(events, invoice_id, (invoice.get('customer_name'), invoice.get('customer_site'))))

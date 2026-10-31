@@ -33,6 +33,7 @@ PAGES = [
     ('Quotations', 'invoices_bp.list_invoices', {'type': 'quote'}, 'file-pen-line', 'quotes'),
     ('Proformas', 'invoices_bp.list_invoices', {'type': 'proforma'}, 'file-clock', 'pi proforma invoices advance'),
     ('Invoices', 'invoices_bp.list_invoices', {}, 'file-text', 'tax export bills'),
+    ('Payments', 'payments_bp.index', {}, 'wallet', 'received receipts bank utr reference advances'),
     ('Customers', 'customers_bp.list_customers', {}, 'users', 'clients buyers'),
     ('Templates', 'templates_bp.list_templates', {}, 'layout-template', 'formats'),
     ('Rates', 'costings_bp.rates', {}, 'list', 'rates list costing prices materials machining'),

@@ -76,6 +76,7 @@
 .ui .money { margin-top: 14px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
 .ui .money > div { padding: 12px 14px; min-width: 0; border-left: 1px solid var(--line); }
 .ui .money > div:first-child { border-left: 0; }
+.ui .money.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }     /* a quotation's: quoted, invoiced, still to invoice */
 .ui .money small { display: block; color: var(--ink-3); font-size: 12px; }
 .ui .money b { display: block; font-family: var(--mono); font-weight: 500; font-size: 19px; margin-top: 2px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .ui .money .cap { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
@@ -324,6 +325,8 @@
   .ui .money { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ui .money > div:nth-child(3) { border-left: 0; }
   .ui .money > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .ui .money.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ui .money.three > div:nth-child(3) { border-left: 1px solid var(--line); border-top: 0; }
   .ui .money b { font-size: 16px; }
   .ui .next-actions { width: 100%; }
   .ui .next-actions .btn { flex: 1 1 auto; }
