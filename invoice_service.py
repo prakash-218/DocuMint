@@ -465,6 +465,7 @@ def render_invoice_pdf(header: Dict, values: List[Dict], copies: Optional[int] =
         raise PdfUnavailable()
     from documents import display_number, get_type, load_json
     from layout import load_layout, page as find_page, pages_for, packing_page, printed_customer_fields, printed_org_fields
+    import upi
 
     doc_type = get_type(header.get('doc_type'))
     layout = load_layout(header.get('template_id'), header.get('org_id'))
@@ -488,7 +489,8 @@ def render_invoice_pdf(header: Dict, values: List[Dict], copies: Optional[int] =
                   fonts=pdf_fonts(), current_date=datetime.now().strftime('%Y-%m-%d %H:%M'),
                   org_fields=printed_org_fields(profile),
                   customer_fields=printed_customer_fields(profile, header.get('customer_custom')),
-                  pack=packing_summary(header, sections, (pack_page or {}).get('box_fields')) if pack_page else None)
+                  pack=packing_summary(header, sections, (pack_page or {}).get('box_fields')) if pack_page else None,
+                  upi=upi.payment(header, summary, profile))              # a "Scan to pay" QR code for what's due
 
     parts = []
     for pg in selected:

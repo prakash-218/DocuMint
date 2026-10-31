@@ -111,7 +111,8 @@ def _sales_pages_before(endpoint, doc_type):
         'api_bp': {'me', 'documents', 'document_page', 'new_document', 'edit_document', 'compose', 'send_email', 'list_projects',
                    'project', 'update_project', 'add_note', 'set_person', 'save_person', 'customer', 'save_customer_contact',
                    'delete_customer_contact', 'update_file', 'customers', 'new_customer', 'customer_form', 'new_project',
-                   'settings'},
+                   'settings',
+                   'share', 'share_on', 'share_off'},           # since: sharing a quotation, as they email it
         'settings_bp': {'index'},
     }
     blueprint, _, page = endpoint.partition('.')

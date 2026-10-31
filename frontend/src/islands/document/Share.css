@@ -1,0 +1,21 @@
+/* The share dialog (Share.tsx), in the pages' tokens (static/css/variables.css) and dialog, button and form classes. */
+
+.dm-share { width: min(560px, calc(100% - 32px)); }
+.dm-share .share-body { display: grid; gap: var(--spacing-md); }
+.share-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-sm); }
+.share-opts .btn { justify-content: flex-start; }
+.share-opts .btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.share-sec { display: grid; gap: 6px; }
+.share-sec textarea { resize: vertical; line-height: 1.5; min-height: 168px; }
+.share-people { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.share-people li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--font-size-sm); }
+.share-url { display: flex; gap: var(--spacing-sm); }
+.share-url .form-input { min-width: 0; flex: 1; font-size: var(--font-size-sm); }
+.dm-share .form-note { display: flex; gap: 8px; align-items: flex-start; margin: 0; color: var(--ink-3); font-size: var(--font-size-sm); }
+.dm-share .form-note svg { flex: none; margin-top: 3px; }
+.share-link-note .linkish { background: none; border: 0; padding: 0; color: var(--accent-ink); text-decoration: underline; cursor: pointer; font: inherit; }
+.share-pay { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--spacing-md); align-items: center;
+             padding: var(--spacing-sm); border: 1px solid var(--line-1); border-radius: var(--radius-md, 10px); }
+.share-pay img { width: 96px; height: 96px; image-rendering: pixelated; background: #fff; border-radius: 4px; }
+.share-pay .mono { overflow-wrap: anywhere; }
+@media (max-width: 480px) { .share-opts { grid-template-columns: 1fr; } }

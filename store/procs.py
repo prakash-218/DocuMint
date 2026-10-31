@@ -1020,6 +1020,55 @@ def set_payment_details(conn, payment_id, invoice_id, payment_date, received_amo
     return []
 
 
+# ================================================================ Share links
+
+SHARE_LINK = "link_id, invoice_id, token, created_at, opens, last_opened_at"
+
+
+@proc('sp_get_share_link')
+def get_share_link(conn, invoice_id, org_id):
+    """The document's link that's on, if it has one."""
+    return [_rows(conn, f"""SELECT {SHARE_LINK} FROM share_link
+                            WHERE invoice_id = :i AND org_id = :o AND turned_off_at IS NULL""", i=invoice_id, o=org_id)]
+
+
+@proc('sp_create_share_link')
+def create_share_link(conn, invoice_id, org_id, token, user_id):
+    """The document's link that's on: a new one with this token, unless it has one already."""
+    _require(conn, "SELECT 1 FROM invoice WHERE invoice_id = :i AND org_id = :o", 'Document does not exist', i=invoice_id, o=org_id)
+    made = _one(conn, f"""INSERT INTO share_link (link_id, org_id, invoice_id, token, created_by)
+                          VALUES (:l, :o, :i, :t, :u)
+                          ON CONFLICT (invoice_id) WHERE turned_off_at IS NULL DO NOTHING
+                          RETURNING {SHARE_LINK}""", l=_new_id(), o=org_id, i=invoice_id, t=token, u=user_id)
+    if made:
+        _audit(conn, org_id, 'invoice', invoice_id, 'UPDATE', 'share_link', None, 'on', 'A link to the document was made')
+        return [[made]]
+    return get_share_link(conn, invoice_id, org_id)
+
+
+@proc('sp_find_share_link')
+def find_share_link(conn, token):
+    """The link with this token while it's on, with its document and organization."""
+    return [_rows(conn, "SELECT link_id, org_id, invoice_id FROM share_link WHERE token = :t AND turned_off_at IS NULL", t=token)]
+
+
+@proc('sp_touch_share_link')
+def touch_share_link(conn, link_id):
+    """Someone opened the link."""
+    _exec(conn, "UPDATE share_link SET opens = opens + 1, last_opened_at = now() WHERE link_id = :l", l=link_id)
+    return []
+
+
+@proc('sp_turn_off_share_link')
+def turn_off_share_link(conn, invoice_id, org_id):
+    """The document's link stops working; a new one gets a new token."""
+    off = _exec(conn, """UPDATE share_link SET turned_off_at = now()
+                         WHERE invoice_id = :i AND org_id = :o AND turned_off_at IS NULL""", i=invoice_id, o=org_id)
+    if off:
+        _audit(conn, org_id, 'invoice', invoice_id, 'UPDATE', 'share_link', 'on', 'off', 'The link to the document was turned off')
+    return [[{'turned_off': off}]]
+
+
 @proc('sp_list_org_payments')
 def list_org_payments(conn, org_id, since):
     """The organization's payments since a date (None: all), newest first, each once: on the document it counts on now
