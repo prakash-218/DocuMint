@@ -245,12 +245,13 @@ def form(org_id, customer: Optional[Dict], defaults: Dict, url: Callable) -> Dic
     supplier_only = not customer and (defaults or {}).get('kind') == 'supplier'
     values['is_customer'] = '' if supplier_only or (customer and not customer.get('is_customer', True)) else '1'
     values['is_supplier'] = '1' if supplier_only or (customer and customer.get('is_supplier')) else ''
+    # what an empty payment terms field means for them, shown as its placeholder
     if c.get('parent_id') and c.get('parent_payment_days') is not None:
-        empty = f"Empty: {c.get('parent_name')}'s {c['parent_payment_days']} days."
+        empty = f"{c['parent_payment_days']} days ({c.get('parent_name')}'s)"
     elif ctx['usual_terms']:
-        empty = f"Empty: your usual terms ({ctx['usual_terms']})."
+        empty = f"{ctx['usual_terms']} (your usual)"
     else:
-        empty = 'Empty: no due date unless the invoice has one.'
+        empty = 'Not set'
     custom = load_json(customer.get('custom')) if customer else {}
     customer_id = str(customer['customer_id']) if customer else None
     word = 'supplier' if values['is_supplier'] and not values['is_customer'] else 'customer'
@@ -264,10 +265,8 @@ def form(org_id, customer: Optional[Dict], defaults: Dict, url: Callable) -> Dic
         'values': values,
         'site_count': ctx['site_count'],
         'parents': [{'id': str(p['customer_id']), 'name': p['name']} for p in ctx['parents']],
-        'domains_help': (f"{c.get('parent_name')} has {c['parent_email_domains']}; add only this site's own domains."
-                         if c.get('parent_email_domains') else ''),
-        'payment_help': ("How many days after the invoice date they pay; 0 is on receipt. It sets when their invoices "
-                         f"count as overdue, and isn't printed. {empty}"),
+        'domains_help': f"{c.get('parent_name')} has {c['parent_email_domains']}." if c.get('parent_email_domains') else '',
+        'payment_empty': empty,
         'custom': [{'key': f['key'], 'label': f['label'], 'value': custom.get(f['key'], '')} for f in ctx['custom_defs']],
         'gst_states': GST_STATES,                     # a GSTIN's first two digits: the state it's registered in
         # a site is what its company is, so only a company says whether it's a customer, a supplier or both

@@ -73,7 +73,6 @@ function BoxFields({ p, fields }: { p: string; fields: { key: string; label: str
       <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 'var(--spacing-sm)' }}
               onClick={() => setRows((all) => [...all, { key: '', label: '', sum: false, m: Math.max(0, ...all.map((x) => x.m)) + 1 }])}>
         <Icon name="plus" />Add box detail</button>
-      <p className="form-text">Tick "Total at end" for weights.</p>
     </div>
   );
 }
@@ -94,13 +93,12 @@ export function LayoutForm({ data }: { data: Data }) {
                 <label key={key} className="form-check"><input type="checkbox" name="used_for" value={key} className="form-checkbox"
                                                                defaultChecked={data.used_for.includes(key)} /> {plural}</label>
               ))}
-              <p className="form-text">New documents of these types offer this template{data.guessed ? ' (now guessed from its name)' : ''}. Leave all unticked to offer it for every type.</p>
+              {data.guessed && <p className="form-text">Guessed from its name.</p>}
             </fieldset>
             <label htmlFor="export" className="form-label">Used for exports</label>
             <Dropdown id="export" name="export" style={{ maxWidth: 520 }} defaultValue={data.export}
                       data={[{ value: 'auto', label: 'Automatic', sub: data.auto_export ? 'Yes: a foreign currency, or "export" in the name' : 'No: the home currency' },
                              { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
-            <p className="form-text">Invoices made with an export template print as Export Invoice, under LUT, with shipping details and the packing list.</p>
           </div>
         </section>
 
@@ -114,7 +112,7 @@ export function LayoutForm({ data }: { data: Data }) {
               <div className="card-header">
                 <div>
                   <h2 className="card-title"><Icon name={pg.kind === 'packing' ? 'package' : 'file'} /> {pg.title || data.kinds[pg.kind]}</h2>
-                  <p className="card-subtitle">{data.kinds[pg.kind]}{pg.kind === 'document' ? ' · always printed first' : ''}</p>
+                  <p className="card-subtitle">{data.kinds[pg.kind]}</p>
                 </div>
                 {pg.kind !== 'document' && (
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPages((all) => all.filter((x) => x.n !== pg.n))}>
@@ -131,26 +129,23 @@ export function LayoutForm({ data }: { data: Data }) {
                     <div className="form-group">
                       <span className="form-label">How it prints</span>
                       <label className="form-check"><input type="checkbox" name={`${p}with_document`} className="form-checkbox" defaultChecked={pg.with_document} /> In the same PDF, after the main document</label>
-                      <p className="form-text">Otherwise it's a separate PDF.</p>
                     </div>
                   </div>
                 )}
                 <div className="form-group">
                   <span className="form-label">Document types</span>
                   <Checks name={`${p}doc_types`} options={data.doc_types} ticked={pg.doc_types} />
-                  <p className="form-text">None ticked = all.</p>
                 </div>
                 <div className="form-group">
                   <label className="form-label" htmlFor={`${p}copies`}>Copies</label>
                   <textarea id={`${p}copies`} name={`${p}copies`} className="form-input" rows={3} style={{ minHeight: 84 }}
-                            placeholder="e.g. Original for Recipient" defaultValue={pg.copies.join('\n')} />
-                  <p className="form-text">One per line, up to 5.</p>
+                            placeholder={'Original for Recipient\nDuplicate for Transporter'} defaultValue={pg.copies.join('\n')} />
+                  <p className="form-text">Up to 5.</p>
                 </div>
                 {(pg.kind === 'document' || pg.kind === 'packing') && data.item_fields.length > 0 && (
                   <div className="form-group">
                     <span className="form-label">Item columns</span>
                     <Checks name={`${p}columns`} options={data.item_fields.map((f) => [f.name, f.label])} ticked={pg.columns} />
-                    <p className="form-text">None ticked = all.</p>
                   </div>
                 )}
                 {pg.kind === 'packing' && <BoxFields p={p} fields={pg.box_fields ?? []} />}

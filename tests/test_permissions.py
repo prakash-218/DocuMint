@@ -114,7 +114,7 @@ def _sales_pages_before(endpoint, doc_type):
                    'delete_customer_contact', 'update_file', 'customers', 'new_customer', 'customer_form', 'new_project',
                    'settings',
                    'share', 'share_on', 'share_off'},           # since: sharing a quotation, as they email it
-        'settings_bp': {'index'},
+        'settings_bp': {'index', 'help'},             # since: the Help page, for everyone
         'suppliers_bp': {'list_suppliers'},           # since: the companies they buy from, like customers
     }
     blueprint, _, page = endpoint.partition('.')

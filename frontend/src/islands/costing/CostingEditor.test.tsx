@@ -105,15 +105,15 @@ describe('a purchase order of its lines', () => {
     await userEvent.click(within(dialog).getByRole('checkbox', { name: /MS plate/ }));
     expect(open).toHaveAttribute('href', `${url}&lines=${encodeURIComponent('tank1:0')}`);
     expect(open).toHaveTextContent('(1 line)');
-    expect(dialog).not.toHaveTextContent('save the costing first');              // nothing changed since it was saved
+    expect(dialog).not.toHaveTextContent('Save the costing first');              // nothing changed since it was saved
   });
 
-  it('says the lines are as last saved once something has changed', async () => {
+  it('says unsaved changes are not included once something has changed', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify(RESULT), { status: 200 }));
     render(<CostingEditor data={{ ...DATA, urls: { ...DATA.urls, purchase_order: '/purchase-orders/new' } }} />);
     await userEvent.type(screen.getAllByDisplayValue('MS plate')[0], ' 6mm');
     await userEvent.click(screen.getByRole('button', { name: 'Make a purchase order' }));
-    expect(document.getElementById('k-purchase')).toHaveTextContent('save the costing first');
+    expect(document.getElementById('k-purchase')).toHaveTextContent("Unsaved changes aren't included. Save the costing first.");
   });
 
   it('is not offered to those who may not make one', () => {

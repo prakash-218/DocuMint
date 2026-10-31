@@ -51,7 +51,6 @@ function Cards({ data }: { data: Data }) {
       ) : (
         <div className="card">
           <EmptyState icon="file" title="No templates yet"
-                      text="Templates define the columns and formulas of your documents. Start from the ready-made ones in Settings → Business profile, or build your own."
                       action={data.new ? { href: data.new, label: 'New template' } : null} />
         </div>
       )}

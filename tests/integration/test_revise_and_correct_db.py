@@ -104,7 +104,7 @@ def test_revising_a_quotation_into_another_template(client, gst_org):
     assert _summary(quote_id)[0]['status'] == 'revised'
     # The old version: no revising it again, no going back to draft
     change = document(client, f'/quotes/{quote_id}')['change']
-    assert change['revise']['note'] == 'A newer revision replaced this one; revise the latest.'
+    assert change['revise']['note'] == 'A newer revision replaced this one.'
     assert change['reopen']['blocker'].lower().startswith('a newer revision replaced it')
     # Revising the revision: R2
     client.post(f'/invoices/{revision}/finalize')
@@ -124,7 +124,7 @@ def test_revising_a_proforma_moves_its_advances(client, gst_org):
     client.post(f'/invoices/{pi_id}/payment', data={'amount': '50000', 'method': 'NEFT / RTGS'})
     assert len(advances.on_proforma(pi_id)) == 1
     change = document(client, f'/proformas/{pi_id}')['change']
-    assert change['revise']['possible'] and change['proforma']                 # advances received move to the revision
+    assert change['revise']['possible']                                        # advances received move to the revision
     assert change['reopen']['blocker'].lower().startswith('payments are recorded on this proforma')   # no "back to draft"
 
     revision = _new_id(client.post(f'/invoices/{pi_id}/revise'))

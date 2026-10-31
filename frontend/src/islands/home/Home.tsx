@@ -123,10 +123,10 @@ function HomeScreen() {
 
       <div className="home-cols">
         <section className="card" aria-labelledby="hm-attention">
-          <div className="card-h"><h2 id="hm-attention">Needs attention</h2><span className="muted">Open a row for its projects</span></div>
+          <div className="card-h"><h2 id="hm-attention">Needs attention</h2></div>
           <div className="card-b">
             {data.attention.length === 0 && !data.unfiled_emails && (
-              <p className="empty-feed">Nothing waiting on you. New enquiries and payments will show here.</p>
+              <p className="empty-feed">Nothing waiting on you.</p>
             )}
             <ul className="attn">
               {data.attention.map((g) => {
@@ -194,7 +194,6 @@ function HomeScreen() {
               {r.advances.count > 0 && (
                 <p className="muted" style={{ margin: '10px 0 0', fontSize: 13 }}>
                   Advances requested on proformas: <span className="num">{totals(r.advances.total)}</span> ({plural(r.advances.count, 'project', 'projects')}).
-                  They count once paid.
                 </p>
               )}
               {r.customers.length > 0 && (

@@ -36,7 +36,7 @@ const FORM: CustomerForm = {
   values: { name: '', parent_id: '', site_name: '', tax_id: '', email_domains: '', payment_days: '', street_address: '', city: '',
             state: '', zip_code: '', country: 'India', is_customer: '1', is_supplier: '' },
   site_count: 0, parents: [{ id: 'C-1', name: 'Gear Cutters Ltd' }], domains_help: '',
-  payment_help: "How many days after the invoice date they pay. Empty: your usual terms (30 days).",
+  payment_empty: '30 days (your usual)',
   custom: [{ key: 'vendor_code', label: 'Vendor code', value: '' }],
   gst_states: { '29': 'Karnataka', '33': 'Tamil Nadu' },
   kinds: true,
@@ -76,7 +76,7 @@ describe("a customer's GSTIN", () => {
     await userEvent.type(gstin, '29ABCDE1234F1Z');
     expect(screen.queryByText(/Registered in/)).toBeNull();                         // not a whole GSTIN yet
     await userEvent.type(gstin, '5');
-    expect(screen.getByText('Registered in Karnataka. Its state decides CGST + SGST or IGST.')).toBeInTheDocument();
+    expect(screen.getByText('Registered in Karnataka.')).toBeInTheDocument();
     expect(screen.getByLabelText('State')).toHaveValue('Karnataka');
   });
 

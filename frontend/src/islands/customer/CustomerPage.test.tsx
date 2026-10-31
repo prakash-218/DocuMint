@@ -163,7 +163,7 @@ describe('CustomerPage', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     fireEvent.click(screen.getByRole('button', { name: 'Give them one' }));
-    expect(screen.getByLabelText(/Their email/).closest('form')).toHaveAttribute('action', '/customers/C-1/create-portal-account');
+    expect(screen.getByLabelText('Portal email').closest('form')).toHaveAttribute('action', '/customers/C-1/create-portal-account');
     expect(screen.getByRole('button', { name: 'Archive the customer' }).closest('form')).toHaveAttribute('action', '/customers/C-1/archive');
   });
 });

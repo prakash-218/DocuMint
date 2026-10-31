@@ -21,6 +21,7 @@ const Notifications = lazy(() => import('../islands/notifications/Notifications'
 const Settings = lazy(() => import('../islands/settings/Settings'));
 const Profile = lazy(() => import('../islands/settings/Profile'));
 const AuditLog = lazy(() => import('../islands/settings/AuditLog'));
+const Help = lazy(() => import('../islands/help/Help'));
 const OrgForm = lazy(() => import('../islands/settings/OrgForm'));
 const Roles = lazy(() => import('../islands/settings/Roles'));
 const RoleEditor = lazy(() => import('../islands/settings/Roles').then((m) => ({ default: m.RoleEditor })));
@@ -160,6 +161,11 @@ export function ProfileScreen() {
 export function AuditLogScreen() {
   const { key, search } = useListKey();
   return <AuditLog key={key} search={search} />;
+}
+
+/** /settings/help */
+export function HelpScreen() {
+  return <Help />;
 }
 
 export function RolesScreen() {

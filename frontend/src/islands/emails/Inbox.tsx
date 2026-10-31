@@ -39,8 +39,7 @@ function InboxView({ data }: { data: Data }) {
             </ul>
             <Pager page={data.page} />
           </>
-        ) : <EmptyState icon="mail" title={data.empty}
-                        text="Emails mentioning a project number (PRJ-012) or a document number go to that project on their own." />}
+        ) : <EmptyState icon="mail" title={data.empty} />}
       </div>
     </>
   );

@@ -24,15 +24,17 @@ def index(user: Dict, org_id, org_name: str, perms, url: Callable) -> Dict:
         invites = db.execute_proc('sp_list_invites', (org_id,)) or []
         requests = db.execute_proc('sp_get_pending_members', (org_id,)) or []
         members = [m for m in db.execute_proc('sp_get_org_members', (org_id,)) or [] if m.get('status') in ('active', 'deactivated')]
-    links = [('Business profile', 'GSTIN, bank details, numbering, logo, quotation terms', 'business.write', url('settings_bp.business_profile')),
+    # each with what it shows of theirs, if anything (the organization's name)
+    links = [('Business profile', '', 'business.write', url('settings_bp.business_profile')),
              ('Name & address', org_name or '', 'organization.write', url('settings_bp.edit_organization', org_id=org_id)),
-             ('Roles', 'What each role may do, and roles of your own', 'team.manage', url('settings_bp.roles')),
-             ('Templates', 'Columns, formulas and printed pages', 'templates.write', url('templates_bp.list_templates')),
-             ('Audit log', 'Who changed what', 'audit.read', url('settings_bp.audit_log'))]
+             ('Roles', '', 'team.manage', url('settings_bp.roles')),
+             ('Templates', '', 'templates.write', url('templates_bp.list_templates')),
+             ('Audit log', '', 'audit.read', url('settings_bp.audit_log')),
+             ('Help', '', None, url('settings_bp.help'))]                  # how the app works, for everyone
     me = str(user['user_id'])
     return {
         'title': 'Settings',
-        'links': [{'title': title, 'sub': sub, 'href': href} for title, sub, need, href in links if permissions.can(need, perms=perms)],
+        'links': [{'title': title, 'sub': sub, 'href': href} for title, sub, need, href in links if not need or permissions.can(need, perms=perms)],
         'team': url('settings_bp.approve_member'),
         'roles': roles_view.choices(org_id, perms) if manage else [],
         'requests': [{'user_id': str(r['user_id']), 'email': r.get('email') or '', 'asked': r.get('joined_at')} for r in requests],

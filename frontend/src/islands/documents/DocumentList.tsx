@@ -166,8 +166,8 @@ function ListScreen({ group, tab: firstTab = 'all', query: firstQuery = '' }: { 
         {!picked && shown.length > 0 && (
           <>
             <button type="button" className="btn btn-secondary" onClick={() => setPicked(new Set())}><Icon name="checkCheck" />Select</button>
-            <button type="button" className="btn btn-secondary" onClick={() => download(data.exports.csv, shown.map((r) => r.id))}
-                    title={`A row for each of the ${shown.length} shown, with the taxable value and GST`}><Icon name="download" />Export CSV</button>
+            <button type="button" className="btn btn-secondary" onClick={() => download(data.exports.csv, shown.map((r) => r.id))}>
+              <Icon name="download" />Export CSV</button>
           </>
         )}
       </div>
@@ -236,7 +236,7 @@ function Rows({ data, rows, picked, onPick }: { data: DocList; rows: DocRow[]; p
           </Row>
         );
       })}
-      {rows.length === 0 && <p className="empty-rows">{data.rows.length ? 'Nothing matches. Clear the search or the filters to see them all.' : `No ${data.title.toLowerCase()} yet.`}</p>}
+      {rows.length === 0 && <p className="empty-rows">{data.rows.length ? 'Nothing matches.' : `No ${data.title.toLowerCase()} yet.`}</p>}
     </div>
   );
 }

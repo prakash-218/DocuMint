@@ -3,7 +3,7 @@
 import type { ComponentType } from 'react';
 import { matchRoutes } from 'react-router';
 import type { SkeletonKind } from '../Skeleton';
-import { AuditLogScreen, CostingScreen, CustomerScreen, CustomersScreen, DocumentScreen, EditCustomerScreen, EditDocumentScreen,
+import { AuditLogScreen, HelpScreen, CostingScreen, CustomerScreen, CustomersScreen, DocumentScreen, EditCustomerScreen, EditDocumentScreen,
          EditTemplateScreen, HomeScreen, InboxScreen, ListScreen, NewCustomerScreen, NewDocumentScreen, NewProjectScreen,
          NewTemplateScreen, NotificationsScreen, OrgScreen, PackingScreen, PaymentsScreen, SuppliersScreen, ProfileScreen, ProjectScreen, ProjectsScreen,
          RatesScreen, RoleScreen, RolesScreen, SettingsScreen, TemplateLayoutScreen, TemplateScreen, TemplatesScreen, ThreadScreen } from './screens';
@@ -52,6 +52,7 @@ export const ROUTES: AppRoute[] = [
   { path: '/settings', screen: SettingsScreen, skeleton: 'page', label: 'Settings' },
   { path: '/settings/profile', screen: ProfileScreen, skeleton: 'page', label: 'Business profile' },
   { path: '/settings/audit-log', screen: AuditLogScreen, skeleton: 'list', label: 'Audit log' },
+  { path: '/settings/help', screen: HelpScreen, skeleton: 'page', label: 'Help' },
   { path: '/settings/organizations/:orgId/edit', screen: OrgScreen, skeleton: 'page', label: 'Name & address', ids: ['orgId'] },
   { path: '/settings/roles', screen: RolesScreen, skeleton: 'list', label: 'Roles' },
   { path: '/settings/roles/new', screen: RoleScreen, skeleton: 'page', label: 'New role' },

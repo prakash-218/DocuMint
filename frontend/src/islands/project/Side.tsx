@@ -83,8 +83,8 @@ export function FileForm({ file, kinds, onSave, onCancel, move }: FileFormProps)
       <form className="stack-form" onSubmit={submit} aria-label={`What ${file.name} is`}>
         <label htmlFor={`${id}-kind`} className="form-label">What it is</label>
         <Dropdown id={`${id}-kind`} value={kind} onChange={setKind} data={choices(Object.entries(kinds))} />
-        <label htmlFor={`${id}-ref`} className="form-label">Number <span className="muted">(PO or drawing no.)</span></label>
-        <input id={`${id}-ref`} className="form-input" value={ref} maxLength={100} onChange={(e) => setRef(e.target.value)} />
+        <label htmlFor={`${id}-ref`} className="form-label">Number</label>
+        <input id={`${id}-ref`} className="form-input" value={ref} maxLength={100} placeholder="PO or drawing no." onChange={(e) => setRef(e.target.value)} />
         <div className="form-actions-row">
           <button type="submit" className="btn btn-primary btn-xs" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
           <button type="button" className="btn btn-ghost btn-xs" onClick={onCancel}>Cancel</button>
@@ -114,7 +114,7 @@ export function Costings({ costings, projectId, links }: { costings: NonNullable
   return (
     <section className="side-sec" aria-labelledby="pp-costings">
       <h2 id="pp-costings">Costing <span className="tag tone-draft">Owners and admins</span></h2>
-      {costings.length === 0 && <p className="muted" style={{ margin: 0 }}>No costing for this project. Work out the prices before the quotation.</p>}
+      {costings.length === 0 && <p className="muted" style={{ margin: 0 }}>No costing for this project.</p>}
       {costings.map((k) => (
         <div key={k.id} className="costing">
           <span className="big">Cost {money(k.cost, k.currency)}</span>
@@ -204,7 +204,7 @@ export function Details({ page, onSave }: { page: Page; onSave: (fields: DetailF
           <div><dt>Financial year</dt><dd>{project.fiscal_year}</dd></div>
           <div><dt>Status</dt><dd>{statuses[project.status]}</dd></div>
           {can.read_mail && (
-            <div><dt>Email code</dt><dd><span className="mono">{project.label}</span> in a subject puts the thread here</dd></div>
+            <div><dt>Email code</dt><dd><span className="mono">{project.label}</span></dd></div>
           )}
           {project.notes && <div><dt>Notes</dt><dd>{project.notes}</dd></div>}
         </dl>

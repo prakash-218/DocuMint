@@ -69,12 +69,13 @@ describe('sharing a document', () => {
     expect(screen.queryByDisplayValue(URL)).toBeNull();
   });
 
-  it('says where to add a UPI ID when something is due without one', async () => {
+  it('offers no email outside a project, and no QR code without a UPI ID', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...NO_LINK, pay: null, upi_missing: true, email: false }),
                                                           { status: 200, headers: { 'Content-Type': 'application/json' } })));
     render(<ShareDialog url="/api/document/D-58/share" projectId={null} invoiceId="D-58" onClose={() => undefined} />);
-    const dialog = (await screen.findByText(/Add your UPI ID in Settings/)).closest('dialog')!;
+    const dialog = (await screen.findByRole('link', { name: 'Download PDF', hidden: true })).closest('dialog')!;
     expect(within(dialog).queryByRole('button', { name: 'Email', hidden: true })).toBeNull();
+    expect(within(dialog).queryByRole('region', { name: 'Pay by UPI', hidden: true })).toBeNull();
     expect(within(dialog).getByRole('link', { name: 'Download PDF', hidden: true })).toHaveAttribute('href', '/invoices/D-58/pdf?download=1');
   });
 

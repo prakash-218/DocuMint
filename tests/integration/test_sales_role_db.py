@@ -60,3 +60,17 @@ def test_sales_work_on_quotations_only(client, gst_org):
     finally:
         login(client, OWNER)
         _set_role(client, VIEWER, 'viewer')
+
+
+def test_help_is_in_settings_for_everyone(client, gst_org):
+    login(client, OWNER)
+    links = [link['title'] for link in client.get('/api/settings').get_json()['links']]
+    assert links[-1] == 'Help' and 'Audit log' in links
+    _set_role(client, VIEWER, 'sales')
+    try:
+        login(client, VIEWER)
+        assert [link['title'] for link in client.get('/api/settings').get_json()['links']] == ['Help']   # what Sales see
+        assert client.get('/settings/help').status_code == 200
+    finally:
+        login(client, OWNER)
+        _set_role(client, VIEWER, 'viewer')

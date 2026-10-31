@@ -11,7 +11,7 @@ import { Icon } from '../../icons';
 
 interface Listing {
   title: string;
-  built_in: { key: string; name: string; summary: string; members: number; permissions: number; copy: string | null }[];
+  built_in: { key: string; name: string; members: number; permissions: number; copy: string | null }[];
   custom: { id: string; name: string; description: string; members: number; permissions: number; url: string; editable: boolean }[];
   new: string;
   back: string;
@@ -64,7 +64,7 @@ export function RolesView({ data }: { data: Listing }) {
             </ul>
           ) : (
             <div className="card-body">
-              <p className="text-tertiary">No roles of your own yet. Make one from scratch, or copy a built-in role below and change it.</p>
+              <p className="text-tertiary">No roles of your own yet.</p>
             </div>
           )}
         </section>
@@ -75,7 +75,7 @@ export function RolesView({ data }: { data: Listing }) {
               <li key={r.key}>
                 <div className="pick-main">
                   <span className="pick-title">{r.name}</span>
-                  <span className="pick-sub">{r.summary}. {people(r.members)}.</span>
+                  <span className="pick-sub">{r.permissions} permissions · {people(r.members)}</span>
                 </div>
                 {r.copy && <a href={r.copy} className="btn btn-ghost btn-sm">Copy</a>}
               </li>
@@ -157,7 +157,7 @@ export function RoleForm({ data }: { data: Editor }) {
                      placeholder="Prices jobs and sends quotations" onChange={(e) => setDescription(e.target.value)} />
             </div>
           </div>
-          {data.role.id && <p className="form-text">{people(data.role.members)} {data.role.members === 1 ? 'has' : 'have'} this role. Changes apply to them at once.</p>}
+          {data.role.id && <p className="form-text">{people(data.role.members)} {data.role.members === 1 ? 'has' : 'have'} this role.</p>}
           <h3 className="perm-heading">What it lets someone do</h3>
           <div className="perm-areas">
             {data.catalog.map((area) => (

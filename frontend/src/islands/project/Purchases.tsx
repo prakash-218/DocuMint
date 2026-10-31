@@ -44,7 +44,7 @@ export function Purchases({ docs, newUrl }: { docs: Doc[]; newUrl?: string }) {
               );
             })}
           </ul>
-        ) : <p className="muted" style={{ margin: 0 }}>Nothing bought for it yet. A purchase order goes to one of your suppliers.</p>}
+        ) : <p className="muted" style={{ margin: 0 }}>Nothing bought for it yet.</p>}
         {newUrl && (
           <div className="doc-actions">
             <a className="btn btn-secondary btn-sm" href={newUrl}><Icon name="plus" />New purchase order</a>

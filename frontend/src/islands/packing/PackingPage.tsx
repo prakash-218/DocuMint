@@ -132,7 +132,7 @@ export function Packing({ data }: { data: PackingData }) {
               <Icon name="plus" />Add box
             </button>
             <div className="btn-group">
-              <button type="button" className="btn btn-ghost" title="Put everything not yet packed into the last box" onClick={fillRest}>
+              <button type="button" className="btn btn-ghost" onClick={fillRest}>
                 Put the rest in the last box
               </button>
               <button type="submit" className="btn btn-primary">Save packing</button>

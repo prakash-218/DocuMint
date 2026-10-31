@@ -69,8 +69,8 @@ function SentLink({ sent, onDone }: { sent: Sent; onDone: () => void }) {
     : `Here's a link to set a new DocuMint password (it works once, for 2 hours): ${sent.link}`;
   return (
     <div className="sent-link" role="status">
-      <p>{sent.emailed ? <>Emailed the {what} to <strong>{sent.to}</strong>. You can also send it yourself:</>
-        : <>The {what} for <strong>{sent.to}</strong> wasn't emailed (this organization has no mailbox to send from). Send it yourself:</>}</p>
+      <p>{sent.emailed ? <>Emailed the {what} to <strong>{sent.to}</strong>.</>
+        : <>The {what} for <strong>{sent.to}</strong> wasn't emailed: this organization has no mailbox to send from.</>}</p>
       <div className="sent-link-row">
         <input className="form-input mono" readOnly value={sent.link} aria-label="The link" onFocus={(e) => e.target.select()} />
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
@@ -79,7 +79,6 @@ function SentLink({ sent, onDone }: { sent: Sent; onDone: () => void }) {
         <a className="btn btn-secondary btn-sm" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onDone}>Done</button>
       </div>
-      <p className="form-text">It works once{sent.what === 'invite' ? ', for 7 days' : ', for 2 hours'}, and only for {sent.to}. It isn't shown again: send it again for a new one.</p>
     </div>
   );
 }
@@ -122,7 +121,7 @@ function Invites({ data, sent, onSent }: { data: Data; sent: Sent | null; onSent
         <form className="invite-form" onSubmit={invite}>
           <div className="form-group">
             <label htmlFor="invite-email" className="form-label">Email</label>
-            <input id="invite-email" name="email" type="email" className="form-input" required placeholder="name@company.com or name@gmail.com" />
+            <input id="invite-email" name="email" type="email" className="form-input" required placeholder="name@company.com" />
           </div>
           <div className="form-group">
             <label htmlFor="invite-role" className="form-label">Role</label>
@@ -131,8 +130,6 @@ function Invites({ data, sent, onSent }: { data: Data; sent: Sent | null; onSent
           </div>
           <button type="submit" className="btn btn-primary" disabled={busy}><Icon name="userPlus" />Invite</button>
         </form>
-        <p className="form-text">Only people you invite can get in. Any address works, Gmail too: they open the link, set a password and they're in, with
-          the role you chose.</p>
         {error && <p className="error" role="alert">{error}</p>}
         {sent && <SentLink sent={sent} onDone={() => onSent(null)} />}
         {invites.length > 0 && (
@@ -189,8 +186,7 @@ function Team({ data, onSent }: { data: Data; onSent: (s: Sent) => void }) {
                   <Dropdown id={`mrole-${m.user_id}`} name="role" size="xs" defaultValue={m.role} submitOnChange data={choices(data.roles)} />
                 </form>
                 {m.reset && (
-                  <button type="button" className="btn btn-ghost btn-sm" title="For when they forgot it and email doesn't reach them"
-                          onClick={() => void reset(m)}>Password link</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => void reset(m)}>Password link</button>
                 )}
                 <form action={data.team} method="post" onSubmit={m.status === 'active' ? ask(`Deactivate ${m.email}?`) : undefined}>
                   <input type="hidden" name="user_id" value={m.user_id} />
@@ -219,7 +215,7 @@ function SettingsView({ data }: { data: Data }) {
               {data.links.map((l) => (
                 <li key={l.href}>
                   <a href={l.href}>
-                    <span className="pick-main"><span className="pick-title">{l.title}</span><span className="pick-sub">{l.sub}</span></span>
+                    <span className="pick-main"><span className="pick-title">{l.title}</span>{l.sub && <span className="pick-sub">{l.sub}</span>}</span>
                     <Icon name="chevronRight" />
                   </a>
                 </li>

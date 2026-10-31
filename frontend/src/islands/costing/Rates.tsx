@@ -43,8 +43,7 @@ export function RatesList({ data }: { data: Data }) {
   return (
     <>
       <PageHeader title={data.title} heading
-                  description={<>Your usual costs, in {data.base}. A costing's cost lines offer them as you type.{' '}
-                    <span className="text-tertiary">Only owners and admins see this.</span></>}
+                  description={`Unit costs in ${data.base}`}
                   actions={data.back && <a href={data.back.url} className="btn btn-secondary"><Icon name="arrowLeft" />
                     <span className="btn-label">Back to costing v{data.back.version}</span></a>} />
       <form method="post" action={data.action} className="mb-lg">
@@ -83,7 +82,7 @@ export function RatesList({ data }: { data: Data }) {
       {offered.length > 0 && (
         <section className="card items-card">
           <div className="card-header"><h2 className="card-title">From your costings</h2>
-            <span className="text-tertiary">Cost lines you've used that aren't in the list yet, with the rate they had last. Add the ones you use often, then save.</span></div>
+            <span className="text-tertiary">{offered.length} not in the list yet</span></div>
           <div className="items-wrap">
             <table className="items-editor k-rates-table k-suggest">
               <thead>

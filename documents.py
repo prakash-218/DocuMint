@@ -78,7 +78,7 @@ DOC_TYPES: Dict[str, DocType] = {
             DetailField('port_of_loading', 'Port of loading', placeholder='Chennai, India', group='export'),
             DetailField('port_of_discharge', 'Port of discharge', placeholder='Savannah, USA', group='export'),
             DetailField('final_destination', 'Final destination', placeholder='United States', group='export'),
-            DetailField('notes', 'Notes & scope', 'textarea', placeholder='Printed below the items'),
+            DetailField('notes', 'Notes & scope', 'textarea'),
             DetailField('terms', 'Terms & conditions', 'textarea', placeholder='One per line'),
             DetailField('intro', 'Opening paragraph', 'textarea', group='letter'),
             DetailField('closing', 'Closing paragraph', 'textarea', group='letter'),
@@ -131,9 +131,8 @@ DOC_TYPES['purchase_order'] = DocType(
         DetailField('supplier_ref', 'Their quotation', placeholder='Q-118 dated 12 Oct'),
         DetailField('delivery', 'Delivery', placeholder='Immediate'),
         DetailField('payment_terms', 'Payment terms', placeholder='Against delivery'),
-        DetailField('notes', 'Notes', 'textarea', placeholder='Printed below the items'),
-        DetailField('deliver_to', 'Deliver to', 'textarea', placeholder='Our works, when it isn\'t the address on top',
-                    group='delivery'),
+        DetailField('notes', 'Notes', 'textarea'),
+        DetailField('deliver_to', 'Deliver to', 'textarea', group='delivery'),
     ),
 )
 SALES_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice')

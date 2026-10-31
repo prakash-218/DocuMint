@@ -65,10 +65,9 @@ function List({ data }: { data: Data }) {
             </div>
             <Pager page={data.page} />
           </>
-        ) : data.query ? <EmptyState icon="search" title={`No ${data.title.toLowerCase()} match`} text="Try another name or city." />
+        ) : data.query ? <EmptyState icon="search" title={`No ${data.title.toLowerCase()} match`} />
           : data.kind === 'supplier'
-            ? <EmptyState icon="truck" title="No suppliers yet" text="A company you buy from. One you also sell to can be both: tick Supplier on its page."
-                          action={data.new ? { href: data.new, label: data.new_label } : null} />
+            ? <EmptyState icon="truck" title="No suppliers yet" action={data.new ? { href: data.new, label: data.new_label } : null} />
             : <EmptyState icon="users" title="No customers yet" action={data.new ? { href: data.new, label: data.new_label } : null} />}
       </div>
     </>

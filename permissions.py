@@ -83,13 +83,6 @@ ROLES: Dict[str, FrozenSet[str]] = {
 }
 ROLE_LABELS = {'owner': 'Owner', 'admin': 'Admin', 'member': 'Member', 'sales': 'Sales (projects and quotations)',
                'viewer': 'Viewer'}
-ROLE_SUMMARIES = {
-    'owner': 'Everything, including the name and address and who the owners are',
-    'admin': "Everything but the organization's name and address, and making or changing owners",
-    'member': 'Every document (purchase orders too), payments, projects and files, reading customers and the mailbox, sending email',
-    'sales': "Projects and their files, quotations and customers; nothing about money beyond what's quoted",
-    'viewer': 'Reads documents, projects, files, customers and templates, and changes nothing',
-}
 
 # Custom roles: an organization's own (org_role), any set of these. What only owners have stays with them, so an
 # organization keeps its owners.
@@ -328,6 +321,7 @@ ENDPOINTS: Dict[str, Rule] = {
     'templates_bp.unarchive_template': 'templates.write',
     # Settings
     'settings_bp.index': ANYONE,
+    'settings_bp.help': ANYONE,
     'settings_bp.edit_organization': 'organization.write',
     'settings_bp.approve_member': 'team.manage',
     'settings_bp.audit_log': 'audit.read',

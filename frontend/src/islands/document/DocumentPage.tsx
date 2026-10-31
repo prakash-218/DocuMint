@@ -88,8 +88,6 @@ function ChangeDialog({ change }: { change: Change }) {
     <section className="change-option">
       <div>
         <h3>Correct this {change.short}</h3>
-        <p>Fix a mistake: a wrong PO number, date, rate or spelling. It keeps its number{change.takes_payments ? ' and its payments' : ''},
-          and the correction replaces what was {change.sent_word}. Recorded in the audit log.</p>
       </div>
       <a href={change.correct} className="btn btn-secondary btn-sm"><Icon name="pencil" />Correct it</a>
     </section>
@@ -106,10 +104,7 @@ function ChangeDialog({ change }: { change: Change }) {
           <section className="change-option">
             <div>
               <h3>Make a revision</h3>
-              {r.possible ? (
-                <p>A new version, <strong>{r.number}</strong>, for a changed offer: other prices, items or terms. This one stays as it was{' '}
-                  {change.sent_word}, marked revised{change.proforma ? '; advances received move to the revision' : ''}.</p>
-              ) : <p className="text-tertiary">{r.note}</p>}
+              {!r.possible && <p className="text-tertiary">{r.note}</p>}
             </div>
             {r.possible && (
               <form method="post" action={r.action} className="change-revise">
@@ -129,10 +124,8 @@ function ChangeDialog({ change }: { change: Change }) {
         <section className="change-option">
           <div>
             <h3>Back to draft</h3>
-            {change.reopen.blocker ? (
+            {change.reopen.blocker && (
               <p className="text-tertiary">Not possible: {change.reopen.blocker.slice(0, 1).toLowerCase()}{change.reopen.blocker.slice(1)}</p>
-            ) : (
-              <p>Undo "{change.undo}" when it was done by mistake. It keeps its number; edit it and {change.again} it again.</p>
             )}
           </div>
           {!change.reopen.blocker && (
@@ -153,7 +146,6 @@ function RecordForm({ form }: { form: NonNullable<Payments['record']> }) {
   const rate = parseFloat(received) > 0 && parseFloat(amount) > 0 ? (parseFloat(received) / parseFloat(amount)).toFixed(2) : '';
   return (
     <form method="post" action={form.action}>
-      {form.advance && <p className="form-text" style={{ marginTop: 0 }}>Money received against this proforma. It moves to the invoice when the proforma is converted.</p>}
       <div className="form-group">
         <label htmlFor={`${id}-amount`} className="form-label">Amount ({form.currency})</label>
         <input type="number" step="0.01" min="0.01" id={`${id}-amount`} name="amount" className="form-input" value={amount}
@@ -201,7 +193,7 @@ function PaymentsCard({ payments: p, currency }: { payments: Payments; currency:
                   {r.reference && <><br /><span className="muted">{r.reference}</span></>}
                   {r.credited && <><br /><span className="muted">Credited {money(r.credited.amount, r.credited.currency)}{r.credited.rate ? ` @ ${r.credited.rate}` : ''}</span></>}
                   {p.title === 'Advances' && (
-                    <><br /><span className="muted">{r.applied ? <>Applied to <a href={r.applied.url}>{r.applied.number}</a></> : 'Goes to the invoice when this proforma is converted'}</span></>
+                    <><br /><span className="muted">{r.applied ? <>Applied to <a href={r.applied.url}>{r.applied.number}</a></> : 'Not applied yet'}</span></>
                   )}
                   {r.take_off && (
                     <form method="post" action={r.take_off.action} style={{ display: 'inline' }} onSubmit={ask(r.take_off.confirm)}>
@@ -371,17 +363,11 @@ function DocFiles({ data }: { data: DocumentData }) {
         </ul>
       )}
       {data.upload && (
-        <>
-          <form className="drop" data-dropzone method="post" action={data.upload.action} encType="multipart/form-data">
-            <input type="hidden" name="invoice_id" value={data.invoice_id} />
-            <input type="file" id={`${id}-file`} name="file" multiple className="sr-only" accept={ACCEPT} />
-            <span data-drop-label>Drop files here or <label htmlFor={`${id}-file`} className="linkish">choose files</label></span>
-          </form>
-          {data.project.project && (
-            <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>To say what a file is or give its number, open its tag on the{' '}
-              <a href={data.project.project.url}>project page</a>.</p>
-          )}
-        </>
+        <form className="drop" data-dropzone method="post" action={data.upload.action} encType="multipart/form-data">
+          <input type="hidden" name="invoice_id" value={data.invoice_id} />
+          <input type="file" id={`${id}-file`} name="file" multiple className="sr-only" accept={ACCEPT} />
+          <span data-drop-label>Drop files here or <label htmlFor={`${id}-file`} className="linkish">choose files</label></span>
+        </form>
       )}
     </section>
   );

@@ -3,10 +3,10 @@ import { day, money } from '../../format';
 import { Icon } from '../../icons';
 import type { Doc, Page, Tone } from './types';
 
-const GROUPS: { key: 'quote' | 'proforma' | 'invoice'; label: string; empty: string; later: string; types: Doc['doc_type'][] }[] = [
-  { key: 'quote', label: 'Quotation', empty: 'No quotation yet', later: 'The offer, first of all', types: ['quote'] },
-  { key: 'proforma', label: 'Proforma for the advance', empty: 'No proforma', later: 'After the quotation is accepted, when an advance is asked for', types: ['proforma'] },
-  { key: 'invoice', label: 'Tax invoice', empty: 'Not invoiced yet', later: 'After the advance, on delivery', types: ['invoice', 'export_invoice'] },
+const GROUPS: { key: 'quote' | 'proforma' | 'invoice'; label: string; empty: string; types: Doc['doc_type'][] }[] = [
+  { key: 'quote', label: 'Quotation', empty: 'No quotation yet', types: ['quote'] },
+  { key: 'proforma', label: 'Proforma for the advance', empty: 'No proforma', types: ['proforma'] },
+  { key: 'invoice', label: 'Tax invoice', empty: 'Not invoiced yet', types: ['invoice', 'export_invoice'] },
 ];
 
 export function status(d: Doc): { text: string; tone: Tone } {
@@ -44,7 +44,6 @@ export function Documents({ docs, newDocument, canEdit, sales, onEmail, current,
     <section className="card" aria-labelledby="pp-docs">
       <div className="card-h">
         <h2 id="pp-docs">Documents</h2>
-        {!sales && <span className="muted" style={{ fontSize: 12.5 }}>Quotation → Proforma → Tax invoice</span>}
       </div>
       <div className="card-b">
         <ol className="chain">
@@ -57,7 +56,7 @@ export function Documents({ docs, newDocument, canEdit, sales, onEmail, current,
                 <li key={g.key} className="node">
                   <span className="dot" aria-hidden="true"><Icon name="file" size={14} /></span>
                   <div className={`slot${next ? ' next-slot' : ' later'}`}>
-                    <span><span className="doc-type">{g.label}</span><br />{next ? g.empty : g.later}</span>
+                    <span><span className="doc-type">{g.label}</span>{next && <><br />{g.empty}</>}</span>
                     {canEdit && href && <a className={`btn btn-xs ${next ? 'btn-primary' : 'btn-ghost'}`} href={href}>New {g.label.split(' ')[0].toLowerCase()}</a>}
                   </div>
                 </li>

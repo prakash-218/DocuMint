@@ -41,42 +41,39 @@ export function CustomerFormView({ data }: { data: Data }) {
       <form method="post" action={data.action} className="panel-medium">
         <section className="card">
           <div className="card-body">
-            <Text name="name" label="Name" value={v('name')} help="The legal name printed on documents." required autoFocus />
+            <Text name="name" label="Name" value={v('name')} required autoFocus />
             {data.site_count ? (
               <p className="form-text">{data.site_count} site{data.site_count === 1 ? '' : 's'} belong{data.site_count === 1 ? 's' : ''} to this
-                customer, so it can't be a site itself.</p>
+                customer.</p>
             ) : (
               <div className="form-row">
                 <div className="form-group">
                   <label htmlFor="parent_id" className="form-label">Site of</label>
                   <Dropdown id="parent_id" name="parent_id" defaultValue={v('parent_id')}
                             data={[{ value: '', label: 'A customer of its own' }, ...data.parents.map((p) => ({ value: p.id, label: p.name }))]} />
-                  <p className="form-text">A plant, branch, division or sister company of another customer.</p>
                 </div>
-                <Text name="site_name" label="Site name" value={v('site_name')} maxLength={100} placeholder="Gears Division, Madurai plant"
-                      help="Tells it apart from the other sites. Defaults to the city." />
+                <Text name="site_name" label="Site name" value={v('site_name')} maxLength={100} placeholder="Gears Division, Madurai plant" />
               </div>
             )}
             {data.kinds && (
               <fieldset className="form-group kinds">
                 <legend className="form-label">They are</legend>
                 <label className="checkbox"><input type="checkbox" name="is_customer" value="1" defaultChecked={!!v('is_customer')} />
-                  A customer <span className="text-tertiary">(we sell to them)</span></label>
+                  A customer</label>
                 <label className="checkbox"><input type="checkbox" name="is_supplier" value="1" defaultChecked={!!v('is_supplier')} />
-                  A supplier <span className="text-tertiary">(we buy from them, on purchase orders)</span></label>
-                <p className="form-text">A site is what its company is, whatever is ticked here.</p>
+                  A supplier</label>
               </fieldset>
             )}
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="tax_id" className="form-label">GSTIN / Tax ID</label>
-                <input type="text" id="tax_id" name="tax_id" className="form-input" value={gstin}
+                <input type="text" id="tax_id" name="tax_id" className="form-input" value={gstin} placeholder="33ABCDE1234F1Z5"
                        onChange={(e) => {
                          setGstin(e.target.value);
                          const found = gstinState(e.target.value, data.gst_states ?? {});
                          if (found && !state.trim()) setState(found);          // an empty State takes the GSTIN's
                        }} />
-                {registered && <p className="form-text">Registered in {registered}. Its state decides CGST + SGST or IGST.</p>}
+                {registered && <p className="form-text">Registered in {registered}.</p>}
               </div>
               <Text name="email_domains" label="Email domains" value={v('email_domains')} placeholder="hydroparts.com, hydroparts.us"
                     help={data.domains_help} />
@@ -85,8 +82,7 @@ export function CustomerFormView({ data }: { data: Data }) {
               <div className="form-group">
                 <label htmlFor="payment_days" className="form-label">Payment terms (days)</label>
                 <input type="number" id="payment_days" name="payment_days" className="form-input" min={0} max={365} step={1} inputMode="numeric"
-                       defaultValue={v('payment_days')} placeholder="30" />
-                <p className="form-text">{data.payment_help}</p>
+                       defaultValue={v('payment_days')} placeholder={data.payment_empty} />
               </div>
             </div>
             <Text name="street_address" label="Address" value={v('street_address')} />

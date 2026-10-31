@@ -119,7 +119,6 @@ export function ShareDialog({ url, projectId, invoiceId, onClose }: { url: strin
               <section className="share-sec" aria-label="WhatsApp">
                 <label htmlFor={`${id}-msg`} className="form-label">Message</label>
                 <textarea id={`${id}-msg`} className="form-input" rows={7} value={body} onChange={(e) => setBody(e.target.value)} />
-                <p className="form-text">“Dear …,” goes on top, with the name of whoever you send it to.</p>
                 <ul className="share-people">
                   {data.people.map((p) => (
                     <li key={`${p.number}-${p.name}`}>
@@ -133,7 +132,7 @@ export function ShareDialog({ url, projectId, invoiceId, onClose }: { url: strin
                     <a className="btn btn-secondary" href={waLink(greet(''))} target="_blank" rel="noopener noreferrer">
                       <Icon name="messageCircle" />Someone else
                     </a>
-                    <span className="text-tertiary">{data.people.length ? 'Pick them in WhatsApp' : 'No contact on this project has a phone number; pick someone in WhatsApp'}</span>
+                    {!data.people.length && <span className="text-tertiary">No contact on this project has a phone number</span>}
                   </li>
                 </ul>
               </section>
@@ -153,7 +152,6 @@ export function ShareDialog({ url, projectId, invoiceId, onClose }: { url: strin
               <p className="form-note share-link-note">
                 <Icon name="info" />
                 <span>
-                  Anyone with the link can open this {data.kind.toLowerCase()} and its PDF, without signing in.{' '}
                   {link.opens ? `Opened ${link.opens} time${link.opens === 1 ? '' : 's'}, last on ${link.last_opened}.` : 'Not opened yet.'}{' '}
                   <button type="button" className="linkish" disabled={busy} onClick={() => void turnOff()}>Turn the link off</button>
                 </span>
@@ -165,12 +163,9 @@ export function ShareDialog({ url, projectId, invoiceId, onClose }: { url: strin
                 <img src={data.pay.qr} alt={`UPI QR code to pay ${money(data.pay.amount)}`} />
                 <div>
                   <b>Scan to pay {money(data.pay.amount)}</b>
-                  <div className="text-tertiary">UPI to <span className="mono">{data.pay.upi_id}</span>. The link’s page and the PDF show it too.</div>
+                  <div className="text-tertiary">UPI to <span className="mono">{data.pay.upi_id}</span></div>
                 </div>
               </section>
-            )}
-            {!data.pay && data.upi_missing && (
-              <p className="form-note"><Icon name="info" /><span>Add your UPI ID in Settings → Business profile, and a “Scan to pay” QR code for what’s due shows here, on the PDF and on the link’s page.</span></p>
             )}
           </>
         )}

@@ -300,6 +300,13 @@ def role(role_id):
     return nav.spa(row['name'], 'page')
 
 
+@settings_bp.route('/help')
+@require_org
+def help():
+    """How the app works, by area: the notes the screens leave out (frontend/src/islands/help)."""
+    return nav.spa('Help', 'page')
+
+
 @settings_bp.route('/audit-log')
 @require_org
 def audit_log():

@@ -81,7 +81,7 @@ export function ReceivingCard({ receiving: r }: { receiving: Receiving }) {
                   <label htmlFor={`${id}-q${l.line}`} className="form-label">{l.line}. {l.description}</label>
                   <input type="number" id={`${id}-q${l.line}`} name={`qty_${l.line}`} className="form-input" min={0} max={l.left} step="any"
                          defaultValue={n(l.left)} />
-                  <span className="form-text">of {qty(l.left, l.unit)} still to come; 0 if none of it came</span>
+                  <span className="form-text">of {qty(l.left, l.unit)} still to come</span>
                 </div>
               ))}
               <div className="form-group">

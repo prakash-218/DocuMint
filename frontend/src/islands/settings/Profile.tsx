@@ -31,17 +31,16 @@ interface Data {
   starter: string;
 }
 
-function Text({ name, label, value, placeholder, help }: { name: string; label: string; value: string; placeholder?: string; help?: string }) {
+function Text({ name, label, value, placeholder }: { name: string; label: string; value: string; placeholder?: string }) {
   return (
     <div className="form-group">
       <label htmlFor={name} className="form-label">{label}</label>
       <input type="text" id={name} name={name} className="form-input" defaultValue={value} placeholder={placeholder} />
-      {help && <p className="form-text">{help}</p>}
     </div>
   );
 }
 
-function Image({ name, label, src, help }: { name: string; label: string; src: string | null; help?: string }) {
+function Image({ name, label, src }: { name: string; label: string; src: string | null }) {
   return (
     <div className="form-group">
       <label htmlFor={name} className="form-label">{label}</label>
@@ -53,7 +52,6 @@ function Image({ name, label, src, help }: { name: string; label: string; src: s
         </>
       )}
       <input type="file" id={name} name={name} accept="image/png,image/jpeg" className="form-input" style={{ paddingTop: 6 }} />
-      {help && <p className="form-text">{help}</p>}
     </div>
   );
 }
@@ -115,13 +113,12 @@ export function ProfileForm({ data }: { data: Data }) {
           </div>
           <div className="card-body">
             <div className="form-row">
-              <Text name="gstin" label="GSTIN" value={v.gstin} placeholder="33ABCDE1234F1Z5"
-                    help="With a GSTIN set, new documents pick CGST+SGST, IGST or LUT automatically." />
-              <Text name="pan" label="PAN" value={v.pan} />
+              <Text name="gstin" label="GSTIN" value={v.gstin} placeholder="33ABCDE1234F1Z5" />
+              <Text name="pan" label="PAN" value={v.pan} placeholder="ABCDE1234F" />
               <Text name="state_code" label="State code" value={v.state_code} placeholder="33" />
             </div>
             <div className="form-row">
-              <Text name="iec_code" label="IEC code" value={v.iec_code} help="Import Export Code, printed on export invoices" />
+              <Text name="iec_code" label="IEC code" value={v.iec_code} />
               <Text name="lut_number" label="LUT number" value={v.lut_number} />
               <Text name="ad_code" label="Authorised dealer code" value={v.ad_code} />
             </div>
@@ -134,7 +131,6 @@ export function ProfileForm({ data }: { data: Data }) {
               <label htmlFor="team_addresses" className="form-label">Your team's other email addresses</label>
               <textarea id="team_addresses" name="team_addresses" className="form-textarea" rows={2} defaultValue={v.team_addresses}
                         placeholder="ravi.home@gmail.com, office.desk@yahoo.com" />
-              <p className="form-text">Personal addresses your people also write from. They count as yours: never suggested as a customer's contact.</p>
             </div>
           </div>
         </section>
@@ -149,10 +145,9 @@ export function ProfileForm({ data }: { data: Data }) {
             </div>
             <div className="form-row">
               <Text name="bank_branch" label="Branch" value={v.bank_branch} />
-              <Text name="bank_swift" label="SWIFT code" value={v.bank_swift} help="For payments from abroad" />
+              <Text name="bank_swift" label="SWIFT code" value={v.bank_swift} />
             </div>
-            <Text name="upi_id" label="UPI ID" value={v.upi_id} placeholder="yourname@okhdfcbank"
-                  help="Proformas and invoices with something due print a “Scan to pay” QR code for that amount, and show it when you share them." />
+            <Text name="upi_id" label="UPI ID" value={v.upi_id} placeholder="yourname@okhdfcbank" />
           </div>
         </section>
 
@@ -163,7 +158,6 @@ export function ProfileForm({ data }: { data: Data }) {
               <div className="form-group">
                 <label htmlFor="default_currency" className="form-label">Main currency</label>
                 <Dropdown id="default_currency" name="default_currency" defaultValue={v.default_currency} data={choices(data.currencies)} />
-                <p className="form-text">Dashboard totals are shown in this currency.</p>
               </div>
               <div className="form-group">
                 <label htmlFor="default_gst_rate" className="form-label">Default GST rate (%)</label>
@@ -182,19 +176,13 @@ export function ProfileForm({ data }: { data: Data }) {
                 <label htmlFor="payment_days" className="form-label">Usual payment terms (days)</label>
                 <input type="number" id="payment_days" name="payment_days" className="form-input" min={0} max={365} step={1} inputMode="numeric"
                        defaultValue={v.payment_days} placeholder="30" />
-                <p className="form-text">Days after the invoice date customers pay, unless a customer has their own. Sets when invoices count as overdue; not printed.</p>
               </div>
             </div>
 
-            <h3 style={{ margin: 'var(--spacing-md) 0 var(--spacing-sm)' }}>Numbering</h3>
-            <p className="form-text" style={{ margin: '0 0 var(--spacing-md)' }}>
-              Tokens: <span className="kbd">{'{num}'}</span> or <span className="kbd">{'{num:03}'}</span> for zero-padding,{' '}
-              <span className="kbd">{'{fy}'}</span> financial year (26-27), <span className="kbd">{'{yyyy}'}</span>.
-              Each type restarts at 1 every financial year. Set "next" to continue an existing series.
-            </p>
+            <h3 style={{ margin: 'var(--spacing-md) 0 var(--spacing-md)' }}>Numbering</h3>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 'var(--spacing-md)', fontSize: 'var(--font-size-sm)' }}>
               <input type="checkbox" name="separate_export_series" className="form-checkbox" defaultChecked={data.checks.separate_export_series} />
-              Number export invoices separately (by default they continue the tax-invoice series)
+              Number export invoices separately
             </label>
             <div className="table-container" style={{ boxShadow: 'none' }}>
               <table className="table">
@@ -204,7 +192,7 @@ export function ProfileForm({ data }: { data: Data }) {
                     <tr key={s.key}>
                       <td>{s.label}</td>
                       <td><input type="text" name={`format_${s.key}`} defaultValue={s.format} className="form-input" style={{ minWidth: 160 }}
-                                 aria-label={`${s.label} format`} /></td>
+                                 placeholder="{num:03}/{fy}" aria-label={`${s.label} format`} /></td>
                       <td>
                         {s.shared ? <span className="text-tertiary">Shares the Tax Invoice series</span>
                           : <input type="number" min={1} name={`next_${s.key}`} defaultValue={s.next ?? ''} className="form-input" style={{ width: 90 }}
@@ -221,17 +209,12 @@ export function ProfileForm({ data }: { data: Data }) {
 
         <section className="card">
           <div className="card-header">
-            <div>
-              <h2 className="card-title">Custom fields</h2>
-              <p className="card-subtitle">Anything else you need on your documents. Ticked fields are printed.</p>
-            </div>
+            <h2 className="card-title">Custom fields</h2>
           </div>
           <div className="card-body">
-            <h3 style={{ margin: '0 0 var(--spacing-xs)' }}>About your organization</h3>
-            <p className="form-text" style={{ margin: '0 0 var(--spacing-sm)' }}>e.g. MSME / Udyam no., CIN, vendor registration no. Printed under your address.</p>
+            <h3 style={{ margin: '0 0 var(--spacing-sm)' }}>About your organization</h3>
             <FieldRows prefix="orgcf" rows={data.custom_fields} withValue labelHint="MSME No." valueHint="UDYAM-TN-00-0000000" />
-            <h3 style={{ margin: 'var(--spacing-xl) 0 var(--spacing-xs)' }}>On every customer</h3>
-            <p className="form-text" style={{ margin: '0 0 var(--spacing-sm)' }}>e.g. Vendor code, Plant, PAN, EIN. Each customer gets these fields; ticked ones print in the consignee block.</p>
+            <h3 style={{ margin: 'var(--spacing-xl) 0 var(--spacing-sm)' }}>On every customer</h3>
             <FieldRows prefix="custcf" rows={data.customer_fields} withValue={false} labelHint="Vendor code" />
           </div>
         </section>
@@ -245,7 +228,7 @@ export function ProfileForm({ data }: { data: Data }) {
                         placeholder="We thankfully acknowledge the receipt of your above enquiry…" />
             </div>
             <div className="form-group">
-              <label htmlFor="quote_terms" className="form-label">Terms &amp; conditions (one per line)</label>
+              <label htmlFor="quote_terms" className="form-label">Terms &amp; conditions</label>
               <textarea id="quote_terms" name="quote_terms" className="form-textarea" rows={5} defaultValue={v.quote_terms}
                         placeholder={'Taxes: 18% GST\nOffer validity – 30 days'} />
             </div>
@@ -253,7 +236,6 @@ export function ProfileForm({ data }: { data: Data }) {
               <label htmlFor="quote_closing" className="form-label">Closing paragraph</label>
               <textarea id="quote_closing" name="quote_closing" className="form-textarea" rows={3} defaultValue={v.quote_closing} />
             </div>
-            <p className="form-text">Leave empty to use DocuMint's defaults. Every new quotation starts with these; you can edit them per quote.</p>
           </div>
         </section>
 
@@ -262,31 +244,27 @@ export function ProfileForm({ data }: { data: Data }) {
           <div className="card-body">
             <fieldset className="letterhead-style">
               <legend className="form-label">Quotation letterhead</legend>
-              <label className="form-check"><input type="radio" name="letterhead_style" value="centred" defaultChecked={v.letterhead_style !== 'left'} /> Centred: logo, name and address in the middle</label>
+              <label className="form-check"><input type="radio" name="letterhead_style" value="centred" defaultChecked={v.letterhead_style !== 'left'} /> Centred</label>
               <label className="form-check"><input type="radio" name="letterhead_style" value="left" defaultChecked={v.letterhead_style === 'left'} /> Logo on the left, address opposite</label>
             </fieldset>
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="letterhead_color" className="form-label">Colour</label>
                 <input type="color" id="letterhead_color" name="letterhead_color" defaultValue={v.letterhead_color} className="form-input color-input" />
-                <p className="form-text">The name, the address and the line under them.</p>
               </div>
               <div className="form-group">
                 <label htmlFor="letterhead_accent" className="form-label">Accent</label>
                 <input type="color" id="letterhead_accent" name="letterhead_accent" defaultValue={v.letterhead_accent} className="form-input color-input" />
-                <p className="form-text">The bar under a centred letterhead, or where the line starts under the logo.</p>
               </div>
             </div>
             <div className="form-row">
-              <Image name="logo" label="Logo" src={data.images.logo} help="Printed at the top of quotations, invoices and proformas." />
-              <Image name="logo_small" label="Logo for invoices (optional)" src={data.images.logo_small}
-                     help="A smaller version for invoices and proformas, which print the name as text beside it." />
+              <Image name="logo" label="Logo" src={data.images.logo} />
+              <Image name="logo_small" label="Logo for invoices (optional)" src={data.images.logo_small} />
             </div>
             <label className="form-check">
               <input type="checkbox" name="logo_has_name" className="form-checkbox" defaultChecked={data.checks.logo_has_name} />{' '}
-              The logo already says the company's name, so quotations print it in place of the typed name
+              The logo already shows the company's name
             </label>
-            <p className="form-text">PNG or JPEG, up to 300 KB, with a transparent background.</p>
           </div>
         </section>
 
@@ -298,9 +276,8 @@ export function ProfileForm({ data }: { data: Data }) {
               <Image name="signature" label="Signature" src={data.images.signature} />
             </div>
             <div className="form-row">
-              <Text name="signatory_name" label="Signed by" value={v.signatory_name} placeholder="A. Kumar" help="Name printed under the signature on quotations" />
+              <Text name="signatory_name" label="Signed by" value={v.signatory_name} placeholder="A. Kumar" />
             </div>
-            <p className="form-text">PNG or JPEG, up to 300 KB. A PNG with a transparent background looks best for stamps and signatures.</p>
           </div>
         </section>
 
@@ -311,10 +288,7 @@ export function ProfileForm({ data }: { data: Data }) {
 
       <section className="card panel-medium" style={{ maxWidth: 880 }}>
         <div className="card-header">
-          <div>
-            <h2 className="card-title">Starter templates</h2>
-            <p className="card-subtitle">Quotation, export quotation, proforma, tax and export invoice. Existing templates are kept.</p>
-          </div>
+          <h2 className="card-title">Starter templates</h2>
           <form method="post" action={data.starter}>
             <button type="submit" className="btn btn-secondary"><Icon name="plus" />Add starter templates</button>
           </form>

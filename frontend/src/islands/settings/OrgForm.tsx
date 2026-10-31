@@ -26,7 +26,7 @@ export function OrgFormView({ data }: { data: Data }) {
   const v = (key: string) => posted?.[key] ?? data.values[key] ?? '';
   return (
     <>
-      <PageHeader title={data.title} heading description="Changes appear on documents made from now on." />
+      <PageHeader title={data.title} heading />
       <form method="post" action={data.action} className="card panel-medium" style={{ maxWidth: 600 }}>
         <div className="card-body">
           <div className="form-group">
@@ -36,10 +36,8 @@ export function OrgFormView({ data }: { data: Data }) {
           <div className="form-group">
             <label htmlFor="domain" className="form-label">Domain</label>
             <input type="text" id="domain" className="form-input" value={data.domain} disabled />
-            <p className="form-text">The domain can't be changed.</p>
           </div>
-          <h3 style={{ margin: 'var(--spacing-lg) 0 var(--spacing-xs)' }}>Address</h3>
-          <p className="form-text" style={{ margin: '0 0 var(--spacing-md)' }}>Printed on your documents.</p>
+          <h3 style={{ margin: 'var(--spacing-lg) 0 var(--spacing-md)' }}>Address</h3>
           <Field name="street_address" label="Street address" value={v('street_address')} placeholder="123 Main Street" />
           <div className="form-row">
             <Field name="city" label="City" value={v('city')} />

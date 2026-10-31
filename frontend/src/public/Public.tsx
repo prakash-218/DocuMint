@@ -43,7 +43,6 @@ function Login({ p }: { p: Props }) {
   return (
     <>
       <h1>Welcome back</h1>
-      <p className="lead">Log in to your DocuMint workspace.</p>
       <form method="post" action={s(p, 'action')}>
         <Field name="email" label="Email" type="email" autoComplete="email" required autoFocus />
         <Field name="password" label="Password" type="password" autoComplete="current-password" required />
@@ -63,7 +62,6 @@ function SelectOrg({ p }: { p: Props }) {
   return (
     <>
       <h1>Choose an organization</h1>
-      <p className="lead">The organization to work in. You can switch any time from the sidebar.</p>
       {orgs.length ? (
         <ul className="pick-list org-pick">
           {orgs.map((o) => (
@@ -88,8 +86,7 @@ function InviteOnly({ p }: { p: Props }) {
   return (
     <>
       <h1>DocuMint is invite-only</h1>
-      <p className="lead">To join your company's DocuMint, ask its owner or an admin to invite you. The invite comes by email, or as a
-        link they send you; open it to set your password. Any email address works, Gmail too.</p>
+      <p className="lead">Ask your company's owner or an admin to invite you.</p>
       <p className="auth-footer">
         Have an account? <a href={s(p, 'login')}>Log in</a><br />
         <a href={s(p, 'forgot')}>Forgot your password?</a>
@@ -121,10 +118,9 @@ function AcceptInvite({ p }: { p: Props }) {
   return (
     <>
       <h1>{newOrg ? 'Start your organization' : `Join ${s(p, 'org')}`}</h1>
-      <p className="lead">
-        {newOrg ? "You'll be its owner, and can invite your team."
-          : <>{s(p, 'invited_by') ? `${s(p, 'invited_by')} invited you` : "You're invited"} as <strong>{s(p, 'role').toLowerCase()}</strong>.</>}
-      </p>
+      {!newOrg && (
+        <p className="lead">{s(p, 'invited_by') ? `${s(p, 'invited_by')} invited you` : "You're invited"} as <strong>{s(p, 'role').toLowerCase()}</strong>.</p>
+      )}
       <form method="post" action={s(p, 'action')}>
         <div className="form-group">
           <span className="form-label">Email</span>
@@ -132,11 +128,11 @@ function AcceptInvite({ p }: { p: Props }) {
         </div>
         {account ? (
           <Field name="password" label="Your password" type="password" autoComplete="current-password" required autoFocus
-                 help="This address has a DocuMint account already: log in with it to accept." />
+                 help="This address has a DocuMint account already." />
         ) : (
           <>
             <Field name="password" label="Choose a password" type="password" autoComplete="new-password" minLength={8} required autoFocus
-                   help="At least 8 characters." />
+                   placeholder="At least 8 characters" />
             <Field name="confirm_password" label="The password again" type="password" autoComplete="new-password" minLength={8} required />
           </>
         )}
@@ -158,11 +154,12 @@ function Forgot({ p }: { p: Props }) {
     <>
       <h1>Forgot your password</h1>
       {p.sent ? (
-        <p className="lead">If that address has a DocuMint account, a link to set a new password is on its way. It works for 2 hours.
-          No email? Your organization's owner or an admin can make you a reset link from Settings → Team.</p>
+        <>
+          <p className="lead">If that address has a DocuMint account, a link to set a new password is on its way.</p>
+          <p className="text-secondary">No email? Ask your organization's owner or an admin for a reset link.</p>
+        </>
       ) : (
         <>
-          <p className="lead">We'll email you a link to set a new one.</p>
           <form method="post" action={s(p, 'action')}>
             <Field name="email" label="Email" type="email" autoComplete="email" required autoFocus />
             <button type="submit" className="btn btn-primary btn-lg btn-block">Email me a link</button>
@@ -189,7 +186,7 @@ function Reset({ p }: { p: Props }) {
       <h1>New password</h1>
       <p className="lead">For {s(p, 'email')}.</p>
       <form method="post" action={s(p, 'action')}>
-        <Field name="password" label="New password" type="password" autoComplete="new-password" minLength={8} required autoFocus help="At least 8 characters." />
+        <Field name="password" label="New password" type="password" autoComplete="new-password" minLength={8} required autoFocus placeholder="At least 8 characters" />
         <Field name="confirm_password" label="The password again" type="password" autoComplete="new-password" minLength={8} required />
         <button type="submit" className="btn btn-primary btn-lg btn-block">Set my password</button>
       </form>
@@ -201,7 +198,6 @@ function PortalLogin({ p }: { p: Props }) {
   return (
     <>
       <h1>Customer portal</h1>
-      <p className="lead">View and download the invoices your suppliers have sent you.</p>
       <form method="post" action={s(p, 'action')}>
         <Field name="email" label="Email" type="email" autoComplete="email" required autoFocus />
         <Field name="password" label="Password" type="password" autoComplete="current-password" required />

@@ -177,21 +177,20 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
     out = {'tone': 'action', 'text': '', 'sub': '', 'actions': []}
     if current == 'quoted':
         if not q:
-            out.update(text='No quotation yet.', sub='Start with a quotation, or upload one made earlier under Files.',
+            out.update(text='No quotation yet.',
                        actions=[new_doc('New quotation', 'quote', True)] + ([] if sales else [new_doc('New invoice', 'invoice')]))
         else:
-            out.update(text=f'Quotation {no(q)} is a draft.', sub='Finish it, then send it from here.',
+            out.update(text=f'Quotation {no(q)} is a draft.',
                        actions=[edit_doc(q, 'quotation'), _link('Open', view(q))])
     elif current == 'accepted' and st['steps'][1]['state'] == 'late':
-        out.update(tone='late', text=f'Quotation {no(q)} was declined.', sub='Revise it, or cancel the project.',
+        out.update(tone='late', text=f'Quotation {no(q)} was declined.',
                    actions=[_post('Revise', url('invoices_bp.revise', invoice_id=q['invoice_id']), primary=True),
                             _status('Cancel the project', 'cancelled')])
     elif current == 'accepted':
         waited = _days_since(q.get('issue_date'), today)
         chase = waited is not None and waited > FOLLOW_UP_AFTER          # long enough without an answer to chase it
         out.update(tone='action' if chase else 'wait', text=f'Quotation {no(q)} sent on {_day(q.get("issue_date"))}.',
-                   sub=(f'No answer for {waited} day{"" if waited == 1 else "s"}.' if waited is not None else '')
-                   + (' Time to follow it up.' if chase else ''),
+                   sub=f'No answer for {waited} day{"" if waited == 1 else "s"}.' if waited is not None else '',
                    actions=[_post('Mark accepted', url('invoices_bp.set_status', invoice_id=q['invoice_id']), {'status': 'accepted'}, not chase),
                             _email('Send a follow-up', q['invoice_id'], chase),
                             _post('Mark declined', url('invoices_bp.set_status', invoice_id=q['invoice_id']), {'status': 'declined'},
@@ -201,12 +200,10 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
         source = f['accepted_quote'] or q
         if not pi:
             out.update(text=f'Quotation {no(source)} accepted.' if source else 'Accepted.',
-                       sub='The office raises the proforma and the invoice.' if sales else
-                       'Raise a proforma for the advance, or invoice it in full.',
                        actions=[] if sales or not source else [convert('Raise proforma for the advance', source, 'proforma', True),
                                                                convert('Invoice in full instead', source, 'invoice')])
         elif pi.get('status') == 'draft':
-            out.update(text=f'Proforma {no(pi)} is a draft.', sub='Finish it, then send it from here.',
+            out.update(text=f'Proforma {no(pi)} is a draft.',
                        actions=[edit_doc(pi, 'proforma'), _link('Open', view(pi))])
         else:
             waited = _days_since(pi.get('issue_date'), today)
@@ -216,13 +213,12 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
     elif current == 'invoiced':
         draft = next((d for d in f['all_invoices'] if d.get('status') == 'draft'), None)
         if draft:
-            out.update(text=f'Tax invoice {no(draft)} is a draft.', sub='Finish it, then send it from here.',
+            out.update(text=f'Tax invoice {no(draft)} is a draft.',
                        actions=[edit_doc(draft, 'invoice'), _link('Open', view(draft))])
         else:
             source = pi or f['accepted_quote'] or q
             paid = f['advance_paid']
             out.update(text=f"Advance of {_money(sum(float(d['paid_amount']) for d in paid), paid)} received." if paid else 'Ready to invoice.',
-                       sub='Raise the tax invoice; the advance comes off it.' if paid else 'Raise the tax invoice.',
                        actions=[] if sales or not source else [convert('Create tax invoice', source, 'invoice', True)])
     elif current == 'paid':
         unpaid = f['unpaid']
@@ -231,7 +227,7 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
                    + f"{_money(f['due'], f['invoices'])} due.", sub='',
                    actions=[_link('Record payment', view(first) + '#payment', True), _email('Email a reminder', first['invoice_id'])])
     else:
-        out.update(tone='done', text='Paid in full.', sub='Nothing left to do on this job.',
+        out.update(tone='done', text='Paid in full.',
                    actions=[_status('Mark the project completed', 'completed', True)] if project.get('status') == 'open' else [])
     if not edit:
         out['actions'] = []

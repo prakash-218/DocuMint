@@ -13,11 +13,6 @@ export interface PdfMenu {
 export interface Change {
   number: string;
   short: string;
-  takes_payments: boolean;
-  proforma: boolean;
-  sent_word: string;
-  undo: string;
-  again: string;
   correct: string;
   revise: { possible: boolean; number: string; note: string | null; action: string; current_template: string;
             templates: { id: string; name: string; same: boolean }[] } | null;
