@@ -45,8 +45,8 @@ PERMISSIONS: Dict[str, str] = {
     'projects.delete': 'Take documents out of a project and delete it',
     'files.read': 'See and download files',
     'files.write': 'Add, change and remove files',
-    'customers.read': 'See customers',
-    'customers.write': 'Add and edit customers',
+    'customers.read': 'See customers and suppliers',
+    'customers.write': 'Add and edit customers and suppliers',
     'customers.manage': 'Archive and delete customers, and give them portal logins',
     'contacts.write': "Add and edit customers' contacts",
     'emails.read': "Read the company's mailboxes",
@@ -238,6 +238,7 @@ ENDPOINTS: Dict[str, Rule] = {
     'invoices_bp.export_zip': Doc('read'),
     'payments_bp.index': 'invoices.read',                # every payment: what invoices are paid with
     'payments_bp.export_csv': 'invoices.read',
+    'suppliers_bp.list_suppliers': 'customers.read',     # suppliers are companies like customers
     'invoices_bp.create_invoice': Doc('write'),
     'invoices_bp.view_invoice': Doc('read'),
     'invoices_bp.view_invoice_new': Doc('read'),

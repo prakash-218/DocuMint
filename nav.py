@@ -46,6 +46,7 @@ def sidebar(perms, unread: int = 0) -> List[Dict]:
         sales.append(_item('payments', 'Payments', 'wallet', url_for('payments_bp.index'), '/payments'))
     if opens('customers_bp.list_customers'):
         people.append(_item('customers', 'Customers', 'users', url_for('customers_bp.list_customers'), '/customers'))
+        people.append(_item('suppliers', 'Suppliers', 'truck', url_for('suppliers_bp.list_suppliers'), '/suppliers'))
     if opens('emails_bp.inbox'):
         people.append(_item('emails', 'Emails', 'mail', url_for('emails_bp.inbox'), '/emails'))
     if opens('templates_bp.list_templates'):

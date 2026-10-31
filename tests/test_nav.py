@@ -14,12 +14,13 @@ def keys(app):
 
 def test_each_role_sees_its_links(keys):
     # Home and Projects; Sales; People; Library; Organization, as the prototype groups them
-    assert keys('owner') == [['home', 'notifications', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'emails'],
+    assert keys('owner') == [['home', 'notifications', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'suppliers', 'emails'],
                              ['templates', 'rates'], ['settings', 'audit']]
-    assert keys('member') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'emails'], ['templates'],
+    assert keys('member') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'suppliers', 'emails'], ['templates'],
                               ['settings']]
-    assert keys('viewer') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers'], ['templates'], ['settings']]
-    assert keys('sales') == [['projects'], ['quote'], ['customers'], ['settings']]   # quotations only, no money
+    assert keys('viewer') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'suppliers'], ['templates'],
+                              ['settings']]
+    assert keys('sales') == [['projects'], ['quote'], ['customers', 'suppliers'], ['settings']]   # quotations only, no money
 
 
 def test_the_groups_have_names(app):

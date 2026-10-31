@@ -28,6 +28,12 @@ def _form_context(org_id, customer=None, defaults=None):
             'usual_terms': describe(usual_days(get_org_profile(org_id)[1]))}
 
 
+def _save_kinds(customer_id, org_id, form):
+    """Customer, supplier or both, for a company (a site is what its company is): neither ticked is a customer."""
+    if not form.get('parent_id'):
+        db.execute_proc('sp_set_customer_kinds', (customer_id, org_id, bool(form.get('is_customer')), bool(form.get('is_supplier'))), fetch=False)
+
+
 def _save_payment_days(customer_id, org_id, days):
     db.execute_proc('sp_update_customer_payment_days', (customer_id, org_id, days), fetch=False)
 
@@ -93,11 +99,13 @@ def create_customer():
                 customer_id = result[0].get('customer_id')
                 _save_email_domains(customer_id, org_id, request.form)
                 _save_parent(customer_id, org_id, request.form)
+                _save_kinds(customer_id, org_id, request.form)
                 _save_payment_days(customer_id, org_id, days)
                 defs = _custom_defs(org_id)
                 if defs:
                     _save_custom(customer_id, org_id, request.form, defs)
-                flash('Customer created successfully', 'success')
+                flash('Supplier created' if request.form.get('is_supplier') and not request.form.get('is_customer')
+                      else 'Customer created successfully', 'success')
                 return redirect(_customer_page(customer_id))
             else:
                 flash('Failed to create customer', 'error')
@@ -339,12 +347,13 @@ def edit_customer(customer_id):
             ), fetch=False)
             _save_email_domains(customer_id, org_id, request.form)
             _save_parent(customer_id, org_id, request.form)
+            _save_kinds(customer_id, org_id, request.form)
             _save_payment_days(customer_id, org_id, days)
             defs = _custom_defs(org_id)
             if defs:
                 _save_custom(customer_id, org_id, request.form, defs)
 
-            flash('Customer updated successfully', 'success')
+            flash('Saved', 'success')
             return redirect(_customer_page(customer_id))
         except DatabaseError as e:
             flash(f'Error updating customer: {str(e)}', 'error')

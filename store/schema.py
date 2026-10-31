@@ -139,6 +139,9 @@ customer = Table(
     Column('email_domains', Text),          # comma separated, to match incoming email to the customer
     Column('custom', JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     Column('is_archived', Boolean, nullable=False, server_default=text('false')),
+    # Who they are to us: a company can be both (we sell to it and buy from it); a site is what its company is
+    Column('is_customer', Boolean, nullable=False, server_default=text('true')),
+    Column('is_supplier', Boolean, nullable=False, server_default=text('false')),
     # A site (plant, branch, division, sister company) of another customer: one level deep.
     # Each site is billed with its own name, GSTIN and address; email domains of the parent cover its sites.
     _ref('parent_id', 'customer.customer_id', 'RESTRICT', nullable=True),

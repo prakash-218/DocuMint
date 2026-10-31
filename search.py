@@ -35,6 +35,7 @@ PAGES = [
     ('Invoices', 'invoices_bp.list_invoices', {}, 'file-text', 'tax export bills'),
     ('Payments', 'payments_bp.index', {}, 'wallet', 'received receipts bank utr reference advances'),
     ('Customers', 'customers_bp.list_customers', {}, 'users', 'clients buyers'),
+    ('Suppliers', 'suppliers_bp.list_suppliers', {}, 'truck', 'vendors bought-out purchases'),
     ('Templates', 'templates_bp.list_templates', {}, 'layout-template', 'formats'),
     ('Rates', 'costings_bp.rates', {}, 'list', 'rates list costing prices materials machining'),
     ('Settings', 'settings_bp.index', {}, 'settings', 'business profile bank seal signature numbering team'),
