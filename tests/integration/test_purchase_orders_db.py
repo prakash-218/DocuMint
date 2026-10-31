@@ -170,3 +170,48 @@ def test_a_purchase_order_of_a_costings_lines(app, client, gst_org):
         stray = editor(client, next(t['href'] for t in stray['templates'] if 'Purchase Order' in t['name']))
     table = next(s for s in stray['sections'] if s['type'] == 'line_item')
     assert all(not v for r in table['rows'] for v in r['values'].values())               # another project's costing: nothing
+
+
+def test_a_purchase_order_for_no_project(app, client, gst_org):
+    from access import fetch_invoice
+    from db import db
+    tag = uuid.uuid4().hex[:6]
+    supplier = _supplier(client, f'Gauge Supplies {tag}')
+    step = editor(client, '/purchase-orders/create')
+    assert step['step'] == 'project' and step['no_project'].endswith('project_id=none')
+    page = editor(client, step['no_project'])
+    if page.get('step') == 'template':
+        assert page['project'] is None and [k['key'] for k in page['kinds']] == ['purchase_order']   # no sale without a project
+        page = editor(client, next(t['href'] for t in page['templates'] if 'Purchase Order' in t['name']))
+    assert page['step'] == 'editor' and 'project_id' not in page['hidden'] and page['cancel'].endswith('/purchase-orders/')
+    template_id = page['hidden']['template_id']
+    fields = db.execute_proc('sp_get_template_fields', (template_id,))
+    items = {f['field_name']: f for f in fields if f['section_type'] == 'line_item'}
+    section = next(iter(items.values()))['section_id']
+    suggested = page['hidden']['suggested_number']
+    form = {'doc_type': 'purchase_order', 'template_id': template_id, 'customer_id': supplier, 'issue_date': '2026-01-20',
+            'doc_number': '009', 'suggested_number': suggested, 'tax_mode': 'none', 'tax_rate': '0',      # last year's, as on paper
+            'detail_order_type': 'Bought-out', 'detail_delivery': 'Immediate', 'detail_payment_terms': 'Against delivery',
+            f'line_item_{section}_1_field_{items["description"]["field_id"]}': 'Thread plug gauge set',
+            f'line_item_{section}_1_field_{items["qty"]["field_id"]}': '1',
+            f'line_item_{section}_1_field_{items["rate"]["field_id"]}': '42000'}
+    response = client.post('/purchase-orders/create', data=form)
+    assert response.status_code == 302
+    po = re.search(r'/purchase-orders/([0-9a-f-]{36})', response.headers['Location']).group(1)
+    header, _ = fetch_invoice(po)
+    assert (header['doc_number'], header['fiscal_year'], header['project_id'], float(header['total_amount'])) == ('009', '25-26', None, 42000.0)
+    again = editor(client, '/purchase-orders/create?project_id=none')
+    if again.get('step') == 'template':
+        again = editor(client, next(t['href'] for t in again['templates'] if 'Purchase Order' in t['name']))
+    assert again['hidden']['suggested_number'] == suggested                    # this year's series is untouched
+
+    doc = document(client, f'/purchase-orders/{po}')
+    assert doc['project']['project'] is None and 'status=open' in doc['project']['change']['options']   # any open project
+    assert doc['people']['list'] == [] and doc['people']['empty'].endswith('has no contacts yet.')
+    client.post(f'/purchase-orders/{po}/finalize')
+    assert client.post(f'/purchase-orders/{po}/status', data={'status': 'received'}).status_code == 302
+    assert document(client, f'/purchase-orders/{po}')['status'] == 'received'
+
+    # a sale still needs its project
+    quote = client.post('/quotes/create', data={'doc_type': 'quote', 'template_id': template_id, 'customer_id': supplier})
+    assert '/create' in quote.headers['Location']

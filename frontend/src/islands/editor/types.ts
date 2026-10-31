@@ -79,6 +79,7 @@ export interface ProjectStep {
   has_open_projects: boolean;
   options: string;
   open_url: string;           // with __ID__ for the project
+  no_project?: string | null; // a purchase order: making it for no project (the workshop, stock)
   new_project: { action: string; next: string; customers: CustomerGroup[]; add_customer: string | null };
 }
 
