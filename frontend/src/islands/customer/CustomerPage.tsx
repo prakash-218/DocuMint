@@ -21,6 +21,7 @@ const DOC_FILTERS = [
   { key: 'quote', label: 'Quotations' },
   { key: 'proforma', label: 'Proformas' },
   { key: 'invoice', label: 'Invoices' },
+  { key: 'purchase_order', label: 'Purchase orders' },
 ] as const;
 
 function startTab(): Tab {

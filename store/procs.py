@@ -807,7 +807,7 @@ def create_invoice(conn, org_id, customer_id, template_id, _out1=None, _out2=Non
 
 @proc('sp_init_document')
 def init_document(conn, invoice_id, org_id, doc_type, doc_number, fiscal_year, source_invoice_id):
-    if doc_type not in ('quote', 'proforma', 'invoice', 'export_invoice'):
+    if doc_type not in ('quote', 'proforma', 'invoice', 'export_invoice', 'purchase_order'):
         raise ProcError('Unknown document type')
     _require(conn, "SELECT 1 FROM invoice WHERE invoice_id = :i AND org_id = :o", 'Document does not exist',
              i=invoice_id, o=org_id)
@@ -1347,8 +1347,10 @@ def delete_project(conn, project_id, org_id):
 @proc('sp_set_invoice_project')
 def set_invoice_project(conn, invoice_id, org_id, project_id):
     if project_id:
-        _require(conn, """SELECT 1 FROM project p JOIN invoice i ON i.customer_id = p.customer_id AND i.org_id = p.org_id
-                          WHERE p.project_id = :p AND i.invoice_id = :i AND p.org_id = :o""",
+        # a sale is to the project's customer; a purchase order is to a supplier, for the project
+        _require(conn, """SELECT 1 FROM project p JOIN invoice i ON i.org_id = p.org_id
+                          WHERE p.project_id = :p AND i.invoice_id = :i AND p.org_id = :o
+                            AND (i.customer_id = p.customer_id OR i.doc_type = 'purchase_order')""",
                  'The project must belong to the same customer', p=project_id, i=invoice_id, o=org_id)
     _exec(conn, "UPDATE invoice SET project_id = :p WHERE invoice_id = :i AND org_id = :o",
           p=project_id or None, i=invoice_id, o=org_id)

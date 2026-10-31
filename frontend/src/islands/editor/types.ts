@@ -52,7 +52,8 @@ export interface EditorData {
   submit: string;
   submit_side: string;
   hidden: Record<string, string>;
-  customer: { fixed: { id: string | null; name: string | null } | null; groups: CustomerGroup[] };
+  /** Who it's to: label Customer, or Supplier for a purchase order (add: a new supplier, when there's none). */
+  customer: { fixed: { id: string | null; name: string | null } | null; groups: CustomerGroup[]; label?: string; add?: string | null };
   number: { value: string; required: boolean };
   issue_date: string;
   due_date: string;

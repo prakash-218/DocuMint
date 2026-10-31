@@ -139,10 +139,15 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
         hidden['project_id'] = project['project_id']
     if editing:
         customer = {'fixed': {'id': None, 'name': header.get('customer_name')}, 'groups': []}
-    elif project:
+    elif project and not t.purchase:
         customer = {'fixed': {'id': str(project['customer_id']), 'name': project.get('customer_name')}, 'groups': []}
+    elif t.purchase:                            # a purchase order: one of the suppliers
+        suppliers = [c for c in customers or [] if c.get('is_supplier')]
+        customer = {'fixed': None, 'groups': _customers(suppliers),
+                    'add': url('customers_bp.create_customer', kind='supplier') if not suppliers else None}
     else:
         customer = {'fixed': None, 'groups': _customers(customers or [])}
+    customer['label'] = t.party
     if editing:
         cancel = url('invoices_bp.view_invoice', invoice_id=header['invoice_id'])
     elif project:
@@ -153,7 +158,7 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
     return {
         'step': 'editor', 'title': title, 'correcting': correcting, 'editing': editing,
         'type': {'key': t.key, 'label': t.label, 'sent_word': 'finalized' if t.sent_status == 'pending' else 'sent',
-                 'takes_payments': t.takes_payments, 'proforma': t.key == 'proforma', 'due_label': 'Valid until' if t.key == 'quote' else 'Due date'},
+                 'takes_payments': t.takes_payments, 'proforma': t.key == 'proforma', 'due_label': 'Valid until' if t.key == 'quote' else 'Deliver by' if t.purchase else 'Due date'},
         'project': _project(project, url), 'template_name': template_name,
         'change_template': None if editing else url('invoices_bp.create_invoice', doc_type=t.key, project_id=project['project_id'] if project else None),
         'action': url('invoices_bp.edit_invoice', invoice_id=header['invoice_id']) if editing else url('invoices_bp.create_invoice', doc_type=t.key),
@@ -174,7 +179,8 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
                      'advance_basis': 'total' if v.get('advance_basis') == 'total' else 'pre_tax'},
         'tax_hints': doc['customer_hints'],
         # a customer that can't be changed here (a draft's, or the project's): the tax it usually gets, and why
-        'tax_hint': doc['customer_hints'].get(header['customer_id'] if editing else project['customer_id']) if editing or project else None,
+        'tax_hint': doc['customer_hints'].get(header['customer_id'] if editing else project['customer_id'])
+        if editing or (project and not t.purchase) else None,
     }
 
 
@@ -202,6 +208,13 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
     selected = next((x for x in templates if x['template_id'] == template_id), None)
     if not selected:
         mine, others = _templates_for(org_id, templates, doc_type)
+        from layout import types_by_template
+        if t.purchase and not any(t.key in kinds for kinds in types_by_template(org_id, templates).values()):
+            # the first purchase order: its starter template, and no other starter comes back
+            from document_service import create_starter_templates
+            create_starter_templates(org_id, only=('Purchase Order',))
+            templates = sorted(_latest_templates(org_id), key=lambda x: (x.get('name') or '').lower())
+            mine, others = _templates_for(org_id, templates, doc_type)
         link = lambda x: {'name': x.get('name') or 'Template', 'currency': x.get('currency_code'),  # noqa: E731
                           'href': url('invoices_bp.create_invoice', doc_type=t.key, template_id=x['template_id'], project_id=project['project_id'])}
         return {'step': 'template', 'title': f'New {t.label.lower()}', 'type': {'key': t.key, 'label': t.label},
@@ -217,10 +230,13 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
     details = doc['values'].get('details') or {}
     if kind == 'quote' and not details.get('subject'):
         details['subject'] = project['title']
-    doc['values']['details'] = {**projects.po_details(projects.latest_purchase_order(org_id, project['project_id'])), **details}
-    hint = doc['customer_hints'].get(project['customer_id'])
-    if hint:
-        doc['values']['tax_mode'] = hint['mode']
+    if t.purchase:                              # to a supplier: not the customer's PO, nor the customer's tax
+        doc['values']['details'] = details
+    else:
+        doc['values']['details'] = {**projects.po_details(projects.latest_purchase_order(org_id, project['project_id'])), **details}
+        hint = doc['customer_hints'].get(project['customer_id'])
+        if hint:
+            doc['values']['tax_mode'] = hint['mode']
     return _editor(doc, _editor_sections(get_template_fields(template_id)), url, project=project, customers=customers,
                    template_id=template_id, template_name=selected.get('name') or '')
 

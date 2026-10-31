@@ -56,8 +56,11 @@ def test_a_company_is_a_customer_a_supplier_or_both(client):
 
 
 def test_companies_there_were_stay_customers(client):
+    """The demo data's companies were there before suppliers: every one is still a customer, and only that."""
+    import json
+    from pathlib import Path
     from db import db
     login(client, OWNER)
-    rows = db.execute_proc('sp_list_customers', (org_of(client), True)) or []
-    old = [r for r in rows if 'Filter Works' not in r['name'] and 'Gear Cutters' not in r['name']]
-    assert old and all(r['is_customer'] for r in old)
+    demo = {c['name'] for c in json.loads((Path(__file__).parents[1] / 'fixtures' / 'demo.json').read_text(encoding='utf-8'))['customer']}
+    rows = [r for r in db.execute_proc('sp_list_customers', (org_of(client), True)) or [] if r['name'] in demo]
+    assert rows and all(r['is_customer'] and not r['is_supplier'] for r in rows)

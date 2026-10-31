@@ -34,7 +34,8 @@ def list_invoices():
     """Quotations, proformas or invoices (the address says which), in the React app (frontend/src/islands/documents/),
     fed by GET /api/documents/<doc_path>. ?status= opens a tab and ?q= a search, as links from elsewhere ask."""
     import nav
-    return nav.spa({'quotes': 'Quotations', 'proformas': 'Proforma invoices'}.get(g.doc_path, 'Invoices'), 'list')
+    return nav.spa({'quotes': 'Quotations', 'proformas': 'Proforma invoices', 'purchase-orders': 'Purchase orders'}.get(g.doc_path, 'Invoices'),
+                   'list')
 
 
 @invoices_bp.route('/create', methods=['GET', 'POST'])
@@ -54,12 +55,12 @@ def create_invoice():
         template_id = request.form.get('template_id')
 
         if not customer_id or not template_id:
-            flash('Customer and template are required', 'error')
+            flash(f"{get_type(doc_type).party} and template are required", 'error')
             return redirect(url_for('invoices_bp.create_invoice', doc_type=doc_type))
         doc_type = invoice_kind(doc_type, template_is_export(template_id, org_id))
         project = projects.get_project(request.form.get('project_id'), org_id)
-        if project and project['customer_id'] != customer_id:
-            project = None
+        if project and project['customer_id'] != customer_id and not get_type(doc_type).purchase:
+            project = None                        # a sale is to the project's customer; a purchase to a supplier
         if not project:                           # every document belongs to a project
             flash(f'Choose the project this {get_type(doc_type).label.lower()} is for', 'error')
             return redirect(url_for('invoices_bp.create_invoice', doc_type=doc_type))
@@ -307,7 +308,8 @@ def page_context(invoice_id):
     people, events = [], []
     if project:
         import contacts
-        people = contacts.for_project(g.current_org_id, project['project_id'])
+        people = (contacts.for_supplier(g.current_org_id, invoice['customer_id']) if get_type(invoice.get('doc_type')).purchase
+                  else contacts.for_project(g.current_org_id, project['project_id']))
         events = db.execute_proc('sp_list_project_events', (project['project_id'], g.current_org_id, 200)) or []
     context['files'] = [f for f in context['files'] if permissions.file_kind_allowed(f.get('kind'))]
     context.update(
@@ -447,7 +449,7 @@ def export_csv():
         header, values = fetch_invoice(d['invoice_id'])
         payments = db.execute_proc('sp_get_invoice_payments', (d['invoice_id'],)) or []
         items.append((d, header, invoice_summary(header, build_sections(header, values), payments)))
-    title = {'quotes': 'Quotations', 'proformas': 'Proformas'}.get(g.doc_path, 'Invoices')
+    title = {'quotes': 'Quotations', 'proformas': 'Proformas', 'purchase-orders': 'Purchase-orders'}.get(g.doc_path, 'Invoices')
     data = exports.documents_csv(items, usual_days(get_org_profile(g.current_org_id)[1]))
     return _attachment(data, f'{title}-{date.today().isoformat()}.csv', 'text/csv; charset=utf-8')
 
@@ -476,7 +478,7 @@ def export_zip():
     except PdfUnavailable:
         flash('PDF export is not available on this server', 'error')
         return redirect(url_for('invoices_bp.list_invoices', doc_path=g.doc_path))
-    title = {'quotes': 'Quotations', 'proformas': 'Proformas'}.get(g.doc_path, 'Invoices')
+    title = {'quotes': 'Quotations', 'proformas': 'Proformas', 'purchase-orders': 'Purchase-orders'}.get(g.doc_path, 'Invoices')
     return _attachment(data, f'{title}-{date.today().isoformat()}.zip', 'application/zip')
 
 
@@ -509,12 +511,24 @@ def finalize_invoice(invoice_id):
 QUOTE_OUTCOMES = {'accepted': 'marked as accepted', 'declined': 'marked as declined', 'sent': 'reopened'}
 
 
+# A purchase order's steps once it's sent: the supplier confirms it, it arrives, or it's called off (and undone)
+PO_STEPS = {'confirmed': 'marked as confirmed', 'received': 'marked as received', 'cancelled': 'cancelled', 'sent': 'reopened'}
+
+
 @invoices_bp.route('/<invoice_id>/status', methods=['POST'])
 @require_org
 def set_status(invoice_id):
-    """Record a customer's answer to a quote."""
+    """Record a customer's answer to a quote, or where a purchase order is."""
     invoice_header, _ = get_org_invoice(invoice_id, g.current_org_id)
     status = request.form.get('status')
+    if invoice_header and get_type(invoice_header.get('doc_type')).purchase:
+        if status not in PO_STEPS or (invoice_header.get('status') or 'draft') == 'draft':
+            flash("Send the purchase order first" if status in PO_STEPS else "That status change isn't allowed", 'error')
+            return redirect(_back(invoice_id))
+        db.execute_proc('sp_update_invoice_status', (invoice_id, status), fetch=False)
+        activity.document_event(f'po_{status}', invoice_header, PO_STEPS[status])
+        flash(f'Purchase order {PO_STEPS[status]}', 'success')
+        return redirect(_back(invoice_id))
     if not invoice_header or invoice_header.get('doc_type') != 'quote' or status not in QUOTE_OUTCOMES:
         flash("That status change isn't allowed", 'error')
         return redirect(_back(invoice_id))
@@ -933,7 +947,7 @@ def _corrected(header, total_before):
         f" (total {format_money(total_before or 0, currency)} → {format_money(total_after or 0, currency)})" if changed else ''))
 
 
-REOPENABLE = ('sent', 'accepted', 'declined', 'pending')
+REOPENABLE = ('sent', 'accepted', 'declined', 'pending', 'confirmed', 'cancelled')
 
 
 def reopen_blocker(header, payments) -> str:

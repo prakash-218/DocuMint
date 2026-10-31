@@ -256,9 +256,14 @@ def compose_context(org_id, org_name: str, project: Dict, perms, invoice_id=None
     import permissions
     import projects
     reads_mail = permissions.can('emails.read', perms=perms)
-    people = [p for p in contacts.for_project(org_id, project['project_id']) if p.get('email')]
     documents = _documents(org_id, project, perms)
     chosen = [d for d in documents if d['invoice_id'] == invoice_id and not d['why_not']]
+    if chosen and chosen[0]['doc_type'] == 'purchase_order':      # to the supplier's people; you pick whom
+        from access import get_org_invoice
+        supplier = (get_org_invoice(invoice_id, org_id)[0] or {}).get('customer_id')
+        people = [{**p, 'project_gets': p.get('gets')} for p in contacts.for_supplier(org_id, supplier) if p.get('email')]
+    else:
+        people = [p for p in contacts.for_project(org_id, project['project_id']) if p.get('email')]
     to, cc = default_recipients(people, [d['doc_type'] for d in chosen])
     threads = []
     if reads_mail:

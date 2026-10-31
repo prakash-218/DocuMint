@@ -19,7 +19,10 @@ export type Action =
 
 export interface Doc {
   invoice_id: string;
-  doc_type: 'quote' | 'proforma' | 'invoice' | 'export_invoice';
+  doc_type: 'quote' | 'proforma' | 'invoice' | 'export_invoice' | 'purchase_order';
+  /** Who it's to: the customer, or a purchase order's supplier. */
+  party?: string | null;
+  site?: string | null;
   kind: string;
   number: string;
   status: string;
@@ -102,7 +105,9 @@ export interface Page {
   next: { tone: Tone; text: string; sub: string; actions: Action[] };
   money: MoneyRow[];
   documents: Doc[];
-  new_document: Partial<Record<'quote' | 'proforma' | 'invoice', string>>;
+  /** What's bought for it: purchase orders to suppliers. */
+  purchases?: Doc[];
+  new_document: Partial<Record<'quote' | 'proforma' | 'invoice' | 'purchase_order', string>>;
   timeline: TimelineItem[];
   people: Person[];
   found: {

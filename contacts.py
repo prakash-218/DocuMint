@@ -68,6 +68,13 @@ def for_customer(org_id, customer: Dict) -> List[Dict]:
         return []
 
 
+def for_supplier(org_id, customer_id) -> List[Dict]:
+    """A purchase order's people: its supplier's contacts (a site's are its company's)."""
+    from access import get_org_customer
+    supplier = get_org_customer(customer_id, org_id)[0] if customer_id else None
+    return for_customer(org_id, supplier) if supplier else []
+
+
 def for_project(org_id, project_id) -> List[Dict]:
     try:
         return _with_initials(db.execute_proc('sp_list_project_contacts', (project_id, org_id)) or [])

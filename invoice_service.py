@@ -504,6 +504,8 @@ def render_invoice_pdf(header: Dict, values: List[Dict], copies: Optional[int] =
             shown = {**common, 'sections_data': with_discount_column(sections)}
             if doc_type.key == 'quote':
                 parts.append(_document_pdf('pdf/quote.html', number_if_long=True, page=pg, **shown))
+            elif doc_type.purchase:                        # a purchase order: one copy, to the supplier
+                parts.append(_document_pdf('pdf/po.html', page=pg, **shown))
             else:
                 parts += [_document_pdf('pdf/grid.html', page=pg, copy=label, packing=False, **shown) for label in labels]
         elif pg['kind'] == 'packing':

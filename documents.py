@@ -40,6 +40,9 @@ class DocType:
     counts_as_revenue: bool = False
     details: Tuple[DetailField, ...] = field(default_factory=tuple)
     icon: str = 'file-text'
+    # A purchase: to a supplier (a company marked supplier), not a customer; outside every sale and its money
+    purchase: bool = False
+    party: str = 'Customer'                 # who it's to, in the editor and on its page
 
 
 _ORDER = (
@@ -55,7 +58,7 @@ _DISPATCH = (
 )
 
 DETAIL_GROUPS = {'export': 'Export terms', 'dispatch': 'Dispatch', 'shipping': 'Shipping & packing',
-                 'letter': 'Opening & closing text'}
+                 'letter': 'Opening & closing text', 'delivery': 'Delivery address'}
 
 # Details that mean the same thing under another name on the next document (quote -> export invoice)
 DETAIL_CARRY = {'incoterms': 'terms_of_delivery', 'final_destination': 'destination'}
@@ -116,11 +119,31 @@ DOC_TYPES: Dict[str, DocType] = {
     ),
 }
 
+# Not a sale: what we buy, sent to a supplier (the usual details: order type, their quotation, delivery, payment terms)
+DOC_TYPES['purchase_order'] = DocType(
+    key='purchase_order', label='Purchase Order', short='PO', plural='Purchase orders', icon='shopping-cart',
+    statuses=('draft', 'sent', 'confirmed', 'received', 'cancelled'),
+    sent_status='sent',
+    default_format='{num:03}',
+    purchase=True, party='Supplier',
+    details=(
+        DetailField('order_type', 'Order type', placeholder='Bought-out'),
+        DetailField('supplier_ref', 'Their quotation', placeholder='Q-118 dated 12 Oct'),
+        DetailField('delivery', 'Delivery', placeholder='Immediate'),
+        DetailField('payment_terms', 'Payment terms', placeholder='Against delivery'),
+        DetailField('notes', 'Notes', 'textarea', placeholder='Printed below the items'),
+        DetailField('deliver_to', 'Deliver to', 'textarea', placeholder='Our works, when it isn\'t the address on top',
+                    group='delivery'),
+    ),
+)
+SALES_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice')
+PURCHASE_TYPES = ('purchase_order',)
+
 DEFAULT_TYPE = 'invoice'
 
 # Types you pick when creating or converting. An invoice made with an export
 # template is stored and printed as 'export_invoice' (LUT, shipping, packing list).
-CHOOSABLE = ('quote', 'proforma', 'invoice')
+CHOOSABLE = ('quote', 'proforma', 'invoice', 'purchase_order')
 
 
 def invoice_kind(doc_type: str, export: bool) -> str:
@@ -264,7 +287,8 @@ def tax_suggestion(doc_type: str, org: dict, customer: dict) -> dict:
     to no tax."""
     profile = load_json(org.get('profile'))
     if not profile.get('gstin') or doc_type == 'quote':
-        # Quotations state the GST rate in their terms instead of adding tax rows
+        # Quotations state the GST rate in their terms instead of adding tax rows. A purchase order carries the GST its
+        # supplier will charge: from the supplier's GSTIN, as an invoice's from the customer's
         return {'mode': 'none', 'why': ''}
     customer_country = (customer.get('country') or customer.get('customer_country') or '').strip()
     if doc_type == 'export_invoice':

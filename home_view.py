@@ -160,7 +160,7 @@ def build(org_id, perms, url: Callable, today: Optional[date] = None, email: Opt
     drafts = [{'label': f"{get_type(d.get('doc_type')).label} {display_number(d) or '(draft)'}",
                'sub': d.get('customer_site') or d.get('customer_name') or '', 'total': float(d.get('total_amount') or 0),
                'currency': d.get('currency_code') or 'INR', 'url': url('invoices_bp.edit_invoice', invoice_id=d['invoice_id'])}
-              for d in live if (d.get('status') or 'draft') == 'draft']
+              for d in live if (d.get('status') or 'draft') == 'draft' and not get_type(d.get('doc_type')).purchase]
     invoices = [d for d in live if d.get('doc_type') in ('invoice', 'export_invoice')]
     sent_quotes = [d for d in live if d.get('doc_type') == 'quote' and d.get('status') == 'sent']
     month_start = today.replace(day=1)

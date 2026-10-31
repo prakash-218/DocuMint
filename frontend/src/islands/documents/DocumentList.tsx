@@ -36,7 +36,7 @@ export interface DocRow {
 }
 
 export interface DocList {
-  group: 'quotes' | 'proformas' | 'invoices';
+  group: 'quotes' | 'proformas' | 'invoices' | 'purchase-orders';
   title: string;
   until: string | null;
   tabs: { key: string; label: string }[];
@@ -84,7 +84,8 @@ function remember(tab: string, query: string) {
   } catch { /* the address stays as it was */ }
 }
 
-const TITLES: Record<string, string> = { quotes: 'Quotations', proformas: 'Proforma invoices', invoices: 'Invoices' };
+const TITLES: Record<string, string> = { quotes: 'Quotations', proformas: 'Proforma invoices', invoices: 'Invoices',
+                                         'purchase-orders': 'Purchase orders' };
 
 export default function DocumentList(props: { group: string; tab?: string; query?: string }) {
   return (
@@ -157,7 +158,8 @@ function ListScreen({ group, tab: firstTab = 'all', query: firstQuery = '' }: { 
         <input id="dl-q" type="search" placeholder="Search number, subject, customer, project or PO" value={query} onChange={(e) => setQuery(e.target.value)} />
         <label htmlFor="dl-customer" className="sr-only">Customer</label>
         <Dropdown id="dl-customer" value={customer} onChange={setCustomer}
-                  data={[{ value: '', label: 'All customers' }, ...customers.map(([id, name]) => ({ value: id, label: name }))]} />
+                  data={[{ value: '', label: group === 'purchase-orders' ? 'All suppliers' : 'All customers' },
+                         ...customers.map(([id, name]) => ({ value: id, label: name }))]} />
         <label htmlFor="dl-year" className="sr-only">Financial year</label>
         <Dropdown id="dl-year" value={year} onChange={setYear}
                   data={[{ value: '', label: 'All years' }, ...years.map((y) => ({ value: y, label: `FY ${y}` }))]} />
@@ -201,7 +203,7 @@ function Rows({ data, rows, picked, onPick }: { data: DocList; rows: DocRow[]; p
   return (
     <div className="rows" aria-label={data.title}>
       <div className="rh" style={grid}>
-        {picked && <span />}<span>Number</span><span>Customer</span><span>Date</span>{until && <span>{until}</span>}<span>Status</span>
+        {picked && <span />}<span>Number</span><span>{data.group === 'purchase-orders' ? 'Supplier' : 'Customer'}</span><span>Date</span>{until && <span>{until}</span>}<span>Status</span>
         <span className="c-num">Total</span>{invoices && <span className="c-num">Balance</span>}
       </div>
       {rows.map((r) => {

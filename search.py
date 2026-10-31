@@ -33,6 +33,7 @@ PAGES = [
     ('Quotations', 'invoices_bp.list_invoices', {'type': 'quote'}, 'file-pen-line', 'quotes'),
     ('Proformas', 'invoices_bp.list_invoices', {'type': 'proforma'}, 'file-clock', 'pi proforma invoices advance'),
     ('Invoices', 'invoices_bp.list_invoices', {}, 'file-text', 'tax export bills'),
+    ('Purchase orders', 'invoices_bp.list_invoices', {'type': 'purchase_order'}, 'shopping-cart', 'po buy suppliers bought-out'),
     ('Payments', 'payments_bp.index', {}, 'wallet', 'received receipts bank utr reference advances'),
     ('Customers', 'customers_bp.list_customers', {}, 'users', 'clients buyers'),
     ('Suppliers', 'suppliers_bp.list_suppliers', {}, 'truck', 'vendors bought-out purchases'),
@@ -46,13 +47,14 @@ ACTIONS = [
     ('New quotation', 'invoices_bp.create_invoice', {'doc_type': 'quote'}, 'plus', 'create quote'),
     ('New proforma invoice', 'invoices_bp.create_invoice', {'doc_type': 'proforma'}, 'plus', 'create pi'),
     ('New invoice', 'invoices_bp.create_invoice', {'doc_type': 'invoice'}, 'plus', 'create tax'),
+    ('New purchase order', 'invoices_bp.create_invoice', {'doc_type': 'purchase_order'}, 'plus', 'create po buy'),
     ('New project', 'projects_bp.create_project', {}, 'plus', 'create job'),
     ('New customer', 'customers_bp.create_customer', {}, 'plus', 'create client'),
     ('New template', 'templates_bp.create_template', {}, 'plus', 'create format'),
 ]
 
 # Put before a document's number for the search, so 'pi 9' finds proforma 009 and 'inv 38' invoice 038
-SHORT = {'quote': 'Q', 'proforma': 'PI', 'invoice': 'INV', 'export_invoice': 'EXP'}
+SHORT = {'quote': 'Q', 'proforma': 'PI', 'invoice': 'INV', 'export_invoice': 'EXP', 'purchase_order': 'PO'}
 
 # Badge colours, as the document lists show them (_macros.status_badge)
 BADGES = {'paid': 'success', 'accepted': 'success', 'pending': 'warning', 'sent': 'info', 'declined': 'danger'}

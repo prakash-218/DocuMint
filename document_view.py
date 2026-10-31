@@ -9,7 +9,7 @@ from datetime import date
 from typing import Callable, Dict, List, Optional
 
 from app_helpers import to_date
-from documents import display_number, get_type
+from documents import display_number, get_type, load_json
 from money import format_money
 from payment_terms import due_on
 
@@ -39,7 +39,8 @@ def _day(value) -> str:
 
 STEPS = {'quote': [('written', 'Written'), ('sent', 'Sent'), ('answer', 'Accepted'), ('forward', 'Taken forward')],
          'proforma': [('written', 'Written'), ('sent', 'Sent'), ('advance', 'Advance'), ('forward', 'Tax invoice')],
-         'invoice': [('written', 'Written'), ('sent', 'Finalized'), ('paid', 'Paid')]}
+         'invoice': [('written', 'Written'), ('sent', 'Finalized'), ('paid', 'Paid')],
+         'purchase_order': [('written', 'Written'), ('sent', 'Sent'), ('confirmed', 'Confirmed'), ('received', 'Received')]}
 
 
 def steps(doc: Dict, summary: Dict, advance_received: float = 0, today: Optional[date] = None) -> List[Dict]:
@@ -60,6 +61,15 @@ def steps(doc: Dict, summary: Dict, advance_received: float = 0, today: Optional
     later = list(s)[2:]
     if status == 'revised':
         s[later[0]].update(state='skipped', sub='Revised')
+    elif key == 'purchase_order':
+        if status == 'cancelled':
+            s['confirmed'].update(state='late', sub='Cancelled')
+        else:
+            s['confirmed'].update(state='done' if status in ('confirmed', 'received') else 'now',
+                                  sub='' if status in ('confirmed', 'received') else 'Waiting for the supplier')
+            s['received'].update(state='done' if status == 'received' else 'now' if status == 'confirmed' else 'todo',
+                                 sub=('Expected: ' + (load_json(doc.get('details')).get('delivery') or '')).rstrip(': ')
+                                 if status == 'confirmed' else '')
     elif key == 'quote':
         if status == 'sent':
             issued = to_date(doc.get('issue_date'))
@@ -120,6 +130,24 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
                             _link('Edit', url('invoices_bp.edit_invoice', invoice_id=doc_id))])
     elif status == 'revised':
         out.update(tone='draft', text=f'{number} was revised.', sub='The newest revision is the one to send or convert.')
+    elif kind.purchase:
+        supplier = doc.get('customer_name') or 'the supplier'
+        if status == 'sent':
+            out.update(tone='wait', text=f'Sent to {supplier}' + (f' on {sent_on}.' if sent_on else '.'),
+                       sub='When they confirm it, mark it confirmed.',
+                       actions=[status_to('Mark confirmed', 'confirmed', True), *email('Email the supplier'),
+                                status_to('Mark received', 'received'),
+                                status_to('Cancel the order', 'cancelled', confirm=f'Cancel {number}?')])
+        elif status == 'confirmed':
+            delivery = load_json(doc.get('details')).get('delivery')
+            out.update(tone='wait', text=f'{supplier} confirmed it.', sub=f'Delivery: {delivery}.' if delivery else '',
+                       actions=[status_to('Mark received', 'received', True), *email('Email the supplier'),
+                                status_to('Cancel the order', 'cancelled', confirm=f'Cancel {number}?')])
+        elif status == 'received':
+            out.update(tone='done', text='Received.', sub='Everything on it has arrived.',
+                       actions=[status_to('Undo: not received yet', 'confirmed')])
+        else:                                             # cancelled
+            out.update(tone='draft', text='Cancelled.', sub='', actions=[status_to('Undo: back to sent', 'sent')])
     elif kind.key == 'quote':
         if status == 'sent':
             waited = (today - to_date(doc['issue_date'])).days if to_date(doc.get('issue_date')) else None
@@ -183,6 +211,10 @@ def pill(doc: Dict, summary: Dict, advance_received: float = 0) -> Dict:
         return {'text': 'Draft', 'tone': 'draft'}
     if status == 'revised':
         return {'text': 'Revised', 'tone': 'draft'}
+    if kind.purchase:
+        return {'sent': {'text': 'Sent', 'tone': 'wait'}, 'confirmed': {'text': 'Confirmed', 'tone': 'wait'},
+                'received': {'text': 'Received', 'tone': 'done'}, 'cancelled': {'text': 'Cancelled', 'tone': 'draft'}
+                }.get(status, {'text': 'Sent', 'tone': 'wait'})
     if kind.key == 'quote':
         return {'sent': {'text': 'Sent', 'tone': 'wait'}, 'accepted': {'text': 'Accepted', 'tone': 'done'},
                 'declined': {'text': 'Declined', 'tone': 'late'}}.get(status, {'text': 'Accepted', 'tone': 'done'})
@@ -200,7 +232,7 @@ def money_strip(doc: Dict, summary: Dict, payments: List[Dict], advance_received
     and what's due; for a proforma its total, the advance asked, received and still to come. None for a quotation."""
     kind = get_type(doc.get('doc_type'))
     total = float(summary.get('total') or 0)
-    if kind.key == 'quote' or (doc.get('status') or 'draft') == 'draft':
+    if kind.key == 'quote' or kind.purchase or (doc.get('status') or 'draft') == 'draft':
         return None
     if kind.key == 'proforma':
         advance = summary.get('advance') or {}
@@ -268,7 +300,8 @@ def chain(project_docs: List[Dict], here_id, url: Callable) -> List[Dict]:
     from documents import balance_of
     order = {'quote': 0, 'proforma': 1, 'invoice': 2, 'export_invoice': 2}
     out = []
-    for d in sorted(project_docs, key=lambda d: (order.get(d.get('doc_type'), 3), str(d.get('issue_date') or ''))):
+    sales = [d for d in project_docs if not get_type(d.get('doc_type')).purchase]
+    for d in sorted(sales, key=lambda d: (order.get(d.get('doc_type'), 3), str(d.get('issue_date') or ''))):
         kind = get_type(d.get('doc_type'))
         paid = float(d.get('paid_amount') or 0)
         summary = {'balance': balance_of(d) if kind.takes_payments else 0, 'paid': paid}
@@ -283,6 +316,8 @@ def chain(project_docs: List[Dict], here_id, url: Callable) -> List[Dict]:
 def who_gets_it(doc: Dict, people: List[Dict]) -> List[Dict]:
     """The project's contacts who get this kind of document: quotations go to those who get everything, proformas
     and invoices also to those who get the billing."""
+    if get_type(doc.get('doc_type')).purchase:            # people are the supplier's contacts (contacts.for_supplier)
+        return list(people)
     wanted = ('all',) if doc.get('doc_type') == 'quote' else ('all', 'billing')
     return [p for p in people if (p.get('project_gets') or p.get('gets')) in wanted]
 

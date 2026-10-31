@@ -265,17 +265,18 @@ export function Editor({ data }: { data: EditorData }) {
               <div className="card-body">
                 <div className="form-row">
                   <div className="form-group">
-                    <label htmlFor="customer_id" className="form-label">Customer</label>
+                    <label htmlFor="customer_id" className="form-label">{data.customer.label ?? 'Customer'}</label>
                     {data.customer.fixed ? (
                       <>
                         {data.customer.fixed.id && <input type="hidden" id="customer_id" name="customer_id" value={data.customer.fixed.id} />}
                         <div className="form-static">{data.customer.fixed.name}</div>
                       </>
                     ) : (
-                      <Dropdown id="customer_id" name="customer_id" required placeholder="Select a customer" searchable
+                      <Dropdown id="customer_id" name="customer_id" required placeholder={`Select a ${(data.customer.label ?? 'Customer').toLowerCase()}`} searchable
                                 data={customerChoices(data.customer.groups)}
                                 onChange={(v) => { setCustomerId(v); if (data.tax_hints[v]) setTaxMode(data.tax_hints[v].mode); }} />
                     )}
+                    {data.customer.add && <p className="form-text">No suppliers yet. <a href={data.customer.add}>Add a supplier</a>, then come back.</p>}
                   </div>
                   <div className="form-group">
                     <label htmlFor="doc_number" className="form-label">Number</label>

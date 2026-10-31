@@ -69,7 +69,8 @@ export function DocumentScreen() {
   return <DocumentPage key={invoiceId} invoiceId={invoiceId} />;
 }
 
-const KINDS: Record<string, string> = { quotes: 'quotation', proformas: 'proforma invoice', invoices: 'invoice' };
+const KINDS: Record<string, string> = { quotes: 'quotation', proformas: 'proforma invoice', invoices: 'invoice',
+                                        'purchase-orders': 'purchase order' };
 
 /** /quotes/create and the like: a new document's steps (?project_id=, ?template_id=), then its editor */
 export function NewDocumentScreen() {
