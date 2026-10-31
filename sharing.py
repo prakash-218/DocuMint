@@ -58,13 +58,17 @@ def message(header: Dict, summary: Dict, link: str, pay: Optional[Dict], usual_d
     money = lambda v: format_money(v, currency, decimals=False)  # noqa: E731
     number = display_number(header)
     subject = short_subject(load_json(header.get('details')).get('subject'))
-    what = {'quote': 'quotation', 'proforma': 'proforma invoice'}.get(kind.key, 'invoice')
+    what = {'quote': 'quotation', 'proforma': 'proforma invoice', 'purchase_order': 'purchase order'}.get(kind.key, 'invoice')
     about = f'our {what} {number}' + (f' for {subject[:1].lower()}{subject[1:]}' if subject else '')
     total = float(summary.get('total') or 0)
     gst = ' incl. GST' if summary.get('tax_lines') else ''
     owed = pay['amount'] if pay else upi.due(header, summary)
     lines = []
-    if owed <= 0.005:
+    if kind.purchase:
+        delivery = load_json(header.get('details')).get('delivery')
+        lines.append(f'Please find {about}: {money(total)}{gst}.' + (f' Delivery: {delivery}.' if delivery else '')
+                     + ' Kindly confirm it.')
+    elif owed <= 0.005:
         lines.append(f'Please find {about}: {money(total)}{gst}.')
     elif kind.takes_advances:
         lines.append(f'Please find {about}. The advance of {money(owed)} is due.')

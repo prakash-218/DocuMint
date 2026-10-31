@@ -107,7 +107,7 @@ def document_page(invoice_id):
     return jsonify(page.build(context, permissions.granted(), url_for))
 
 
-@api_bp.route('/editor/new/<any(quotes, proformas, invoices):group>')
+@api_bp.route('/editor/new/<any(quotes, proformas, invoices, "purchase-orders"):group>')
 @require_org
 def new_document(group):
     """A new document's step (editor_page.new_page): the project it's for, its template, then the editor.
@@ -155,7 +155,7 @@ def packing(invoice_id):
     return jsonify(project_view._plain(packing_page.build(header, values, pack_page, url_for)))
 
 
-@api_bp.route('/documents/<any(quotes, proformas, invoices):group>')
+@api_bp.route('/documents/<any(quotes, proformas, invoices, "purchase-orders"):group>')
 @require_org
 def documents(group):
     """The quotations, proformas or invoices list (document_list.build), for someone who may read them."""
@@ -194,7 +194,8 @@ def _share(invoice_id, make=False):
     pay = upi.payment(header, summary, profile)
     out = sharing.state(header, link, url_for, lambda path: request.host_url.rstrip('/') + path)
     project_id = projects.project_of(invoice_id, g.current_org_id)
-    found = contacts.for_project(g.current_org_id, project_id) if project_id else []
+    found = (contacts.for_supplier(g.current_org_id, header['customer_id']) if get_type(header.get('doc_type')).purchase
+             else contacts.for_project(g.current_org_id, project_id) if project_id else [])
     return {**out, 'number': display_number(header), 'kind': get_type(header.get('doc_type')).label,
             'body': sharing.message(header, summary, out['link']['url'] if out['link'] else sharing.LINK, pay, usual_days(profile)),
             'people': sharing.people(found, header), 'pay': pay,

@@ -10,10 +10,12 @@ wrong segment (old /invoices/<quote id> links) redirects to the right one.
 
 from flask import current_app, g, has_request_context, redirect, request, url_for
 
-DOC_PATHS = {'quote': 'quotes', 'proforma': 'proformas', 'invoice': 'invoices', 'export_invoice': 'invoices'}
-PATH_TYPES = {'quotes': 'quote', 'proformas': 'proforma', 'invoices': 'invoice'}
-SEGMENT = '<any(quotes, proformas, invoices):doc_path>'
-LIST_GROUPS = {'quote': 'quotes', 'proforma': 'proformas', 'invoices': 'invoices', None: 'invoices'}
+DOC_PATHS = {'quote': 'quotes', 'proforma': 'proformas', 'invoice': 'invoices', 'export_invoice': 'invoices',
+             'purchase_order': 'purchase-orders'}
+PATH_TYPES = {'quotes': 'quote', 'proformas': 'proforma', 'invoices': 'invoice', 'purchase-orders': 'purchase_order'}
+SEGMENT = '<any(quotes, proformas, invoices, "purchase-orders"):doc_path>'
+LIST_GROUPS = {'quote': 'quotes', 'proforma': 'proformas', 'invoices': 'invoices', 'purchase_order': 'purchase-orders',
+               None: 'invoices'}
 
 
 def path_for(doc_type) -> str:

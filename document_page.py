@@ -12,7 +12,7 @@ from typing import Callable, Dict
 from flask import render_template_string
 
 METHODS = ('Bank transfer', 'NEFT / RTGS', 'SWIFT (foreign remittance)', 'UPI', 'Card', 'Cheque', 'Cash', 'Other')
-LISTS = {'quote': ('quotes', 'Quotations'), 'proforma': ('proformas', 'Proformas')}
+LISTS = {'quote': ('quotes', 'Quotations'), 'proforma': ('proformas', 'Proformas'), 'purchase_order': ('purchase-orders', 'Purchase orders')}
 
 
 def _number(doc) -> str:
@@ -139,8 +139,9 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
         'document_html': _html("{% include 'invoices/_document.html' %}", {**ctx, 'sections_data': with_discount_column(ctx['sections_data'])}),
         'chain': ctx['doc_chain'],
         'people': {'list': ctx['doc_people'], 'url': project_url,
-                   'empty': f"Nobody on this project gets {'quotations' if t.key == 'quote' else 'proformas and invoices'} yet. "
-                            "Set who gets what on the project page."} if project else None,
+                   'empty': (f"{invoice.get('customer_name') or 'The supplier'} has no contacts yet. Add them on its page." if t.purchase else
+                      f"Nobody on this project gets {'quotations' if t.key == 'quote' else 'proformas and invoices'} yet. "
+                      "Set who gets what on the project page.")} if project else None,
         'activity': ctx['doc_activity'][:8],
         'convert': {'label': 'Convert again' if status == 'converted' else 'Convert, choosing the template',
                     'action': url('invoices_bp.convert', invoice_id=invoice['invoice_id']),

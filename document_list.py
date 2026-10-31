@@ -22,6 +22,9 @@ GROUPS = {
                   'tabs': [('all', 'All'), ('draft', 'Draft'), ('sent', 'Sent'), ('converted', 'Invoiced')]},
     'invoices': {'title': 'Invoices', 'types': ('invoice', 'export_invoice'), 'new_type': 'invoice', 'until': 'Due',
                  'tabs': [('all', 'All'), ('draft', 'Draft'), ('pending', 'Unpaid'), ('overdue', 'Overdue'), ('paid', 'Paid')]},
+    'purchase-orders': {'title': 'Purchase orders', 'types': ('purchase_order',), 'new_type': 'purchase_order', 'until': None,
+                        'tabs': [('all', 'All'), ('draft', 'Draft'), ('open', 'Open'), ('received', 'Received'),
+                                 ('cancelled', 'Cancelled')]},
 }
 
 
@@ -29,7 +32,7 @@ def _days(n: int) -> str:
     return f'{n} day{"" if n == 1 else "s"}'
 
 
-_ABOUT = re.compile(r'^\s*(quotation|offer|proforma(\s+invoice)?|(tax\s+)?invoice)\s+for\s+(the\s+)?', re.I)
+_ABOUT = re.compile(r'^\s*(quotation|offer|proforma(\s+invoice)?|(tax\s+)?invoice|purchase\s+order)\s+for\s+(the\s+)?', re.I)
 
 
 def short_subject(subject: Optional[str]) -> str:
@@ -48,6 +51,10 @@ def state(doc: Dict, today: date, usual_days: Optional[int] = None) -> Dict:
     issued = to_date(doc.get('issue_date'))
     if status in ('draft', 'revised'):
         return {'tab': 'draft', 'tag': tag, 'note': ''}
+    if kind.purchase:                                     # sent or confirmed: still to arrive
+        note = 'Confirmed' if status == 'confirmed' else (f'Sent {_days((today - issued).days)} ago' if issued and status == 'sent'
+                                                          and (today - issued).days > 0 else '')
+        return {'tab': status if status in ('received', 'cancelled') else 'open', 'tag': tag, 'note': note}
     if kind.key == 'quote':
         if status == 'sent' and issued:
             waited = (today - issued).days
@@ -108,4 +115,4 @@ def build(group: str, docs: List[Dict], url: Callable, can_create: bool, today: 
             'new_url': url('invoices_bp.create_invoice', doc_type=info['new_type']) if can_create else None,
             # several at once: their PDFs in a ZIP, or a CSV (exports.py)
             'exports': {'csv': url('invoices_bp.export_csv', doc_path=group), 'zip': url('invoices_bp.export_zip', doc_path=group)},
-            'new_label': f"New {get_type(info['new_type']).short.lower()}"})
+            'new_label': f"New {get_type(info['new_type']).label.lower() if group == 'purchase-orders' else get_type(info['new_type']).short.lower()}"})

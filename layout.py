@@ -144,19 +144,22 @@ def template_is_export(template_id, org_id, layout: Optional[Dict] = None) -> bo
 
 
 # A template's name says what it's for, when its settings don't: 'Proforma Invoice', 'Quotation with split up'
-NAME_HINTS = {'quote': ('quot', 'offer'), 'proforma': ('proforma', 'pro forma', 'pro-forma'), 'invoice': ('invoice', 'bill')}
+NAME_HINTS = {'quote': ('quot', 'offer'), 'proforma': ('proforma', 'pro forma', 'pro-forma'), 'invoice': ('invoice', 'bill'),
+              'purchase_order': ('purchase', 'po ')}
+# A template that doesn't say what it's for is for sales: a purchase order's template says so (or its name does)
+SALES_CHOOSABLE = tuple(t for t in CHOOSABLE if t != 'purchase_order')
 
 
 def template_types(name: Optional[str], layout: Dict) -> List[str]:
     """The document types a template is for (quote / proforma / invoice): its setting, else guessed from its name;
     every type when neither says."""
     if layout.get('used_for') is not None:
-        return layout['used_for'] or list(CHOOSABLE)
-    name = (name or '').lower()
+        return layout['used_for'] or list(SALES_CHOOSABLE)
+    name = (name or '').lower() + ' '
     guessed = [t for t, hints in NAME_HINTS.items() if any(h in name for h in hints)]
     if 'proforma' in guessed and 'invoice' in guessed:        # "Proforma Invoice"
         guessed.remove('invoice')
-    return guessed or list(CHOOSABLE)
+    return guessed or list(SALES_CHOOSABLE)
 
 
 def types_by_template(org_id, templates: List[Dict]) -> Dict[str, List[str]]:

@@ -245,7 +245,8 @@ def documents(docs: List[Dict], url: Callable) -> List[Dict]:
     for d in docs:
         kind = get_type(d.get('doc_type'))
         out.append({'invoice_id': d['invoice_id'], 'doc_type': kind.key, 'kind': kind.label, 'number': display_number(d) or 'Draft',
-                    'customer_id': d.get('customer_id'), 'site': d.get('customer_site'), 'project_id': d.get('project_id'),
+                    'customer_id': d.get('customer_id'), 'party': d.get('customer_name'), 'site': d.get('customer_site'),
+                    'project_id': d.get('project_id'),
                     'status': d.get('status') or 'draft', 'issue_date': d.get('issue_date'), 'currency': d.get('currency_code'),
                     'total': float(d.get('total_amount') or 0), 'paid': float(d.get('paid_amount') or 0),
                     'balance': balance_of(d) if kind.takes_payments else None, 'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id']),
@@ -306,6 +307,9 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
     files = projects.list_attachments(org_id, project_id=project_id)
     events = db.execute_proc('sp_list_project_events', (project_id, org_id, 100)) or []
     docs = [d for d in docs if d.get('doc_type') in readable]
+    # what we buy for it (purchase orders, to suppliers) is apart from what we sell: its stage and money are the sales'
+    bought = [d for d in docs if get_type(d.get('doc_type')).purchase]
+    docs = [d for d in docs if not get_type(d.get('doc_type')).purchase]
     files = [f for f in files if permissions.file_kind_allowed(f.get('kind'), perms)]
     if sales:
         events = [e for e in events if e.get('kind') in SALES_EVENTS or '/quotes/' in (e.get('link') or '')]
@@ -337,8 +341,10 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
         'next': next_step(docs, st, project, can, url, today),
         'money': money(docs, files, quoted_only=sales),
         'documents': documents(docs, url),
+        'purchases': documents(bought, url),
         'new_document': {t: url('invoices_bp.create_invoice', doc_type=t, project_id=project_id)
-                         for t in (('quote',) if sales else ('quote', 'proforma', 'invoice'))},
+                         for t in (('quote',) if sales else ('quote', 'proforma', 'invoice', 'purchase_order'))
+                         if permissions.can_doc('write', t, perms)},
         'timeline': timeline(events, messages, reads_mail, (project.get('customer_name'), project.get('customer_site'))),
         'people': [{'contact_id': p['contact_id'], 'customer_id': p['customer_id'], 'name': p['name'], 'email': p.get('email'),
                     'phone': p.get('phone'), 'role': p.get('role'), 'gets': p['project_gets'], 'usually': p['gets'],

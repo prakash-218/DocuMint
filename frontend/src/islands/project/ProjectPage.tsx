@@ -4,6 +4,7 @@ import { Skeleton } from '../../Skeleton';
 import { PageHeader } from '../../app/PageHeader';
 import { Composer } from '../EmailComposer';
 import { Documents } from './Documents';
+import { Purchases } from './Purchases';
 import { MoneyStrip, NextStep, Tracker } from './Overview';
 import { People, type ContactFields } from './People';
 import { Costings, Details, Files, type DetailFields } from './Side';
@@ -91,6 +92,7 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
           <Documents docs={page.documents} newDocument={page.new_document} canEdit={can.edit} sales={can.sales} current={page.stage.current}
                      addable={page.addable} documentsUrl={page.links?.documents}
                      onEmail={(invoiceId) => setCompose({ invoiceId })} />
+          {!can.sales && <Purchases docs={page.purchases ?? []} newUrl={page.new_document.purchase_order} />}
           <Timeline items={page.timeline} canEdit={can.edit} readMail={can.read_mail}
                     onNote={(text) => change(() => api.post(`${base}/notes`, { text }), 'Note added')}
                     onReply={(threadId) => setCompose({ threadId })}

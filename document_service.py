@@ -116,6 +116,8 @@ def form_defaults(doc_type: str, profile: Dict, org: Dict, customer: Optional[Di
                    'terms': terms,
                    'closing': profile.get('quote_closing') or DEFAULT_QUOTE_CLOSING,
                    'reference': 'Our discussion & enquiry mail'}
+    if doc_type == 'purchase_order':
+        details = {'order_type': 'Bought-out', 'delivery': 'Immediate', 'payment_terms': 'Against delivery'}
     tax_mode = suggest_tax_mode(doc_type, org, customer or {})
     return {
         'tax_mode': tax_mode,
@@ -436,6 +438,21 @@ def revise_document(source: Dict, source_values: List[Dict], org_id, template_id
 
 # (name, currency, [(section name, title, type, [(field, label, data_type, currency, formula)])], total field)
 STARTER_TEMPLATES = [
+    # Purchase order, the usual Indian one: S No, Item details, Qty, Rate/unit, Total, and the GST the supplier will charge
+    # (HSN/SAC prints only when it's filled in)
+    ('Purchase Order', 'INR', [
+        ('items', 'Items', 'line_item', [
+            ('description', 'Item details', 'string', False, None),
+            ('hsn_sac', 'HSN/SAC', 'string', False, None),
+            ('qty', 'Qty', 'number', False, None),
+            ('unit', 'Unit', 'string', False, None),
+            ('rate', 'Rate/unit', 'number', True, None),
+            ('amount', 'Total', 'number', True, 'this.rate * this.qty'),
+        ]),
+        ('totals', 'Totals', 'normal', [
+            ('total', 'Total order value', 'number', True, 'SUM(items.amount)'),
+        ]),
+    ], 'total'),
     # Letter-style quotation: Sl.no, Description, Price, Qty, Amount.
     # "Unit" is optional; the PDF prints it next to the quantity ("1 set").
     ('Quotation', 'INR', [
@@ -528,12 +545,13 @@ STARTER_TEMPLATES = [
 ]
 
 
-def create_starter_templates(org_id) -> List[str]:
-    """Create the quotation / GST invoice / export invoice templates. Skips names that already exist."""
+def create_starter_templates(org_id, only: Optional[Tuple[str, ...]] = None) -> List[str]:
+    """Create the quotation / GST invoice / export invoice / purchase order templates (only: just these names). Skips
+    names that already exist."""
     existing = {t.get('name') for t in db.execute_proc('sp_list_templates', (org_id, True)) or []}
     created = []
     for name, currency, sections, total_name in STARTER_TEMPLATES:
-        if name in existing:
+        if name in existing or (only and name not in only):
             continue
         row = db.execute_proc_single('sp_create_template', (org_id, name, currency, None, None))
         template_id, version = row['template_id'], row['version']

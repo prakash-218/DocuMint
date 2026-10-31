@@ -32,7 +32,7 @@ def sidebar(perms, unread: int = 0) -> List[Dict]:
     def opens(endpoint, doc_type=None):
         return permissions.allows(endpoint, doc_type, perms)
 
-    main, sales, people, library = [], [], [], []
+    main, sales, purchases, people, library = [], [], [], [], []
     if opens('dashboard_bp.index'):
         main.append(_item('home', 'Home', 'house', url_for('dashboard_bp.index'), '/dashboard'))
     if opens('notifications_bp.index'):
@@ -44,9 +44,13 @@ def sidebar(perms, unread: int = 0) -> List[Dict]:
             sales.append(_item(key, label, icon, url_for('invoices_bp.list_invoices', type=None if key == 'invoices' else key), prefix))
     if opens('payments_bp.index'):
         sales.append(_item('payments', 'Payments', 'wallet', url_for('payments_bp.index'), '/payments'))
+    if opens('invoices_bp.list_invoices', 'purchase_order'):
+        purchases.append(_item('purchase_orders', 'Purchase orders', 'shopping-cart', url_for('invoices_bp.list_invoices', type='purchase_order'),
+                               '/purchase-orders'))
+    if opens('suppliers_bp.list_suppliers') and purchases:       # with purchase orders: Sales don't buy
+        purchases.append(_item('suppliers', 'Suppliers', 'truck', url_for('suppliers_bp.list_suppliers'), '/suppliers'))
     if opens('customers_bp.list_customers'):
         people.append(_item('customers', 'Customers', 'users', url_for('customers_bp.list_customers'), '/customers'))
-        people.append(_item('suppliers', 'Suppliers', 'truck', url_for('suppliers_bp.list_suppliers'), '/suppliers'))
     if opens('emails_bp.inbox'):
         people.append(_item('emails', 'Emails', 'mail', url_for('emails_bp.inbox'), '/emails'))
     if opens('templates_bp.list_templates'):
@@ -56,7 +60,7 @@ def sidebar(perms, unread: int = 0) -> List[Dict]:
     org = [_item('settings', 'Settings', 'settings', url_for('settings_bp.index'), '/settings')]
     if opens('settings_bp.audit_log'):
         org.append(_item('audit', 'Audit log', 'history', url_for('settings_bp.audit_log'), '/settings/audit-log'))
-    groups = [(None, main), ('Sales', sales), ('People', people), ('Library', library), ('Organization', org)]
+    groups = [(None, main), ('Sales', sales), ('Purchases', purchases), ('People', people), ('Library', library), ('Organization', org)]
     return [{'title': title, 'items': items} for title, items in groups if items]
 
 
@@ -79,7 +83,7 @@ def new_menu(perms, with_project: bool = True) -> List[Dict]:
     if not permissions.can('invoices.write', perms=perms):
         return []
     items = [{'label': get_type(k).label, 'icon': get_type(k).icon, 'href': url_for('invoices_bp.create_invoice', doc_type=k)}
-             for k in ('quote', 'proforma', 'invoice') if permissions.can_doc('write', k, perms)]
+             for k in ('quote', 'proforma', 'invoice', 'purchase_order') if permissions.can_doc('write', k, perms)]
     if with_project and permissions.can('projects.write', perms=perms):
         items.append({'label': 'Project', 'icon': 'briefcase', 'href': url_for('projects_bp.create_project'), 'divider': True})
     return items

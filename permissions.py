@@ -25,7 +25,8 @@ from urllib.parse import urlparse
 
 from flask import g, redirect, request, url_for
 
-DOC_GROUPS = {'quote': 'quotes', 'proforma': 'proformas', 'invoice': 'invoices', 'export_invoice': 'invoices'}
+DOC_GROUPS = {'quote': 'quotes', 'proforma': 'proformas', 'invoice': 'invoices', 'export_invoice': 'invoices',
+              'purchase_order': 'purchases'}
 
 # Every permission, with what it lets someone do: the words a custom role's editor shows
 PERMISSIONS: Dict[str, str] = {
@@ -38,6 +39,9 @@ PERMISSIONS: Dict[str, str] = {
     'invoices.read': 'See invoices, and what customers owe',
     'invoices.write': 'Make, edit and finalize invoices',
     'invoices.delete': 'Delete draft invoices',
+    'purchases.read': 'See purchase orders',
+    'purchases.write': 'Make, edit and send purchase orders, and record what arrived',
+    'purchases.delete': 'Delete draft purchase orders',
     'documents.delete_sent': 'Delete documents that were sent',
     'payments.write': 'Record payments and apply advances',
     'projects.read': 'See projects',
@@ -65,12 +69,13 @@ PERMISSIONS: Dict[str, str] = {
 }
 
 _ALL = frozenset(PERMISSIONS)
-_READ = frozenset({'quotes.read', 'proformas.read', 'invoices.read', 'projects.read', 'files.read', 'customers.read',
-                   'templates.read'})
+_READ = frozenset({'quotes.read', 'proformas.read', 'invoices.read', 'purchases.read', 'projects.read', 'files.read',
+                   'customers.read', 'templates.read'})
 ROLES: Dict[str, FrozenSet[str]] = {
     'owner': _ALL,
     'admin': _ALL - {'organization.write', 'team.owners'},
-    'member': _READ | {'quotes.write', 'proformas.write', 'invoices.write', 'payments.write', 'projects.write', 'files.write',
+    'member': _READ | {'quotes.write', 'proformas.write', 'invoices.write', 'purchases.write', 'payments.write', 'projects.write',
+                       'files.write',
                        'contacts.write', 'emails.read', 'emails.send'},
     'sales': frozenset({'quotes.read', 'quotes.write', 'quotes.delete', 'projects.read', 'projects.write', 'projects.delete',
                         'files.read', 'files.write', 'customers.read', 'customers.write', 'contacts.write', 'emails.send'}),
@@ -81,7 +86,7 @@ ROLE_LABELS = {'owner': 'Owner', 'admin': 'Admin', 'member': 'Member', 'sales': 
 ROLE_SUMMARIES = {
     'owner': 'Everything, including the name and address and who the owners are',
     'admin': "Everything but the organization's name and address, and making or changing owners",
-    'member': 'Every document, payments, projects and files, reading customers and the mailbox, sending email',
+    'member': 'Every document (purchase orders too), payments, projects and files, reading customers and the mailbox, sending email',
     'sales': "Projects and their files, quotations and customers; nothing about money beyond what's quoted",
     'viewer': 'Reads documents, projects, files, customers and templates, and changes nothing',
 }
@@ -91,7 +96,8 @@ ROLE_SUMMARIES = {
 OWNERS_ONLY = frozenset({'organization.write', 'team.owners'})
 GRANTABLE = _ALL - OWNERS_ONLY
 # The custom role editor's groups, in this order
-AREAS = [('quotes', 'Quotations'), ('proformas', 'Proforma invoices'), ('invoices', 'Invoices'), ('documents', 'Sent documents'),
+AREAS = [('quotes', 'Quotations'), ('proformas', 'Proforma invoices'), ('invoices', 'Invoices'), ('purchases', 'Purchase orders'),
+         ('documents', 'Sent documents'),
          ('payments', 'Payments'), ('projects', 'Projects'), ('files', 'Files'), ('customers', 'Customers'),
          ('contacts', 'Contacts'), ('emails', 'Email'), ('notifications', 'Notifications'), ('costings', 'Costings'),
          ('templates', 'Templates'), ('business', 'Business profile'), ('team', 'Team'), ('audit', 'Audit log')]
@@ -100,6 +106,7 @@ IMPLIES: Dict[str, FrozenSet[str]] = {
     'quotes.write': frozenset({'quotes.read'}), 'quotes.delete': frozenset({'quotes.read'}),
     'proformas.write': frozenset({'proformas.read'}), 'proformas.delete': frozenset({'proformas.read'}),
     'invoices.write': frozenset({'invoices.read'}), 'invoices.delete': frozenset({'invoices.read'}),
+    'purchases.write': frozenset({'purchases.read'}), 'purchases.delete': frozenset({'purchases.read'}),
     'projects.write': frozenset({'projects.read'}), 'projects.delete': frozenset({'projects.read'}),
     'files.write': frozenset({'files.read'}),
     'customers.write': frozenset({'customers.read'}), 'customers.manage': frozenset({'customers.read'}),

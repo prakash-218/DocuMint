@@ -272,7 +272,7 @@ project_contact = Table(
     CheckConstraint(f"gets IN {CONTACT_GETS}", name='gets'),
 )
 
-DOC_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice')
+DOC_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice', 'purchase_order')
 TAX_MODES = ('none', 'cgst_sgst', 'igst', 'lut')
 
 invoice = Table(

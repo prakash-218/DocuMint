@@ -104,6 +104,12 @@ def test_the_gstins_decide_the_state_and_say_why():
     assert tax_note(tax_suggestion('quote', GST_ORG, {'tax_id': '29AAACG0000X1Z5'})) == ''     # quotations add no tax rows
 
 
+def test_a_purchase_order_carries_its_suppliers_gst():
+    from documents import tax_suggestion
+    assert tax_suggestion('purchase_order', GST_ORG, {'tax_id': '27AAACT0000T1Z5'}) == {'mode': 'igst', 'why': 'Maharashtra GSTIN, another state'}
+    assert tax_suggestion('purchase_order', GST_ORG, {'tax_id': '33AAACT0000T1Z5'})['mode'] == 'cgst_sgst'
+
+
 def test_the_editor_gets_each_customers_tax_and_why():
     from document_service import customer_tax_hints
     hints = customer_tax_hints('invoice', GST_ORG, [{'customer_id': 'C-1', 'tax_id': '29AAACG0000X1Z5'},

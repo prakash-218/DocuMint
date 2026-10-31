@@ -14,20 +14,20 @@ def keys(app):
 
 def test_each_role_sees_its_links(keys):
     # Home and Projects; Sales; People; Library; Organization, as the prototype groups them
-    assert keys('owner') == [['home', 'notifications', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'suppliers', 'emails'],
-                             ['templates', 'rates'], ['settings', 'audit']]
-    assert keys('member') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'suppliers', 'emails'], ['templates'],
-                              ['settings']]
-    assert keys('viewer') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'suppliers'], ['templates'],
-                              ['settings']]
-    assert keys('sales') == [['projects'], ['quote'], ['customers', 'suppliers'], ['settings']]   # quotations only, no money
+    assert keys('owner') == [['home', 'notifications', 'projects'], ['quote', 'proforma', 'invoices', 'payments'],
+                             ['purchase_orders', 'suppliers'], ['customers', 'emails'], ['templates', 'rates'], ['settings', 'audit']]
+    assert keys('member') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['purchase_orders', 'suppliers'],
+                              ['customers', 'emails'], ['templates'], ['settings']]
+    assert keys('viewer') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['purchase_orders', 'suppliers'],
+                              ['customers'], ['templates'], ['settings']]
+    assert keys('sales') == [['projects'], ['quote'], ['customers'], ['settings']]   # quotations only: no money, no purchases
 
 
 def test_the_groups_have_names(app):
     import nav
     with app.test_request_context():
         sections = nav.sidebar('owner')
-    assert [s['title'] for s in sections] == [None, 'Sales', 'People', 'Library', 'Organization']
+    assert [s['title'] for s in sections] == [None, 'Sales', 'Purchases', 'People', 'Library', 'Organization']
     labels = [i['label'] for s in sections for i in s['items']]
     assert labels[:3] == ['Home', 'Notifications', 'Projects'] and 'Proformas' in labels and 'Rates' in labels
 
@@ -49,5 +49,5 @@ def test_links_lead_where_the_pages_are_and_the_longest_prefix_lights(app):
 def test_the_new_menu_is_for_those_who_make_documents(app):
     import nav
     with app.test_request_context():
-        assert [i['label'] for i in nav.new_menu('member')] == ['Quotation', 'Proforma Invoice', 'Tax Invoice', 'Project']
+        assert [i['label'] for i in nav.new_menu('member')] == ['Quotation', 'Proforma Invoice', 'Tax Invoice', 'Purchase Order', 'Project']
         assert nav.new_menu('viewer') == [] and nav.new_menu('sales') == []
