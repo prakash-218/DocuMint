@@ -61,7 +61,7 @@ def create_invoice():
         project = projects.get_project(request.form.get('project_id'), org_id)
         if project and project['customer_id'] != customer_id and not get_type(doc_type).purchase:
             project = None                        # a sale is to the project's customer; a purchase to a supplier
-        if not project:                           # every document belongs to a project
+        if not project and not get_type(doc_type).purchase:     # every sale belongs to a project; a purchase may not
             flash(f'Choose the project this {get_type(doc_type).label.lower()} is for', 'error')
             return redirect(url_for('invoices_bp.create_invoice', doc_type=doc_type))
 
@@ -309,10 +309,12 @@ def page_context(invoice_id):
     context['doc_steps'] = document_view.steps(invoice, summary, context['advance_received'])
     advance_received = context['advance_received']
     people, events = [], []
+    import contacts
+    if get_type(invoice.get('doc_type')).purchase:
+        people = contacts.for_supplier(g.current_org_id, invoice['customer_id'])
+    elif project:
+        people = contacts.for_project(g.current_org_id, project['project_id'])
     if project:
-        import contacts
-        people = (contacts.for_supplier(g.current_org_id, invoice['customer_id']) if get_type(invoice.get('doc_type')).purchase
-                  else contacts.for_project(g.current_org_id, project['project_id']))
         events = db.execute_proc('sp_list_project_events', (project['project_id'], g.current_org_id, 200)) or []
     context['files'] = [f for f in context['files'] if permissions.file_kind_allowed(f.get('kind'))]
     context.update(

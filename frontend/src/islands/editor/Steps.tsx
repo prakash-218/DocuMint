@@ -31,7 +31,10 @@ export function ProjectStep({ data }: { data: ProjectData }) {
       <PageHeader title={data.title} heading />
       <div className="panel-medium" style={{ maxWidth: 760 }}>
         <section className="card">
-          <div className="card-header"><div><h2 className="card-title">Choose a project</h2></div></div>
+          <div className="card-header">
+            <div><h2 className="card-title">Choose a project</h2></div>
+            {data.no_project && <a href={data.no_project} className="btn btn-ghost btn-sm">Continue without a project</a>}
+          </div>
           <div className="card-body">
             {!data.has_open_projects ? <p className="text-tertiary" style={{ margin: 0 }}>No open projects yet.</p> : (
               <div className="project-picker">

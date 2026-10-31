@@ -157,7 +157,7 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
         'chain': ctx['doc_chain'],
         'people': {'list': ctx['doc_people'], 'url': project_url,
                    'empty': (f"{invoice.get('customer_name') or 'The supplier'} has no contacts yet." if t.purchase else
-                      f"Nobody on this project gets {'quotations' if t.key == 'quote' else 'proformas and invoices'} yet.")} if project else None,
+                      f"Nobody on this project gets {'quotations' if t.key == 'quote' else 'proformas and invoices'} yet.")} if project or t.purchase else None,
         'activity': ctx['doc_activity'][:8],
         'convert': {'label': 'Convert again' if status == 'converted' else 'Convert, choosing the template',
                     'action': url('invoices_bp.convert', invoice_id=invoice['invoice_id']),
@@ -172,7 +172,8 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
             'others': [{'number': _number(d), 'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id']), 'kind': get_type(d.get('doc_type')).label,
                         'versions': len(d.get('versions') or []) + 1 if d.get('versions') else 0} for d in others],
             'change': {'action': url('projects_bp.document_project', invoice_id=invoice['invoice_id']),
-                       'options': url('projects_bp.picker_options', customer_id=invoice['customer_id'], exact=1)} if can_edit else None},
+                       'options': (url('projects_bp.picker_options', status='open') if t.purchase else
+                                   url('projects_bp.picker_options', customer_id=invoice['customer_id'], exact=1))} if can_edit else None},
         'files': [file_row(f, url) for f in ctx['files']],
         'upload': {'action': url('projects_bp.upload_file')} if can_edit else None,
     })

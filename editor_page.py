@@ -152,6 +152,9 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
         cancel = url('invoices_bp.view_invoice', invoice_id=header['invoice_id'])
     elif project:
         cancel = url('projects_bp.view_project', project_id=project['project_id'])
+    elif t.purchase:
+        import doc_urls
+        cancel = url('invoices_bp.list_invoices', doc_path=doc_urls.path_for(t.key))
     else:
         cancel = url('invoices_bp.list_invoices', type=t.key if t.key in ('quote', 'proforma') else None)
     rate = v.get('tax_rate') or doc['default_rate']
@@ -184,6 +187,9 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
     }
 
 
+NO_PROJECT = 'none'       # ?project_id=none: a purchase order for no project (the workshop, stock)
+
+
 def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id: Optional[str], url: Callable,
              from_costing: Optional[Dict] = None) -> Dict:
     """A new document's step: the project it's for, then its template, then the editor. from_costing ({'id', 'lines':
@@ -196,13 +202,15 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
     from layout import template_is_export
     import projects
     t = get_type(doc_type)
-    project = projects.get_project(project_id, org_id) if project_id else None
+    no_project = t.purchase and project_id == NO_PROJECT          # a purchase for the workshop or stock
+    project = projects.get_project(project_id, org_id) if project_id and not no_project else None
     customers = db.execute_proc('sp_list_customers', (org_id, False)) or []
-    if not project:
+    if not project and not no_project:
         return {'step': 'project', 'title': f'New {t.label.lower()}', 'type': {'key': t.key, 'label': t.label},
                 'has_open_projects': bool(projects.list_projects(org_id, None, 'open')),
                 'options': url('projects_bp.picker_options', status='open'),
                 'open_url': url('invoices_bp.create_invoice', doc_type=t.key, project_id='__ID__'),
+                'no_project': url('invoices_bp.create_invoice', doc_type=t.key, project_id=NO_PROJECT) if t.purchase else None,
                 'new_project': {'action': url('projects_bp.create_project'), 'next': t.key, 'customers': _customers(customers),
                                 'add_customer': url('customers_bp.create_customer') if not customers else None}}
 
@@ -218,13 +226,16 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
             templates = sorted(_latest_templates(org_id), key=lambda x: (x.get('name') or '').lower())
             mine, others = _templates_for(org_id, templates, doc_type)
         carry = {'from_costing': from_costing['id'], 'lines': ','.join(from_costing['lines'])} if from_costing else {}
+        project_id = project['project_id'] if project else NO_PROJECT
         link = lambda x: {'name': x.get('name') or 'Template', 'currency': x.get('currency_code'),  # noqa: E731
-                          'href': url('invoices_bp.create_invoice', doc_type=t.key, template_id=x['template_id'], project_id=project['project_id'],
+                          'href': url('invoices_bp.create_invoice', doc_type=t.key, template_id=x['template_id'], project_id=project_id,
                                       **carry)}
         return {'step': 'template', 'title': f'New {t.label.lower()}', 'type': {'key': t.key, 'label': t.label},
                 'missing': bool(template_id), 'project': _project(project, url),
+                # with no project, only purchases: a sale is always for one
                 'kinds': [{'key': k, 'short': DOC_TYPES[k].short, 'icon': DOC_TYPES[k].icon, 'current': k == t.key,
-                           'href': url('invoices_bp.create_invoice', doc_type=k, project_id=project['project_id'])} for k in CHOOSABLE],
+                           'href': url('invoices_bp.create_invoice', doc_type=k, project_id=project_id)}
+                          for k in CHOOSABLE if project or DOC_TYPES[k].purchase],
                 'templates': [link(x) for x in mine], 'others': [link(x) for x in others],
                 'templates_page': url('templates_bp.list_templates')}
 
@@ -232,7 +243,7 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
     kind = invoice_kind(doc_type, template_is_export(template_id, org_id))
     doc = _document_form_context(kind, org, profile, customers, org_id=org_id, currency=selected.get('currency_code'))
     details = doc['values'].get('details') or {}
-    if kind == 'quote' and not details.get('subject'):
+    if kind == 'quote' and project and not details.get('subject'):
         details['subject'] = project['title']
     if t.purchase:                              # to a supplier: not the customer's PO, nor the customer's tax
         doc['values']['details'] = details
@@ -242,7 +253,7 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
         if hint:
             doc['values']['tax_mode'] = hint['mode']
     sections = _editor_sections(get_template_fields(template_id))
-    if from_costing and t.purchase:
+    if from_costing and t.purchase and project:
         _fill_lines(sections, _costing_lines(org_id, project, from_costing))
     return _editor(doc, sections, url, project=project, customers=customers,
                    template_id=template_id, template_name=selected.get('name') or '')
