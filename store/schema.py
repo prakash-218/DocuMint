@@ -300,6 +300,23 @@ payment = Table(
     CheckConstraint('amount > 0', name='amount_positive'),
 )
 
+# A private link to one document, for sending where a file can't go (WhatsApp, a copied link): its token is long and
+# unguessable, and it opens the document's page and PDF without signing in until someone turns it off (turned_off_at).
+# A document has at most one link that's on.
+share_link = Table(
+    'share_link', metadata,
+    _id('link_id'),
+    _ref('org_id', 'organization.org_id', 'CASCADE'),
+    _ref('invoice_id', 'invoice.invoice_id', 'CASCADE'),
+    Column('token', String(64), nullable=False, unique=True),
+    _ref('created_by', 'users.user_id', 'SET NULL', nullable=True, index=False),
+    _created(),
+    Column('turned_off_at', TIMESTAMP(timezone=True)),
+    Column('opens', Integer, nullable=False, server_default='0'),
+    Column('last_opened_at', TIMESTAMP(timezone=True)),
+    Index('uq_share_link_on', 'invoice_id', unique=True, postgresql_where=text('turned_off_at IS NULL')),
+)
+
 # Working out a quote's prices before making it: internal, owners and admins only.
 # sheet: {"items": [{key, name, description, qty, unit, cost_each, profit_percent, price_each,
 #                    lines: [{description, make, qty, unit, unit_cost, markup}]}],

@@ -487,7 +487,7 @@ def audit_log():
 
 PROFILE_TEXT_FIELDS = (
     'gstin', 'pan', 'iec_code', 'lut_number', 'ad_code', 'state_code', 'phone', 'email', 'website',
-    'bank_name', 'bank_account', 'bank_ifsc', 'bank_branch', 'bank_swift', 'signatory_name',
+    'bank_name', 'bank_account', 'bank_ifsc', 'bank_branch', 'bank_swift', 'upi_id', 'signatory_name',
     'quote_intro', 'quote_terms', 'quote_closing', 'footer_note',
 )
 PROFILE_IMAGES = ('logo', 'logo_small', 'stamp', 'signature')
@@ -530,6 +530,10 @@ def business_profile():
         profile['gstin'] = profile.get('gstin', '').upper() or None
         if not profile['gstin']:
             profile.pop('gstin')
+        import upi
+        if profile.get('upi_id') and not upi.valid(profile['upi_id']):
+            flash(f"\"{profile['upi_id']}\" isn't a UPI ID: it looks like yourname@okhdfcbank or 98xxxxxx10@ybl.", 'error')
+            return redirect(url_for('settings_bp.business_profile'))
 
         currency = request.form.get('default_currency')
         profile['default_currency'] = currency if currency in CURRENCIES else 'INR'

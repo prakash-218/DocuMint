@@ -353,13 +353,27 @@
             {% if profile.pan %}Company's PAN : <b>{{ profile.pan }}</b>{% endif %}
         </td>
         <td style="width: 50%;">
-            {% if not packing and (profile.bank_name or profile.bank_account) %}
+            {# a UPI QR code for what's due (upi.payment), beside the bank details and no taller than them #}
+            {% set upi_pay = upi | default(none) if not packing else none %}
+            {% if not packing and (profile.bank_name or profile.bank_account or upi_pay) %}
+            <table class="noborder"><tr>
+            <td style="vertical-align: top;">
+            {% if profile.bank_name or profile.bank_account %}
             <table class="noborder">
                 <tr><td colspan="2"><span class="lbl">Our Banker</span></td></tr>
                 {% for label, key in [('Bank Name', 'bank_name'), ('A/c No', 'bank_account'), ('IFSC code', 'bank_ifsc'), ('Branch', 'bank_branch'), ('SWIFT', 'bank_swift')] if profile.get(key) %}
                 <tr><td style="width: 35%;">{{ label }}:</td><td>{{ profile.get(key) }}</td></tr>
                 {% endfor %}
             </table>
+            {% endif %}
+            </td>
+            {% if upi_pay %}
+            <td style="width: 66pt; vertical-align: top; text-align: center;">
+                <img src="{{ upi_pay.qr }}" style="width: 46pt; height: 46pt;"><br>
+                <span class="lbl">Scan to pay {{ money(upi_pay.amount) }}</span>
+            </td>
+            {% endif %}
+            </tr></table>
             {% endif %}
         </td>
     </tr>

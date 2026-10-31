@@ -151,6 +151,8 @@ export function ProfileForm({ data }: { data: Data }) {
               <Text name="bank_branch" label="Branch" value={v.bank_branch} />
               <Text name="bank_swift" label="SWIFT code" value={v.bank_swift} help="For payments from abroad" />
             </div>
+            <Text name="upi_id" label="UPI ID" value={v.upi_id} placeholder="yourname@okhdfcbank"
+                  help="Proformas and invoices with something due print a “Scan to pay” QR code for that amount, and show it when you share them." />
           </div>
         </section>
 

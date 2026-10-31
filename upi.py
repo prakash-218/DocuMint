@@ -33,7 +33,7 @@ def due(header: Dict, summary: Dict) -> float:
 def pay_link(upi_id: str, payee: str, amount: float, note: str) -> str:
     """upi://pay?pa=...&pn=...&am=4500.00&cu=INR&tn=...: what the QR code holds, and what a phone opens."""
     query = {'pa': upi_id.strip(), 'pn': (payee or '')[:50], 'am': f'{amount:.2f}', 'cu': 'INR', 'tn': (note or '')[:50]}
-    return 'upi://pay?' + urlencode(query, quote_via=quote)
+    return 'upi://pay?' + urlencode(query, safe='@', quote_via=quote)            # name@bank as it is: some apps don't read %40
 
 
 def qr_png(link: str, scale: int = 4) -> str:
