@@ -70,6 +70,24 @@ def _payments(ctx: Dict, t, status: str, can_edit: bool, url: Callable) -> Dict:
             'empty': 'No advance received yet.' if t.takes_advances else 'No payments recorded yet.'}
 
 
+def _receiving(ctx: Dict, status: str, can_edit: bool, url: Callable) -> Dict:
+    """What's arrived on a purchase order (receiving.py): each line's ordered, received and still to come; each delivery
+    (taken off by those who may edit it); and, while something's to come, the form to record the next."""
+    from datetime import date
+    invoice_id = ctx['invoice']['invoice_id']
+    done = ctx.get('po_progress') or {'lines': [], 'state': 'none', 'arrived': 0}
+    by_line = {l['line']: l for l in done['lines']}
+    deliveries = [{'id': str(r['receipt_id']), 'date': r.get('received_on'), 'challan': r.get('challan_no') or '', 'note': r.get('note') or '',
+                   'by': r.get('created_by') or '',
+                   'lines': [{'description': by_line.get(int(i['line']), {}).get('description') or f"Line {i['line']}", 'qty': float(i['qty']),
+                              'unit': by_line.get(int(i['line']), {}).get('unit') or ''} for i in r.get('lines') or []],
+                   'delete': url('invoices_bp.delete_receipt', invoice_id=invoice_id, receipt_id=r['receipt_id']) if can_edit else None}
+                  for r in ctx.get('po_receipts') or []]
+    open_ = can_edit and status in ('sent', 'confirmed') and any(l['left'] > 1e-9 for l in done['lines'])
+    return {'lines': done['lines'], 'state': done['state'], 'deliveries': deliveries,
+            'record': {'action': url('invoices_bp.add_receipt', invoice_id=invoice_id), 'today': date.today().isoformat()} if open_ else None}
+
+
 def _change(ctx: Dict, t, url: Callable) -> Dict:
     invoice = ctx['invoice']
     status = invoice.get('status') or 'draft'
@@ -135,6 +153,7 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
         'share': url('api_bp.share', invoice_id=invoice['invoice_id']) if status != 'draft' and can_edit else None,
         'change': _change(ctx, t, url) if status != 'draft' and can_edit else None,
         'payments': _payments(ctx, t, status, can_edit and permissions.can('payments.write', perms=perms), url) if (t.takes_payments or t.takes_advances) and status != 'draft' else None,
+        'receiving': _receiving(ctx, status, can_edit, url) if t.purchase and status != 'draft' else None,
         'versions_html': _html("{% include 'invoices/_versions.html' %}", ctx) if ctx['versions'] else None,
         'document_html': _html("{% include 'invoices/_document.html' %}", {**ctx, 'sections_data': with_discount_column(ctx['sections_data'])}),
         'chain': ctx['doc_chain'],

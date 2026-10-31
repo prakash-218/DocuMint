@@ -120,8 +120,12 @@ def new_document(group):
         doc_type = 'invoice'
     if doc_type not in DOC_TYPES:
         doc_type = doc_urls.PATH_TYPES[group]
+    # ?from_costing=<id>&lines=<item key>:<n>,...: a purchase order of a costing's lines, for those who see costings
+    picks = [p for p in (request.args.get('lines') or '').split(',') if p]
+    from_costing = ({'id': request.args['from_costing'], 'lines': picks}
+                    if request.args.get('from_costing') and picks and permissions.can('costings.read') else None)
     return jsonify(project_view._plain(editor_page.new_page(g.current_org_id, doc_type, request.args.get('project_id'),
-                                                            request.args.get('template_id'), url_for)))
+                                                            request.args.get('template_id'), url_for, from_costing)))
 
 
 @api_bp.route('/editor/<invoice_id>')

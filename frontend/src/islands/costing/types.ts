@@ -115,5 +115,7 @@ export interface CostingData {
   versions: { url: string; version: number; total: number; currency: string; profit_on_cost: number | null; quote_number: string }[];
   rates: Rate[];
   urls: { save: string; preview: string; library: string; items: string; import: string; rates: string; new_version: string;
-          delete: string; project_id: string };
+          delete: string; project_id: string;
+          /** A purchase order of some of its lines (null: they may not make one). */
+          purchase_order?: string | null };
 }

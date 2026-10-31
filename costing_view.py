@@ -10,6 +10,7 @@ from typing import Callable, Dict, Optional
 
 def editor(org_id, row: Dict, base: str, url: Callable) -> Dict:
     import costing as K
+    import permissions
     from blueprints.costings_bp import _quote_templates
     from money import SYMBOLS
     from projects import project_label
@@ -41,7 +42,10 @@ def editor(org_id, row: Dict, base: str, url: Callable) -> Dict:
                  'library': url('costings_bp.library'), 'items': url('costings_bp.items', costing_id='COSTING'),
                  'import': url('costings_bp.read_spreadsheet', costing_id=costing_id),
                  'rates': url('costings_bp.rates', back=costing_id), 'new_version': url('costings_bp.create'),
-                 'delete': url('costings_bp.delete', costing_id=costing_id), 'project_id': str(row['project_id'])},
+                 'delete': url('costings_bp.delete', costing_id=costing_id), 'project_id': str(row['project_id']),
+                 # buying some of its lines: a purchase order of them (editor_page.new_page's from_costing)
+                 'purchase_order': url('invoices_bp.create_invoice', doc_type='purchase_order', project_id=row['project_id'],
+                                       from_costing=costing_id) if permissions.can_doc('write', 'purchase_order') else None},
     }
 
 

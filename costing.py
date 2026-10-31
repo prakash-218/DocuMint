@@ -501,3 +501,21 @@ def rate_suggestions(org_id, known: List[Dict], limit=40) -> List[Dict]:
                              'unit': line.get('unit') or '', 'unit_cost': line['unit_cost'],
                              'markup': line.get('markup'), 'notes': '', 'used': 1}
     return sorted(seen.values(), key=lambda r: (-r['used'], r['description'].lower()))[:limit]
+
+
+def purchase_lines(row: Dict, picks: List[str]) -> List[Dict]:
+    """A costing's cost lines to buy on a purchase order: picks are "<item key>:<line number>" (from 0). Each becomes
+    [{description (with its make), qty (the line's for one item, times the items), unit, rate (its unit cost)}], in
+    the costing's order; a pick that isn't there is left out."""
+    wanted = set(picks or [])
+    out = []
+    for item in (row.get('sheet') or {}).get('items') or []:
+        times = number(item.get('qty')) or 1
+        for n, line in enumerate(item.get('lines') or []):
+            if f"{item.get('key')}:{n}" not in wanted:
+                continue
+            text = (line.get('description') or item.get('name') or 'Item').strip()
+            make = (line.get('make') or '').strip()
+            out.append({'description': f'{text} ({make})' if make else text, 'qty': (number(line.get('qty')) or 1) * times,
+                        'unit': (line.get('unit') or '').strip(), 'rate': number(line.get('unit_cost')) or 0})
+    return out

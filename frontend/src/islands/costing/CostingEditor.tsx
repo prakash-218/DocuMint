@@ -4,7 +4,7 @@ import { Autocomplete, Text } from '@mantine/core';
 import { PageHeader } from '../../app/PageHeader';
 import { ask, Loading, useLoad } from '../../app/ui';
 import { Icon } from '../../icons';
-import { CopyDialog, ImportDialog } from './Dialogs';
+import { CopyDialog, ImportDialog, PurchaseDialog } from './Dialogs';
 import { BLANK_LINE, BLANK_SHARED, blankItem, fromStored, money, num } from './sheet';
 import type { CostingData, Item, Line, Rate, Result, Settings, Shared } from './types';
 
@@ -94,7 +94,7 @@ export function CostingEditor({ data }: { data: CostingData }) {
   const [result, setResult] = useState<Result>(data.result);
   const [problem, setProblem] = useState('');
   const [open, setOpen] = useState<Set<string>>(() => new Set(first.items.filter((i) => i.lines.length).map((i) => i.key)));
-  const [dialog, setDialog] = useState<'copy' | 'import' | null>(null);
+  const [dialog, setDialog] = useState<'copy' | 'import' | 'purchase' | null>(null);
   const focus = useRef<string | null>(null);
   const base = data.base;
   const cur = settings.currency;
@@ -110,6 +110,7 @@ export function CostingEditor({ data }: { data: CostingData }) {
   });
 
   const sheet = useMemo(() => ({ items, shared, exchange_rate: settings.exchange_rate }), [items, shared, settings.exchange_rate]);
+  const [asSaved] = useState(() => JSON.stringify(sheet));          // the sheet as the page came, to tell a change since
 
   // Work the numbers out again a moment after each change; a newer change cancels the last request
   const changed = useRef(false);
@@ -380,6 +381,9 @@ export function CostingEditor({ data }: { data: CostingData }) {
               <button type="button" className="btn btn-ghost btn-sm" onClick={addItem}><Icon name="plus" />Add item</button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog('copy')}><Icon name="file" />Copy from a costing</button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog('import')}><Icon name="upload" />Import from Excel</button>
+              {data.urls.purchase_order && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog('purchase')}><Icon name="filePlus" />Make a purchase order</button>
+              )}
             </div>
             <span className="k-foot-totals">Costs <strong>{money(t.cost, cur)}</strong> · Profit <strong>{money(t.profit, cur)}</strong> · Quote total{' '}
               <strong>{money(t.price, cur)}</strong></span>
@@ -513,6 +517,10 @@ export function CostingEditor({ data }: { data: CostingData }) {
                   onAdd={addItems} />
       <ImportDialog open={dialog === 'import'} onClose={() => setDialog(null)} url={data.urls.import} base={base} items={labels}
                     onAddItems={addItems} onAddLines={addLinesTo} />
+      {data.urls.purchase_order && (
+        <PurchaseDialog open={dialog === 'purchase'} onClose={() => setDialog(null)} url={data.urls.purchase_order}
+                        items={data.sheet.items} unsaved={JSON.stringify(sheet) !== asSaved} />
+      )}
     </>
   );
 }

@@ -77,6 +77,15 @@
 .ui .money > div { padding: 12px 14px; min-width: 0; border-left: 1px solid var(--line); }
 .ui .money > div:first-child { border-left: 0; }
 .ui .money.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }     /* a quotation's: quoted, invoiced, still to invoice */
+/* What arrived on a purchase order */
+.ui .recv-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.ui .recv-table th { text-align: left; font-size: 12px; color: var(--ink-3); font-weight: 500; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.ui .recv-table td { padding: 6px; border-bottom: 1px solid var(--line); }
+.ui .recv-table .num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+.ui .recv-table tr.recv-done td { color: var(--ink-3); }
+.ui .recv-deliveries { margin-top: 12px; }
+.ui .recv-form { display: grid; gap: 4px; margin-top: 8px; }
+.ui .recv-line .form-input { max-width: 160px; }
 /* What's bought for a project: its purchase orders */
 .ui .purchase-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .ui .purchase-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: baseline; }

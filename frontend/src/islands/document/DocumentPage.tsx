@@ -8,6 +8,7 @@ import { Skeleton } from '../../Skeleton';
 import { ACCEPT } from '../project/Side';
 import DocumentNext from './DocumentNext';
 import { ShareDialog } from './Share';
+import { ReceivingCard } from './Receiving';
 import type { Change, DocumentData, Payments, PdfMenu } from './types';
 
 // A document's page, as the prototype draws it: its number, state and what to do next with the money under it,
@@ -435,6 +436,7 @@ export default function DocumentPage({ invoiceId }: { invoiceId: string }) {
         <div className="cols">
           <div className="col-main">
             {data.payments && <PaymentsCard payments={data.payments} currency={data.currency} />}
+            {data.receiving && <ReceivingCard receiving={data.receiving} />}
             {data.versions_html && <ServerHtml html={data.versions_html} />}
             <ServerHtml html={data.document_html} />
           </div>

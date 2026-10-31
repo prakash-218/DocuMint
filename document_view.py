@@ -101,7 +101,7 @@ def steps(doc: Dict, summary: Dict, advance_received: float = 0, today: Optional
 
 def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: List[Dict], can: Dict, url: Callable,
               convert_defaults: Optional[Dict] = None, can_email: bool = False, today: Optional[date] = None,
-              usual_days: Optional[int] = None) -> Dict:
+              usual_days: Optional[int] = None, received: Optional[Dict] = None) -> Dict:
     """{'tone', 'text', 'sub', 'actions'} for one document. can: {'edit', 'sales'}; can_email: it's in a project
     (the email form goes by the project); usual_days: the organization's usual payment terms (payment_terms.py)."""
     today = today or date.today()
@@ -132,20 +132,25 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
         out.update(tone='draft', text=f'{number} was revised.', sub='The newest revision is the one to send or convert.')
     elif kind.purchase:
         supplier = doc.get('customer_name') or 'the supplier'
+        lines = (received or {}).get('lines') or []
+        part = (received or {}).get('state') == 'part'
+        so_far = f"{received['arrived']} of {len(lines)} line{'' if len(lines) == 1 else 's'} arrived in full." if part else ''
+        record = _link('Record what arrived', '#receiving')
         if status == 'sent':
             out.update(tone='wait', text=f'Sent to {supplier}' + (f' on {sent_on}.' if sent_on else '.'),
                        sub='When they confirm it, mark it confirmed.',
-                       actions=[status_to('Mark confirmed', 'confirmed', True), *email('Email the supplier'),
-                                status_to('Mark received', 'received'),
+                       actions=[status_to('Mark confirmed', 'confirmed', True), record, *email('Email the supplier'),
                                 status_to('Cancel the order', 'cancelled', confirm=f'Cancel {number}?')])
         elif status == 'confirmed':
             delivery = load_json(doc.get('details')).get('delivery')
-            out.update(tone='wait', text=f'{supplier} confirmed it.', sub=f'Delivery: {delivery}.' if delivery else '',
-                       actions=[status_to('Mark received', 'received', True), *email('Email the supplier'),
+            out.update(tone='wait', text=so_far or f'{supplier} confirmed it.',
+                       sub='The rest is still to come.' if part else f'Delivery: {delivery}.' if delivery else '',
+                       actions=[{**record, 'primary': True}, *email('Email the supplier'),
+                                status_to('Mark it all received', 'received'),
                                 status_to('Cancel the order', 'cancelled', confirm=f'Cancel {number}?')])
         elif status == 'received':
             out.update(tone='done', text='Received.', sub='Everything on it has arrived.',
-                       actions=[status_to('Undo: not received yet', 'confirmed')])
+                       actions=[] if (received or {}).get('state') == 'all' else [status_to('Undo: not received yet', 'confirmed')])
         else:                                             # cancelled
             out.update(tone='draft', text='Cancelled.', sub='', actions=[status_to('Undo: back to sent', 'sent')])
     elif kind.key == 'quote':

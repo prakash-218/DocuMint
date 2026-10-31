@@ -300,9 +300,12 @@ def page_context(invoice_id):
     sales = permissions.quotations_only()
     can = {'edit': permissions.can_doc('write', invoice.get('doc_type')), 'sales': sales}
     from payment_terms import usual_days
+    if get_type(invoice.get('doc_type')).purchase:
+        context['po_progress'], context['po_receipts'] = _po_progress(invoice, sections=context['sections_data'])
     context['doc_next'] = document_view.next_step(invoice, summary, context['advance_received'], context['open_advances'], can,
                                                   url_for, context['convert_defaults'], can_email=bool(project),
-                                                  usual_days=usual_days(load_json(invoice.get('organization_profile'))))
+                                                  usual_days=usual_days(load_json(invoice.get('organization_profile'))),
+                                                  received=context.get('po_progress'))
     context['doc_steps'] = document_view.steps(invoice, summary, context['advance_received'])
     advance_received = context['advance_received']
     people, events = [], []
@@ -509,6 +512,71 @@ def finalize_invoice(invoice_id):
 
 
 QUOTE_OUTCOMES = {'accepted': 'marked as accepted', 'declined': 'marked as declined', 'sent': 'reopened'}
+
+
+def _po_progress(header, values=None, sections=None):
+    """(the order's lines with what's arrived, its deliveries) for a purchase order (receiving.py); from its values, or
+    the sections already built from them."""
+    import receiving
+    receipts = db.execute_proc('sp_list_po_receipts', (header['invoice_id'], g.current_org_id)) or []
+    return receiving.progress(receiving.ordered(sections or build_sections(header, values)), receipts), receipts
+
+
+def _po_status_after(header, done):
+    """Received once everything has come; back to confirmed when a delivery is taken off and something's still to come."""
+    status = header.get('status')
+    after = 'received' if done['state'] == 'all' else ('confirmed' if status in ('sent', 'received') and done['state'] != 'none'
+                                                        or status == 'received' else status)
+    if after != status:
+        db.execute_proc('sp_update_invoice_status', (header['invoice_id'], after), fetch=False)
+        activity.document_event(f'po_{after}', header, PO_STEPS.get(after, after))
+    return after
+
+
+@invoices_bp.route('/<invoice_id>/receipts', methods=['POST'])
+@require_org
+def add_receipt(invoice_id):
+    """What arrived on a purchase order: its date, the supplier's challan no., and how much of each line (qty_<line>)."""
+    import receiving
+    header, values = get_org_invoice(invoice_id, g.current_org_id)
+    back = redirect(_back(invoice_id) + '#receiving')
+    if not header or not get_type(header.get('doc_type')).purchase:
+        flash('That is not a purchase order', 'error')
+        return redirect(_back(invoice_id))
+    if (header.get('status') or 'draft') not in ('sent', 'confirmed'):
+        flash('Send the purchase order first' if (header.get('status') or 'draft') == 'draft' else 'It is received or cancelled already', 'error')
+        return back
+    done, _ = _po_progress(header, values)
+    try:
+        lines = receiving.from_form(request.form, done['lines'])
+    except ValueError as e:
+        flash(str(e), 'error')
+        return back
+    if not lines:
+        flash('Say how much of which line came', 'error')
+        return back
+    received_on = request.form.get('received_on') or date.today().isoformat()
+    db.execute_proc('sp_add_po_receipt', (g.current_org_id, invoice_id, received_on, (request.form.get('challan_no') or '').strip(),
+                                          (request.form.get('note') or '').strip(), lines, g.current_user['user_id']))
+    after, _ = _po_progress(header, values)
+    status = _po_status_after(header, after)
+    flash('Everything has arrived: the order is received' if status == 'received'
+          else f"Recorded. {after['arrived']} of {len(after['lines'])} lines have arrived in full", 'success')
+    return back
+
+
+@invoices_bp.route('/<invoice_id>/receipts/<receipt_id>/delete', methods=['POST'])
+@require_org
+def delete_receipt(invoice_id, receipt_id):
+    """Takes a delivery off (recorded by mistake): the order counts what's arrived again."""
+    header, values = get_org_invoice(invoice_id, g.current_org_id)
+    if not header or not get_type(header.get('doc_type')).purchase:
+        return redirect(_back(invoice_id))
+    db.execute_proc('sp_delete_po_receipt', (receipt_id, invoice_id, g.current_org_id))
+    after, _ = _po_progress(header, values)
+    _po_status_after(header, after)
+    flash('That delivery is taken off', 'info')
+    return redirect(_back(invoice_id) + '#receiving')
 
 
 # A purchase order's steps once it's sent: the supplier confirms it, it arrives, or it's called off (and undone)

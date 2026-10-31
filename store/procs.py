@@ -1143,6 +1143,37 @@ def set_payment_details(conn, payment_id, invoice_id, payment_date, received_amo
     return []
 
 
+# ================================================================ What arrived on a purchase order
+
+@proc('sp_add_po_receipt')
+def add_po_receipt(conn, org_id, invoice_id, received_on, challan_no, note, lines, user_id):
+    """A delivery against the purchase order: its date, the supplier's challan no., and [{line, qty}] that came."""
+    _require(conn, "SELECT 1 FROM invoice WHERE invoice_id = :i AND org_id = :o AND doc_type = 'purchase_order'",
+             'Purchase order does not exist', i=invoice_id, o=org_id)
+    rid = _new_id()
+    _exec(conn, """INSERT INTO po_receipt (receipt_id, org_id, invoice_id, received_on, challan_no, note, lines, created_by)
+                   VALUES (:r, :o, :i, CAST(:d AS date), :c, :n, CAST(:l AS jsonb), :u)""",
+          r=rid, o=org_id, i=invoice_id, d=received_on, c=challan_no or None, n=note or None, l=_json(lines or []), u=user_id)
+    _audit(conn, org_id, 'invoice', invoice_id, 'UPDATE', 'received', None, received_on, f'Received: challan {challan_no or "-"}')
+    return [[{'receipt_id': rid}]]
+
+
+@proc('sp_list_po_receipts')
+def list_po_receipts(conn, invoice_id, org_id):
+    """The purchase order's deliveries, oldest first."""
+    return [_rows(conn, """SELECT r.receipt_id, r.received_on, r.challan_no, r.note, r.lines, r.created_at, u.email AS created_by
+                           FROM po_receipt r LEFT JOIN users u ON u.user_id = r.created_by
+                           WHERE r.invoice_id = :i AND r.org_id = :o ORDER BY r.received_on, r.created_at""", i=invoice_id, o=org_id)]
+
+
+@proc('sp_delete_po_receipt')
+def delete_po_receipt(conn, receipt_id, invoice_id, org_id):
+    n = _exec(conn, "DELETE FROM po_receipt WHERE receipt_id = :r AND invoice_id = :i AND org_id = :o", r=receipt_id, i=invoice_id, o=org_id)
+    if n:
+        _audit(conn, org_id, 'invoice', invoice_id, 'UPDATE', 'received', 'a delivery', None, 'A delivery was taken off')
+    return [[{'deleted': n}]]
+
+
 # ================================================================ Share links
 
 SHARE_LINK = "link_id, invoice_id, token, created_at, opens, last_opened_at"
