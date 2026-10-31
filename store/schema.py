@@ -40,7 +40,7 @@ MONEY = Numeric(15, 4)
 organization = Table(
     'organization', metadata,
     _id('org_id'),
-    Column('domain', String(100), nullable=False),
+    Column('domain', String(100)),          # its own email domain: never a public one (gmail.com); none for some
     Column('name', String(100), nullable=False),
     Column('street_address', String(255)),
     Column('city', String(100)),
@@ -75,6 +75,38 @@ org_role = Table(
     Column('permissions', JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     _created(),
     UniqueConstraint('org_id', 'name', name='uq_org_role_name'),
+)
+
+# Getting in is by invitation only (invites.py). An invite is for one address: into an organization as a role, or (no
+# org_id) to start a new organization, which only the operator makes. Only its token's hash is kept; it works once,
+# until it expires or is cancelled.
+invite = Table(
+    'invite', metadata,
+    _id('invite_id'),
+    _ref('org_id', 'organization.org_id', 'CASCADE', nullable=True),
+    Column('email', String(255), nullable=False),
+    Column('role', String(20), nullable=False, server_default='member'),
+    _ref('role_id', 'org_role.role_id', 'CASCADE', nullable=True, index=False),
+    Column('token_hash', String(64), nullable=False, unique=True),
+    _ref('created_by', 'users.user_id', 'SET NULL', nullable=True, index=False),
+    _created(),
+    Column('expires_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('used_at', TIMESTAMP(timezone=True)),
+    _ref('used_by', 'users.user_id', 'SET NULL', nullable=True, index=False),
+    Column('cancelled_at', TIMESTAMP(timezone=True)),
+)
+
+# A link to set a new password: emailed when someone forgot theirs, or made by an owner or admin for a member to send
+# them another way (created_by). Hashed like an invite's, short-lived, and used once.
+password_reset = Table(
+    'password_reset', metadata,
+    _id('reset_id'),
+    _ref('user_id', 'users.user_id', 'CASCADE'),
+    Column('token_hash', String(64), nullable=False, unique=True),
+    _ref('created_by', 'users.user_id', 'SET NULL', nullable=True, index=False),
+    _created(),
+    Column('expires_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('used_at', TIMESTAMP(timezone=True)),
 )
 
 user_organization = Table(

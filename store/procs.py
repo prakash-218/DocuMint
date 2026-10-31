@@ -105,6 +105,117 @@ def find_organizations_by_domain(conn, domain):
                            WHERE lower(domain) = lower(:d) ORDER BY created_at DESC""", d=domain)]
 
 
+# ================================================================ Invites and password resets
+
+INVITE = """i.invite_id, i.org_id, o.name AS org_name, i.email, i.role, i.role_id, r.name AS role_name, i.created_at,
+            i.expires_at, i.used_at, i.cancelled_at, i.expires_at < now() AS expired, cu.email AS invited_by"""
+INVITE_FROM = """FROM invite i LEFT JOIN organization o ON o.org_id = i.org_id LEFT JOIN org_role r ON r.role_id = i.role_id
+                 LEFT JOIN users cu ON cu.user_id = i.created_by"""
+
+
+@proc('sp_create_invite')
+def create_invite(conn, org_id, email, role, role_id, token_hash, created_by, days):
+    """An invite for this address (into org_id, or to start a new organization when it's None); an earlier one for the
+    same address and organization that wasn't used is cancelled."""
+    _exec(conn, """UPDATE invite SET cancelled_at = now()
+                   WHERE lower(email) = lower(:e) AND org_id IS NOT DISTINCT FROM CAST(:o AS uuid)
+                     AND used_at IS NULL AND cancelled_at IS NULL""", e=email, o=org_id)
+    iid = _new_id()
+    _exec(conn, """INSERT INTO invite (invite_id, org_id, email, role, role_id, token_hash, created_by, expires_at)
+                   VALUES (:i, :o, lower(:e), :r, :rid, :t, :u, now() + make_interval(days => :d))""",
+          i=iid, o=org_id, e=email, r=role or 'member', rid=role_id, t=token_hash, u=created_by, d=int(days))
+    if org_id:
+        _audit(conn, org_id, 'invite', iid, 'INSERT', 'email', None, email.lower(), f'Invited as {role or "member"}')
+    return [_rows(conn, f"SELECT {INVITE} {INVITE_FROM} WHERE i.invite_id = :i", i=iid)]
+
+
+@proc('sp_list_invites')
+def list_invites(conn, org_id):
+    """The organization's invites that weren't used or cancelled, newest first (expired ones too, to send again)."""
+    return [_rows(conn, f"""SELECT {INVITE} {INVITE_FROM}
+                            WHERE i.org_id = :o AND i.used_at IS NULL AND i.cancelled_at IS NULL
+                            ORDER BY i.created_at DESC""", o=org_id)]
+
+
+@proc('sp_find_invite')
+def find_invite(conn, token_hash):
+    """The invite with this token, whatever state it's in (its page says what's wrong)."""
+    return [_rows(conn, f"SELECT {INVITE} {INVITE_FROM} WHERE i.token_hash = :t", t=token_hash)]
+
+
+@proc('sp_renew_invite')
+def renew_invite(conn, invite_id, org_id, token_hash, days):
+    """The same invite with a new link and a new expiry: the old link stops working."""
+    n = _exec(conn, """UPDATE invite SET token_hash = :t, expires_at = now() + make_interval(days => :d)
+                       WHERE invite_id = :i AND org_id = :o AND used_at IS NULL AND cancelled_at IS NULL""",
+              i=invite_id, o=org_id, t=token_hash, d=int(days))
+    if not n:
+        raise ProcError('Invite does not exist')
+    return [_rows(conn, f"SELECT {INVITE} {INVITE_FROM} WHERE i.invite_id = :i", i=invite_id)]
+
+
+@proc('sp_cancel_invite')
+def cancel_invite(conn, invite_id, org_id):
+    n = _exec(conn, """UPDATE invite SET cancelled_at = now()
+                       WHERE invite_id = :i AND org_id = :o AND used_at IS NULL AND cancelled_at IS NULL""", i=invite_id, o=org_id)
+    if n:
+        _audit(conn, org_id, 'invite', invite_id, 'UPDATE', 'cancelled_at', None, 'now', 'Invite cancelled')
+    return [[{'cancelled': n}]]
+
+
+@proc('sp_accept_invite')
+def accept_invite(conn, invite_id, user_id, org_id):
+    """The invite is used: its person is in the organization (org_id: the invite's, or the one just made for an
+    invite to start one) with its role, at once; an invite to start one makes them its owner."""
+    inv = _one(conn, """SELECT org_id, role, role_id FROM invite WHERE invite_id = :i AND used_at IS NULL AND cancelled_at IS NULL
+                        AND expires_at >= now() FOR UPDATE""", i=invite_id)
+    if not inv:
+        raise ProcError('Invite is not valid')
+    role, role_id = (inv['role'], inv['role_id']) if inv['org_id'] else ('owner', None)
+    _exec(conn, """INSERT INTO user_organization (user_id, org_id, role, role_id, status) VALUES (:u, :o, :r, :rid, 'active')
+                   ON CONFLICT (user_id, org_id) DO UPDATE SET role = :r, role_id = :rid, status = 'active'""",
+          u=user_id, o=org_id, r=role, rid=role_id)
+    _exec(conn, "UPDATE invite SET used_at = now(), used_by = :u WHERE invite_id = :i", i=invite_id, u=user_id)
+    _audit(conn, org_id, 'user_organization', user_id, 'INSERT', 'role', None, role, 'Joined by invite')
+    return [[{'org_id': org_id, 'role': role}]]
+
+
+@proc('sp_create_password_reset')
+def create_password_reset(conn, user_id, token_hash, created_by, minutes):
+    """A link to set a new password; earlier ones that weren't used stop working."""
+    _exec(conn, "UPDATE password_reset SET used_at = now() WHERE user_id = :u AND used_at IS NULL", u=user_id)
+    rid = _new_id()
+    _exec(conn, """INSERT INTO password_reset (reset_id, user_id, token_hash, created_by, expires_at)
+                   VALUES (:r, :u, :t, :c, now() + make_interval(mins => :m))""", r=rid, u=user_id, t=token_hash, c=created_by, m=int(minutes))
+    return [[{'reset_id': rid}]]
+
+
+@proc('sp_find_password_reset')
+def find_password_reset(conn, token_hash):
+    """The reset with this token while it can be used, with whose it is."""
+    return [_rows(conn, """SELECT pr.reset_id, pr.user_id, u.email FROM password_reset pr JOIN users u ON u.user_id = pr.user_id
+                           WHERE pr.token_hash = :t AND pr.used_at IS NULL AND pr.expires_at >= now()""", t=token_hash)]
+
+
+@proc('sp_use_password_reset')
+def use_password_reset(conn, reset_id, password_hash):
+    """The new password, once: the link stops working."""
+    row = _one(conn, """UPDATE password_reset SET used_at = now() WHERE reset_id = :r AND used_at IS NULL AND expires_at >= now()
+                        RETURNING user_id""", r=reset_id)
+    if not row:
+        raise ProcError('Reset link is not valid')
+    _exec(conn, "UPDATE users SET password_hash = :p WHERE user_id = :u", p=password_hash, u=row['user_id'])
+    return [[{'user_id': row['user_id']}]]
+
+
+@proc('sp_set_organization_domain')
+def set_organization_domain(conn, org_id, domain):
+    """The organization's own email domain, or none."""
+    _exec(conn, "UPDATE organization SET domain = :d WHERE org_id = :o", d=domain or None, o=org_id)
+    _audit(conn, org_id, 'organization', org_id, 'UPDATE', 'domain', None, domain or '')
+    return []
+
+
 @proc('sp_create_organization')
 def create_organization(conn, name, domain, street, city, state, zip_code, country, _out=None):
     oid = _new_id()

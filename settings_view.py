@@ -19,8 +19,9 @@ def index(user: Dict, org_id, org_name: str, perms, url: Callable) -> Dict:
     import roles_view
     from db import db
     manage = permissions.can('team.manage', perms=perms)
-    requests, members = [], []
+    requests, members, invites = [], [], []
     if manage:
+        invites = db.execute_proc('sp_list_invites', (org_id,)) or []
         requests = db.execute_proc('sp_get_pending_members', (org_id,)) or []
         members = [m for m in db.execute_proc('sp_get_org_members', (org_id,)) or [] if m.get('status') in ('active', 'deactivated')]
     links = [('Business profile', 'GSTIN, bank details, numbering, logo, quotation terms', 'business.write', url('settings_bp.business_profile')),
@@ -39,13 +40,20 @@ def index(user: Dict, org_id, org_name: str, perms, url: Callable) -> Dict:
                      'role': str(m['role_id']) if m.get('role') == 'custom' else m.get('role') or '',
                      'role_label': permissions.role_label(m.get('role'), m.get('role_name')),
                      'status': m.get('status') or '', 'you': str(m['user_id']) == me,
-                     'manage': str(m['user_id']) != me and permissions.may_give(m, perms)} for m in members],
+                     'manage': str(m['user_id']) != me and permissions.may_give(m, perms),
+                     'reset': url('api_bp.member_reset', user_id=m['user_id'])
+                     if str(m['user_id']) != me and m.get('status') == 'active' and permissions.may_give(m, perms) else None}
+                    for m in members],
+        # invites not used yet (invites.py): the team's way in, a Gmail address's too
+        'invite': url('api_bp.invite_create') if manage else None,
+        'invites': [{'id': str(i['invite_id']), 'email': i['email'], 'role_label': permissions.role_label(i.get('role'), i.get('role_name')),
+                     'sent': i.get('created_at'), 'expires': i.get('expires_at'), 'expired': bool(i.get('expired')),
+                     'by': i.get('invited_by') or '', 'again': url('api_bp.invite_again', invite_id=i['invite_id']),
+                     'cancel': url('api_bp.invite_cancel', invite_id=i['invite_id'])} for i in invites],
         'orgs': [{'id': str(o['org_id']), 'name': o.get('name') or '', 'domain': o.get('domain') or '',
                   'role': permissions.role_label(o.get('role'), o.get('role_name')),
                   'current': str(o['org_id']) == str(org_id)} for o in db.execute_proc('sp_get_user_organizations', (user['user_id'],)) or []],
         'switch': url('settings_bp.select_org'),
-        'join': url('settings_bp.join_organization'),
-        'create': url('settings_bp.create_organization'),
     }
 
 
