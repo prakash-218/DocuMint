@@ -49,7 +49,7 @@ export default function DocumentNext({ next, steps, head, money, currency = 'INR
       ) : steps && <Tracker steps={steps} />}
       <NextStep next={next} onEmail={() => setComposing(true)} onStatus={() => undefined} />
       {money && (
-        <section className="money" aria-label="The money">
+        <section className={`money${money.length === 3 ? ' three' : ''}`} aria-label="The money">
           {money.map((m) => (
             <div key={m.label} className={m.late ? 'due-late' : ''}>
               <small>{m.label}</small><b>{m.value < 0 ? `−${fmt(-m.value, currency)}` : fmt(m.value, currency)}</b>

@@ -14,10 +14,11 @@ def keys(app):
 
 def test_each_role_sees_its_links(keys):
     # Home and Projects; Sales; People; Library; Organization, as the prototype groups them
-    assert keys('owner') == [['home', 'notifications', 'projects'], ['quote', 'proforma', 'invoices'], ['customers', 'emails'],
+    assert keys('owner') == [['home', 'notifications', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'emails'],
                              ['templates', 'rates'], ['settings', 'audit']]
-    assert keys('member') == [['home', 'projects'], ['quote', 'proforma', 'invoices'], ['customers', 'emails'], ['templates'], ['settings']]
-    assert keys('viewer') == [['home', 'projects'], ['quote', 'proforma', 'invoices'], ['customers'], ['templates'], ['settings']]
+    assert keys('member') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers', 'emails'], ['templates'],
+                              ['settings']]
+    assert keys('viewer') == [['home', 'projects'], ['quote', 'proforma', 'invoices', 'payments'], ['customers'], ['templates'], ['settings']]
     assert keys('sales') == [['projects'], ['quote'], ['customers'], ['settings']]   # quotations only, no money
 
 
@@ -41,6 +42,7 @@ def test_links_lead_where_the_pages_are_and_the_longest_prefix_lights(app):
     assert nav.active(sections, '/settings/profile') == 'settings'
     assert nav.active(sections, '/quotes/Q-1') == 'quote' and nav.active(sections, '/quotesx') is None
     assert nav.active(sections, '/costings/K-1') is None and nav.active(sections, '/costings/rates') == 'rates'
+    assert items['payments']['href'] == '/payments/' and nav.active(sections, '/payments/') == 'payments'
 
 
 def test_the_new_menu_is_for_those_who_make_documents(app):

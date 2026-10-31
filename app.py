@@ -29,6 +29,7 @@ from blueprints.settings_bp import settings_bp
 from blueprints.customer_portal_bp import customer_portal_bp
 from blueprints.projects_bp import projects_bp
 from blueprints.notifications_bp import notifications_bp
+from blueprints.payments_bp import payments_bp
 from blueprints.emails_bp import emails_bp
 from blueprints.costings_bp import costings_bp
 from blueprints.search_bp import search_bp
@@ -66,6 +67,7 @@ def create_app(config_name=None):
     app.register_blueprint(customer_portal_bp, url_prefix='/customer')
     app.register_blueprint(projects_bp, url_prefix='/projects')
     app.register_blueprint(notifications_bp, url_prefix='/notifications')
+    app.register_blueprint(payments_bp, url_prefix='/payments')
     app.register_blueprint(emails_bp, url_prefix='/emails')
     app.register_blueprint(costings_bp, url_prefix='/costings')
     app.register_blueprint(search_bp, url_prefix='/search')

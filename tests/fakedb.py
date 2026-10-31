@@ -55,7 +55,7 @@ class FakeDB:
             ('INV-A', 'F-QTY', 2): 3, ('INV-A', 'F-PRICE', 2): 5,
             ('INV-A', 'F-TOTAL', 0): 999,
         }
-        self.payments = {'INV-A': [{'amount': 10, 'payment_date': '2026-01-01', 'method': 'card',
+        self.payments = {'INV-A': [{'payment_id': 'PAY-1', 'amount': 10, 'payment_date': '2026-01-01', 'method': 'card',
                                     'reference_number': 'R1'}]}
         self.roles = {}            # an organization's own roles: role_id -> {role_id, org_id, name, description, permissions}
         self.team = []             # sp_get_org_members' rows

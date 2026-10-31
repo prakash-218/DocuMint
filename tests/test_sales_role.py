@@ -74,7 +74,7 @@ def test_sales_menu_and_search(sales):
     boot = boot_of(sales.get('/customers/').get_data(as_text=True))
     nav = [i['label'] for s in boot['sidebar'] for i in s['items']]
     assert {'Quotations', 'Projects', 'Customers'} <= set(nav)
-    assert not set(nav) & {'Home', 'Proformas', 'Invoices', 'Templates', 'Rates', 'Emails', 'Audit log'}
+    assert not set(nav) & {'Home', 'Proformas', 'Invoices', 'Payments', 'Templates', 'Rates', 'Emails', 'Audit log'}
     assert [s['title'] for s in boot['sidebar']] == [None, 'Sales', 'People', 'Organization']   # no Library
     assert sales.get('/api/customers').get_json()['new'] == '/customers/create'        # Sales add customers
     items = sales.get('/search/items').get_json()['items']

@@ -100,7 +100,8 @@ describe('the app', () => {
     expect(screen.getByText('Organization')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search' })).toHaveAttribute('data-palette-open');
     expect(screen.getByText('Project deleted.')).toHaveClass('alert', 'alert-success');
-    expect(await screen.findByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Projects');
+    // the first screen loads its code: with every test file running at once that can take longer than a second
+    expect(await screen.findByRole('navigation', { name: 'Breadcrumb' }, { timeout: 8000 })).toHaveTextContent('Projects');
     await waitFor(() => expect(document.title).toBe('Projects · DocuMint'));
     expect(document.querySelector('form[method="POST"][action="/auth/logout"]')).toBeTruthy();
   });

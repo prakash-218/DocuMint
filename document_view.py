@@ -219,6 +219,43 @@ def money_strip(doc: Dict, summary: Dict, payments: List[Dict], advance_received
             {'label': 'Due', 'value': balance, 'cap': 'Nothing due' if balance <= 0.005 else '', 'late': balance > 0.005}]
 
 
+def made_from(here_id, project_docs: List[Dict]) -> List[Dict]:
+    """The documents made from a quotation (from any of its versions): its proformas, and the tax invoices made from it
+    or from them. project_docs: the project's, revisions collapsed (each with its earlier 'versions')."""
+    every = [x for d in project_docs for x in (d, *(d.get('versions') or []))]
+    ids = {str(x['invoice_id']) for d in project_docs for x in (d, *(d.get('versions') or []))
+           if any(str(y['invoice_id']) == str(here_id) for y in (d, *(d.get('versions') or [])))} or {str(here_id)}
+    made, grew = [], True
+    while grew:
+        grew = False
+        for d in every:
+            if str(d['invoice_id']) not in ids and str(d.get('source_invoice_id') or '') in ids and d.get('doc_type') != 'quote':
+                ids.add(str(d['invoice_id']))
+                made.append(d)
+                grew = True
+    return made
+
+
+def quote_strip(doc: Dict, summary: Dict, invoiced: List[Dict]) -> Optional[List[Dict]]:
+    """Under an accepted quotation's next step: what it quoted, how much of it is invoiced ("Invoiced ₹X of ₹Y") and
+    what's still to invoice, all before GST, since a quotation usually states GST in its terms rather than adding it.
+    invoiced: [{'taxable', 'currency'}] for the tax invoices made from it (made_from), drafts left out."""
+    if (doc.get('status') or 'draft') not in ('accepted', 'converted'):
+        return None
+    currency = doc.get('currency_code') or 'INR'
+    money = lambda v: format_money(v, currency, decimals=False)  # noqa: E731
+    quoted = float(summary['taxable'] if summary.get('taxable') is not None else summary.get('total') or 0)
+    mine = [i for i in invoiced if (i.get('currency') or 'INR') == currency]
+    done = sum(float(i['taxable'] or 0) for i in mine)
+    left = quoted - done
+    on = f'on {len(mine)} tax invoice{"" if len(mine) == 1 else "s"}'
+    return [{'label': 'Quoted', 'value': quoted, 'cap': 'Before GST'},
+            {'label': 'Invoiced', 'value': done,
+             'cap': (f'{round(done / quoted * 100)}% of it, {on}' if quoted else on.capitalize()) if mine else 'Nothing yet'},
+            {'label': 'Still to invoice', 'value': max(0.0, left),
+             'cap': f'{money(-left)} more than quoted' if left < -0.5 else 'All invoiced' if left <= 0.5 else 'Before GST'}]
+
+
 def chain(project_docs: List[Dict], here_id, url: Callable) -> List[Dict]:
     """The project's documents, quotation to tax invoice, for the side of a document's page."""
     from documents import balance_of

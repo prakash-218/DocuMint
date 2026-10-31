@@ -23,7 +23,7 @@ export function activeKey(sections: NavSection[], path: string): string | null {
 const ICONS: Record<string, IconName> = {
   house: 'house', 'layout-dashboard': 'layoutDashboard', bell: 'bell', briefcase: 'briefcase', mail: 'mail',
   'file-pen-line': 'filePenLine', 'file-clock': 'fileClock', 'file-text': 'fileText', users: 'users',
-  'layout-template': 'layoutTemplate', list: 'list', settings: 'settings', history: 'history', plus: 'plus',
+  wallet: 'wallet', 'layout-template': 'layoutTemplate', list: 'list', settings: 'settings', history: 'history', plus: 'plus',
 };
 
 export function lucide(name: string): IconName {
