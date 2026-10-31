@@ -227,6 +227,8 @@ export function Editor({ data }: { data: EditorData }) {
   const [normals, setNormals] = useState<Record<string, Value>>(() => Object.assign({}, ...data.sections.filter((x) => x.type !== 'line_item').map((x) => x.values ?? {})));
   const [currency, setCurrency] = useState(s.currency);
   const [taxMode, setTaxMode] = useState(s.tax_mode);
+  const [customerId, setCustomerId] = useState('');                  // picked here; a fixed one has its tax_hint
+  const hint = customerId ? data.tax_hints[customerId] : data.tax_hint ?? undefined;
   const [taxRate, setTaxRate] = useState(s.tax_rate);
   const [discount, setDiscount] = useState(data.discount ?? '');
   const sum = useMemo(() => totals(data.sections, rows, normals, taxMode, taxRate, discount),
@@ -272,7 +274,7 @@ export function Editor({ data }: { data: EditorData }) {
                     ) : (
                       <Dropdown id="customer_id" name="customer_id" required placeholder="Select a customer" searchable
                                 data={customerChoices(data.customer.groups)}
-                                onChange={(v) => { const hint = data.tax_hints[v]; if (hint) setTaxMode(hint); }} />
+                                onChange={(v) => { setCustomerId(v); if (data.tax_hints[v]) setTaxMode(data.tax_hints[v].mode); }} />
                     )}
                   </div>
                   <div className="form-group">
@@ -336,6 +338,7 @@ export function Editor({ data }: { data: EditorData }) {
                 <div className="form-group">
                   <label htmlFor="tax_mode" className="form-label">Tax</label>
                   <Dropdown id="tax_mode" name="tax_mode" value={taxMode} onChange={setTaxMode} data={choices(s.tax_modes)} />
+                  {hint?.note && <p className="form-text">{hint.mode === taxMode ? `${hint.note}.` : `Suggested: ${hint.note}.`}</p>}
                 </div>
                 <div className="form-group" style={taxed ? undefined : { display: 'none' }}>
                   <label htmlFor="tax_rate" className="form-label">GST rate (%)</label>

@@ -1,4 +1,5 @@
 import { render, screen } from '../test/render';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { CustomerFormView } from '../islands/customers/CustomerForm';
@@ -37,6 +38,7 @@ const FORM: CustomerForm = {
   site_count: 0, parents: [{ id: 'C-1', name: 'Gear Cutters Ltd' }], domains_help: '',
   payment_help: "How many days after the invoice date they pay. Empty: your usual terms (30 days).",
   custom: [{ key: 'vendor_code', label: 'Vendor code', value: '' }],
+  gst_states: { '29': 'Karnataka', '33': 'Tamil Nadu' },
 };
 
 function drawn(boot: Partial<Boot>, path = '/customers/create', form = FORM) {
@@ -63,5 +65,24 @@ describe('a form the server turned down', () => {
     const values = drawn({}, '/customers/C-1/edit', { ...FORM, site_count: 2 });
     expect(values).not.toHaveProperty('parent_id');
     expect(screen.getByText(/2 sites belong to this/)).toBeInTheDocument();
+  });
+});
+
+describe("a customer's GSTIN", () => {
+  it('says which state it is registered in, and fills in an empty State', async () => {
+    drawn({});
+    const gstin = screen.getByLabelText('GSTIN / Tax ID');
+    await userEvent.type(gstin, '29ABCDE1234F1Z');
+    expect(screen.queryByText(/Registered in/)).toBeNull();                         // not a whole GSTIN yet
+    await userEvent.type(gstin, '5');
+    expect(screen.getByText('Registered in Karnataka. Its state decides CGST + SGST or IGST.')).toBeInTheDocument();
+    expect(screen.getByLabelText('State')).toHaveValue('Karnataka');
+  });
+
+  it('leaves a State that was typed', async () => {
+    drawn({}, '/customers/create', { ...FORM, values: { ...FORM.values, state: 'TN' } });
+    await userEvent.type(screen.getByLabelText('GSTIN / Tax ID'), '33ABCDE1234F1Z5');
+    expect(screen.getByText(/Registered in Tamil Nadu/)).toBeInTheDocument();
+    expect(screen.getByLabelText('State')).toHaveValue('TN');
   });
 });

@@ -74,12 +74,13 @@ def test_sales_menu_and_search(sales):
     boot = boot_of(sales.get('/customers/').get_data(as_text=True))
     nav = [i['label'] for s in boot['sidebar'] for i in s['items']]
     assert {'Quotations', 'Projects', 'Customers'} <= set(nav)
-    assert not set(nav) & {'Dashboard', 'Proforma invoices', 'Invoices', 'Templates', 'Emails', 'Audit log'}
+    assert not set(nav) & {'Home', 'Proformas', 'Invoices', 'Templates', 'Rates', 'Emails', 'Audit log'}
+    assert [s['title'] for s in boot['sidebar']] == [None, 'Sales', 'People', 'Organization']   # no Library
     assert sales.get('/api/customers').get_json()['new'] == '/customers/create'        # Sales add customers
     items = sales.get('/search/items').get_json()['items']
     titles = {i['title'] for i in items}
     assert {'Projects', 'Quotations', 'Customers', 'New quotation', 'New project', 'New customer'} <= titles
-    assert not titles & {'Dashboard', 'Invoices', 'Proforma invoices', 'Templates', 'Emails', 'New invoice', 'New proforma invoice'}
+    assert not titles & {'Home', 'Invoices', 'Proformas', 'Templates', 'Rates', 'Emails', 'New invoice', 'New proforma invoice'}
     assert {i['title'] for i in items if i['kind'] == 'document'} == {'TF/Q/031/26-27', 'TF/Q/032/26-27'}
     assert not any(i['kind'] == 'template' for i in items)
 

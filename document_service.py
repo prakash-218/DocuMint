@@ -13,7 +13,7 @@ from db import db, DatabaseError
 from documents import (DOC_TYPES, DEFAULT_EXPORT_QUOTE_TERMS, DEFAULT_QUOTE_CLOSING, DEFAULT_QUOTE_INTRO, DEFAULT_QUOTE_TERMS,
                        DETAIL_CARRY,
                        default_tax_rate, details_from_form, fiscal_year, format_number, fy_start_month,
-                       get_type, load_json, number_format, settings_from_form, suggest_tax_mode)
+                       get_type, load_json, number_format, settings_from_form, suggest_tax_mode, tax_note, tax_suggestion)
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +126,14 @@ def form_defaults(doc_type: str, profile: Dict, org: Dict, customer: Optional[Di
     }
 
 
-def customer_tax_hints(doc_type: str, org: Dict, customers: List[Dict]) -> Dict[str, str]:
-    """customer_id -> suggested tax mode, so the form can switch GST mode as you pick a customer."""
-    return {c['customer_id']: suggest_tax_mode(doc_type, org, c) for c in customers}
+def customer_tax_hints(doc_type: str, org: Dict, customers: List[Dict]) -> Dict[str, Dict]:
+    """customer_id -> {'mode', 'note'}: the suggested tax mode and why ('Karnataka GSTIN, another state, so IGST'), so the
+    editor switches GST mode as you pick a customer and says why."""
+    hints = {}
+    for c in customers:
+        found = tax_suggestion(doc_type, org, c)
+        hints[c['customer_id']] = {'mode': found['mode'], 'note': tax_note(found) if found['mode'] != 'none' else ''}
+    return hints
 
 
 def _details_with_currency(doc_type: str, form, invoice_id=None) -> Dict:

@@ -128,7 +128,7 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
                        + (' Time to follow it up.' if chase else ''),
                        actions=[status_to('Mark accepted', 'accepted', not chase), *email('Send a follow-up', chase),
                                 status_to('Mark declined', 'declined', confirm=f'Mark {number} declined?'),
-                                _dialog('Make a revision', 'change-dialog')])
+                                _dialog('Revise', 'change-dialog')])
         elif status == 'accepted':
             out.update(text='Accepted.', sub='The office raises the proforma and the invoice.' if sales else
                        'Raise a proforma for the advance, or invoice it in full.',
@@ -136,8 +136,8 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
                                                   convert('Invoice in full instead', 'invoice')])
                        + [status_to('Undo: not answered yet', 'sent')])
         elif status == 'declined':
-            out.update(tone='late', text='Declined.', sub='Make a revision to send a new offer.',
-                       actions=[_dialog('Make a revision', 'change-dialog', True), status_to('Undo: not answered yet', 'sent')])
+            out.update(tone='late', text='Declined.', sub='Revise it to send a new offer.',
+                       actions=[_dialog('Revise', 'change-dialog', True), status_to('Undo: not answered yet', 'sent')])
         else:                                             # converted
             out.update(tone='done', text='Accepted and taken forward.', sub='Its proforma or invoice is in the project.')
     elif kind.key == 'proforma':
@@ -153,7 +153,7 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
                        else f"The advance of {money(due)} hasn't arrived.", sub='',
                        actions=[_link('Record the advance', '#payment', True), *email('Email a reminder'),
                                 *([] if sales else [convert('Create tax invoice anyway', 'invoice')]),
-                                _dialog('Make a revision', 'change-dialog')])
+                                _dialog('Revise', 'change-dialog')])
     else:                                                 # tax / export invoice
         balance = summary.get('balance') or 0
         if status == 'paid' or balance <= 0.005:

@@ -33,7 +33,7 @@ def test_lists_pages_actions_documents_and_customers(client, login_as, fake_db):
     customer = next(i for i in items if i['kind'] == 'customer')
     assert customer['title'] == 'Acme' and customer['url'] == '/customers/C-A'
     titles = {i['title'] for i in items}
-    assert {'Dashboard', 'Quotations', 'Audit log', 'New quotation', 'New customer'} <= titles
+    assert {'Home', 'Quotations', 'Proformas', 'Rates', 'Audit log', 'New quotation', 'New customer'} <= titles
 
 
 def test_viewers_find_things_but_no_actions(client, login_as, fake_db):

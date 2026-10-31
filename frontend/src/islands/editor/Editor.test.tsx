@@ -38,7 +38,8 @@ const DATA: EditorData = {
              values: { subject: 'Spline gauges' }, groups: [{ key: 'export', label: 'Export terms', fields: ['incoterms'], open: false }] },
   settings: { currencies: ['INR', 'USD'], currency: 'INR', tax_modes: [['none', 'No tax'], ['cgst_sgst', 'CGST + SGST (same state)'], ['igst', 'IGST (other state)']],
               tax_mode: 'none', tax_rate: '18', advance_percent: '', advance_basis: 'pre_tax' },
-  tax_hints: { 'C-1': 'cgst_sgst', 'C-9': 'igst' },
+  tax_hints: { 'C-1': { mode: 'cgst_sgst', note: 'Tamil Nadu GSTIN, so CGST + SGST' },
+               'C-9': { mode: 'igst', note: 'Karnataka GSTIN, another state, so IGST' } },
 };
 
 const form = () => document.getElementById('docForm') as HTMLFormElement;
@@ -113,9 +114,22 @@ describe('Editor', () => {
     await pick(screen.getByLabelText('Customer'), 'Gear Cutters Ltd');
     expect(screen.getByLabelText('Tax')).toHaveValue('CGST + SGST (same state)');
     expect(screen.getByText('CGST 9% + SGST 9%')).toBeInTheDocument();
+    expect(screen.getByText('Tamil Nadu GSTIN, so CGST + SGST.')).toBeInTheDocument();          // and why
     expect(screen.getByText('GST 18%').nextElementSibling).toHaveTextContent('₹450.00');
     expect(await optionsOf(screen.getByLabelText('Customer'))).toEqual(['Gear Cutters Ltd', 'Hosur plant', 'Axle Works']);
     expect(document.querySelector('[class*="groupLabel"]')).toHaveTextContent('Gear Cutters Ltd');          // its sites, under it
+    await pick(screen.getByLabelText('Customer'), 'Axle Works');
+    expect(screen.getByLabelText('Tax')).toHaveValue('IGST (other state)');
+    expect(screen.getByText('Karnataka GSTIN, another state, so IGST.')).toBeInTheDocument();
+    await pick(screen.getByLabelText('Tax'), 'No tax');                                     // changed by hand: what it would be
+    expect(screen.getByText('Suggested: Karnataka GSTIN, another state, so IGST.')).toBeInTheDocument();
+  });
+
+  it("says why for a draft's customer, which can't be changed here", () => {
+    render(<Editor data={{ ...DATA, customer: { fixed: { id: null, name: 'Axle Works' }, groups: [] },
+                           settings: { ...DATA.settings, tax_mode: 'igst' },
+                           tax_hint: { mode: 'igst', note: 'Karnataka GSTIN, another state, so IGST' } }} />);
+    expect(screen.getByText('Karnataka GSTIN, another state, so IGST.')).toBeInTheDocument();
   });
 
   it('takes a discount on a line and on the whole, posts them, and shows them in the totals', async () => {

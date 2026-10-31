@@ -42,14 +42,16 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
     assert _labels(props) == ['Mark as sent*', 'Edit'] and props['head']['pill'] == {'text': 'Draft', 'tone': 'draft'}
     assert props['head']['number'] == quote_no and props['money'] is None                       # no money strip on a quotation
     assert props['next']['actions'][1]['href'].endswith(f'/quotes/{quote_id}/edit')
+    assert props['edit'] == props['next']['actions'][1]['href'] and props['change'] is None   # a draft's header: Edit
     # the project page's documents open the new page
     doc = client.get(f'/api/projects/{project_id}').get_json()['documents'][0]
     assert doc['url'] == quote
 
     assert _send(client, quote, props['next']['actions'][0]).endswith(quote)  # mark as sent, and back here
     props = _page(client, quote)
-    assert _labels(props) == ['Mark accepted*', 'Send a follow-up', 'Mark declined', 'Make a revision']
-    assert props['change'] and props['project_id'] == project_id                  # Change: correct, revise, back to draft
+    assert _labels(props) == ['Mark accepted*', 'Send a follow-up', 'Mark declined', 'Revise']
+    assert props['change'] and props['project_id'] == project_id                  # Revise: a revision, a correction, back to draft
+    assert props['change']['revise']['possible'] and props['edit'] is None
     assert _send(client, quote, props['next']['actions'][0]).endswith(quote)  # the customer said yes
     props = _page(client, quote)
     assert _labels(props) == ['Raise proforma for the advance*', 'Invoice in full instead', 'Undo: not answered yet']
@@ -87,7 +89,7 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
         _set_role(client, VIEWER, 'viewer')
         login(client, VIEWER)
         props = _page(client, invoice)
-        assert props['next']['actions'] == [] and props['payments']['record'] is None and props['change'] is None
+        assert props['next']['actions'] == [] and props['payments']['record'] is None and props['change'] is None and props['edit'] is None
     finally:
         login(client, OWNER)
         _set_role(client, VIEWER, 'viewer')

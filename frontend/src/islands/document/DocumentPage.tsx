@@ -76,24 +76,30 @@ export function Pdf({ pdf }: { pdf: PdfMenu }) {
   );
 }
 
-/** "Change" on a sent document: correct it (same number), make a revision, or move it back to draft. */
+/** What the header's button on a sent document says: Revise where a revision can be made, otherwise Edit (a correction). */
+const changeWord = (change: Change) => (change.revise?.possible ? 'Revise' : 'Edit');
+
+/** "Revise" or "Edit" on a sent document: make a revision, correct it (same number), or move it back to draft. */
 function ChangeDialog({ change }: { change: Change }) {
   const r = change.revise;
+  const correct = (
+    <section className="change-option">
+      <div>
+        <h3>Correct this {change.short}</h3>
+        <p>Fix a mistake: a wrong PO number, date, rate or spelling. It keeps its number{change.takes_payments ? ' and its payments' : ''},
+          and the correction replaces what was {change.sent_word}. Recorded in the audit log.</p>
+      </div>
+      <a href={change.correct} className="btn btn-secondary btn-sm"><Icon name="pencil" />Correct it</a>
+    </section>
+  );
   return (
     <dialog className="k-dialog" id="change-dialog" aria-labelledby="change-title">
       <div className="k-dialog-head">
-        <h2 id="change-title">Change {change.number}</h2>
+        <h2 id="change-title">{changeWord(change)} {change.number}</h2>
         <button type="button" className="btn btn-ghost btn-xs" data-close aria-label="Close"><Icon name="x" /></button>
       </div>
       <div className="k-dialog-body change-options">
-        <section className="change-option">
-          <div>
-            <h3>Correct this {change.short}</h3>
-            <p>Fix a mistake: a wrong PO number, date, rate or spelling. It keeps its number{change.takes_payments ? ' and its payments' : ''},
-              and the correction replaces what was {change.sent_word}. Recorded in the audit log.</p>
-          </div>
-          <a href={change.correct} className="btn btn-secondary btn-sm"><Icon name="pencil" />Correct it</a>
-        </section>
+        {!r?.possible && correct}
         {r && (
           <section className="change-option">
             <div>
@@ -117,6 +123,7 @@ function ChangeDialog({ change }: { change: Change }) {
             )}
           </section>
         )}
+        {r?.possible && correct}
         <section className="change-option">
           <div>
             <h3>Back to draft</h3>
@@ -406,8 +413,11 @@ export default function DocumentPage({ invoiceId }: { invoiceId: string }) {
       <PageHeader title={data.number} crumbs={[{ label: data.list.label, href: data.list.url }, { label: data.number }]}
                   actions={<>
                     <Pdf pdf={data.pdf} />
+                    {data.edit && <a href={data.edit} className="btn btn-secondary"><Icon name="pencil" /><span className="btn-label">Edit</span></a>}
                     {data.change && (
-                      <button type="button" className="btn btn-secondary" data-open-dialog="change-dialog"><Icon name="pencil" /><span className="btn-label">Change</span></button>
+                      <button type="button" className="btn btn-secondary" data-open-dialog="change-dialog">
+                        <Icon name={data.change.revise?.possible ? 'fileDiff' : 'pencil'} /><span className="btn-label">{changeWord(data.change)}</span>
+                      </button>
                     )}
                   </>} />
       {data.change && <ChangeDialog change={data.change} />}

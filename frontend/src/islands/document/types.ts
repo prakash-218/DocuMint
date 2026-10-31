@@ -58,6 +58,8 @@ export interface DocumentData {
   next: Page['next'];
   money: { label: string; value: number; cap: string; late?: boolean }[] | null;
   pdf: PdfMenu;
+  /** A draft: its editor. */
+  edit: string | null;
   change: Change | null;
   payments: Payments | null;
   versions_html: string | null;

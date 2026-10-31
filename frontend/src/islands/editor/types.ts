@@ -65,7 +65,10 @@ export interface EditorData {
   };
   settings: { currencies: string[]; currency: string; tax_modes: [string, string][]; tax_mode: string; tax_rate: string;
               advance_percent: string; advance_basis: 'pre_tax' | 'total' };
-  tax_hints: Record<string, string>;
+  /** customer_id → the tax its GSTIN or state suggests, and why: 'Karnataka GSTIN, another state, so IGST'. */
+  tax_hints: Record<string, { mode: string; note: string }>;
+  /** The same for a customer that can't be changed here: a draft's, or its project's. */
+  tax_hint?: { mode: string; note: string } | null;
 }
 
 export interface ProjectStep {

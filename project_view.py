@@ -183,8 +183,8 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
             out.update(text=f'Quotation {no(q)} is a draft.', sub='Finish it, then send it from here.',
                        actions=[edit_doc(q, 'quotation'), _link('Open', view(q))])
     elif current == 'accepted' and st['steps'][1]['state'] == 'late':
-        out.update(tone='late', text=f'Quotation {no(q)} was declined.', sub='Make a revision, or cancel the project.',
-                   actions=[_post('Make a revision', url('invoices_bp.revise', invoice_id=q['invoice_id']), primary=True),
+        out.update(tone='late', text=f'Quotation {no(q)} was declined.', sub='Revise it, or cancel the project.',
+                   actions=[_post('Revise', url('invoices_bp.revise', invoice_id=q['invoice_id']), primary=True),
                             _status('Cancel the project', 'cancelled')])
     elif current == 'accepted':
         waited = _days_since(q.get('issue_date'), today)
@@ -196,7 +196,7 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
                             _email('Send a follow-up', q['invoice_id'], chase),
                             _post('Mark declined', url('invoices_bp.set_status', invoice_id=q['invoice_id']), {'status': 'declined'},
                                   confirm=f'Mark {no(q)} declined?'),
-                            _post('Make a revision', url('invoices_bp.revise', invoice_id=q['invoice_id']))])
+                            _post('Revise', url('invoices_bp.revise', invoice_id=q['invoice_id']))])
     elif current == 'advance':
         source = f['accepted_quote'] or q
         if not pi:

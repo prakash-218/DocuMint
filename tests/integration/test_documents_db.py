@@ -226,7 +226,9 @@ def test_export_invoice_suggests_lut(client, gst_org):
     from tests.spa import editor
     assert 'export_invoice' not in [k['key'] for k in editor(client, f'/invoices/create?project_id={project_id}')['kinds']]
     page = editor(client, f'/invoices/create?doc_type=invoice&project_id={project_id}&template_id={_template(org_id, "Export Invoice")["template_id"]}')
-    assert page['tax_hints'][customer] == 'lut' and 'Packing list no.' in [f['label'] for f in page['details']['fields']]
+    assert page['tax_hints'][customer] == {'mode': 'lut', 'note': 'An export invoice, so no GST under LUT'}
+    assert page['tax_hint'] == page['tax_hints'][customer]                       # the project's customer, which can't change
+    assert 'Packing list no.' in [f['label'] for f in page['details']['fields']]
     tax_form = editor(client, f'/invoices/create?doc_type=invoice&project_id={project_id}&template_id={_template(org_id, "Tax Invoice")["template_id"]}')
     assert 'Packing list no.' not in [f['label'] for f in tax_form['details']['fields']]
     export_id, _ = _create(client, org_id, 'invoice', 'Export Invoice', customer,

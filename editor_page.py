@@ -173,6 +173,8 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
                      'advance_percent': ('%g' % float(v['advance_percent'])) if v.get('advance_percent') else '',
                      'advance_basis': 'total' if v.get('advance_basis') == 'total' else 'pre_tax'},
         'tax_hints': doc['customer_hints'],
+        # a customer that can't be changed here (a draft's, or the project's): the tax it usually gets, and why
+        'tax_hint': doc['customer_hints'].get(header['customer_id'] if editing else project['customer_id']) if editing or project else None,
     }
 
 
@@ -218,7 +220,7 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
     doc['values']['details'] = {**projects.po_details(projects.latest_purchase_order(org_id, project['project_id'])), **details}
     hint = doc['customer_hints'].get(project['customer_id'])
     if hint:
-        doc['values']['tax_mode'] = hint
+        doc['values']['tax_mode'] = hint['mode']
     return _editor(doc, _editor_sections(get_template_fields(template_id)), url, project=project, customers=customers,
                    template_id=template_id, template_name=selected.get('name') or '')
 
@@ -226,10 +228,11 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
 def edit_page(org_id: str, header: Dict, correcting: bool, url: Callable) -> Dict:
     """An existing document in the editor (a draft, or a sent one being corrected)."""
     from blueprints.invoices_bp import _document_form_context
-    from document_service import get_org_profile
+    from document_service import customer_tax_hints, get_org_profile
     import projects
     org, profile = get_org_profile(org_id)
     doc = _document_form_context(header.get('doc_type') or 'invoice', org, profile, [], header=header)
+    doc['customer_hints'] = customer_tax_hints(header.get('doc_type') or 'invoice', org, [header])   # its customer's
     project = projects.get_project(projects.project_of(header['invoice_id'], org_id), org_id)
     return _editor(doc, sections_with_values(header['invoice_id'], header), url, project=project, header=header,
                    correcting=correcting, template_name=header.get('template_name') or '')
