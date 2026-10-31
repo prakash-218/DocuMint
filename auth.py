@@ -144,66 +144,6 @@ def get_current_org_role():
     return membership.get('role') if membership else None
 
 
-def register_user(email: str, password: str, org_name: str, org_domain: str) -> dict:
-    """
-    Register a new user and create their organization.
-
-    Returns:
-        dict with user_id, org_id, and email
-    """
-    try:
-        password_hash = hash_password(password)
-
-
-
-        org_result = db.execute_proc('sp_create_organization', (
-            org_name, 
-            org_domain, 
-            None,  # street_address
-            None,  # city
-            None,  # state
-            None,  # zip_code
-            None,  # country
-            None   # OUT p_org_id
-        ))
-        if not org_result or len(org_result) == 0:
-            raise DatabaseError("Failed to create organization - no result returned")
-
-
-        org_id = org_result[0].get('org_id')
-        if not org_id:
-            raise DatabaseError(f"Failed to create organization - invalid result: {org_result}")
-
-
-
-        user_result = db.execute_proc('sp_create_user', (email, password_hash, None))
-        if not user_result or len(user_result) == 0:
-            raise DatabaseError("Failed to create user - no result returned")
-
-
-        user_id = user_result[0].get('user_id')
-        if not user_id:
-            raise DatabaseError(f"Failed to create user - invalid result: {user_result}")
-
-
-        db.execute_proc('sp_assign_user_to_org', (user_id, org_id, 'owner','active'), fetch=False)
-
-        return {
-            'user_id': user_id,
-            'org_id': org_id,
-            'email': email
-        }
-
-    except DatabaseError as e:
-        error_msg = str(e)
-        if 'already exists' in error_msg.lower():
-            raise ValueError("Email or domain already exists")
-
-        raise DatabaseError(f"Registration error: {error_msg}")
-    except Exception as e:
-        raise DatabaseError(f"Unexpected registration error: {str(e)}")
-
-
 def get_current_customer():
     """Get current customer from session"""
     if 'customer_user_id' in session:

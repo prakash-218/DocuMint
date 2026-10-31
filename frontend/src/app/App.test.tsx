@@ -76,7 +76,7 @@ describe('which addresses are the app\'s', () => {
     expect(appRoute(`/costings/${PROJECT}`)?.label).toBe('Costing');
     for (const server of ['/projects/options', '/quotes/import', '/invoices/x/packing', `/invoices/${PROJECT}/pdf`,
                           `/projects/${PROJECT}/edit`, `/emails/files/${PROJECT}`, `/notifications/${PROJECT}/open`,
-                          '/settings/select-org', '/settings/organizations/join', '/costings/library', `/costings/${PROJECT}/items`]) {
+                          '/settings/select-org', '/costings/library', `/costings/${PROJECT}/items`]) {
       expect(appRoute(server), server).toBeNull();
     }
   });

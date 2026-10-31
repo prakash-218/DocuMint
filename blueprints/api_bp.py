@@ -8,6 +8,7 @@ cookie (SameSite=Lax keeps it off cross-site POSTs anyway, and a JSON body needs
 
 import logging
 import re
+from typing import Dict
 
 from flask import Blueprint, g, jsonify, request, session, url_for
 
@@ -227,6 +228,89 @@ def share_off(invoice_id):
     db.execute_proc('sp_turn_off_share_link', (invoice_id, g.current_org_id))
     data = _share(invoice_id)
     return jsonify(data) if data else (jsonify(error='That document is not in this organization'), 404)
+
+
+# ---------------------------------------------------------------- Invites and password reset links (invites.py)
+
+def _sent(link: str, emailed: bool, to: str) -> Dict:
+    """What the team's dialog shows after an invite or a reset link: the link to copy or send on WhatsApp, and whether
+    it went by email."""
+    return {'link': link, 'emailed': emailed, 'to': to}
+
+
+@api_bp.route('/settings/invites', methods=['POST'])
+@require_org
+def invite_create():
+    """Invites an address into the organization with a role they may give: emailed when the organization has a
+    mailbox, and its link shown once."""
+    import invites
+    from blueprints.settings_bp import _role_choice
+    data = request.get_json(silent=True) or {}
+    email = invites.clean_email(data.get('email'))
+    if not email:
+        return jsonify(error="That isn't an email address."), 400
+    role, role_id, given = _role_choice(g.current_org_id, data.get('role') or 'member')
+    if not role:
+        return jsonify(error="That isn't a role."), 400
+    if not permissions.may_give(given):
+        return jsonify(error='Only an owner can invite an owner.' if 'team.owners' in given else "That's more than your own role can give."), 403
+    members = db.execute_proc('sp_get_org_members', (g.current_org_id,)) or []
+    if any((m.get('email') or '').lower() == email and m.get('status') == 'active' for m in members):
+        return jsonify(error=f'{email} is in the team already.'), 400
+    token = invites.new_token()
+    invite = db.execute_proc_single('sp_create_invite', (g.current_org_id, email, role, role_id, invites.token_hash(token),
+                                                         g.current_user['user_id'], invites.INVITE_DAYS))
+    link = url_for('auth_bp.accept_invite', token=token, _external=True)
+    org_name = session.get('org_name') or invite.get('org_name') or ''
+    message = invites.invite_message(org_name, permissions.role_label(role, invite.get('role_name')), link, g.current_user.get('email'))
+    return jsonify(_sent(link, invites.send(g.current_org_id, email, message, org_name), email))
+
+
+@api_bp.route('/settings/invites/<invite_id>/again', methods=['POST'])
+@require_org
+def invite_again(invite_id):
+    """The same invite with a fresh link (the old one stops working), emailed again, and shown."""
+    import invites
+    from blueprints.settings_bp import _role_choice
+    found = next((i for i in db.execute_proc('sp_list_invites', (g.current_org_id,)) or [] if str(i['invite_id']) == str(invite_id)), None)
+    if not found:
+        return jsonify(error='That invite was used or cancelled.'), 404
+    _, _, given = _role_choice(g.current_org_id, str(found['role_id']) if found.get('role_id') else found['role'])
+    if not permissions.may_give(given or ()):
+        return jsonify(error="That's more than your own role can give."), 403
+    token = invites.new_token()
+    invite = db.execute_proc_single('sp_renew_invite', (found['invite_id'], g.current_org_id, invites.token_hash(token), invites.INVITE_DAYS))
+    link = url_for('auth_bp.accept_invite', token=token, _external=True)
+    org_name = session.get('org_name') or invite.get('org_name') or ''
+    message = invites.invite_message(org_name, permissions.role_label(invite['role'], invite.get('role_name')), link, g.current_user.get('email'))
+    return jsonify(_sent(link, invites.send(g.current_org_id, invite['email'], message, org_name), invite['email']))
+
+
+@api_bp.route('/settings/invites/<invite_id>', methods=['DELETE'])
+@require_org
+def invite_cancel(invite_id):
+    """The invite's link stops working."""
+    db.execute_proc('sp_cancel_invite', (invite_id, g.current_org_id))
+    return jsonify(ok=True)
+
+
+@api_bp.route('/settings/members/<user_id>/reset', methods=['POST'])
+@require_org
+def member_reset(user_id):
+    """A link for a member to set a new password, for when they forgot it and email doesn't reach them: shown to send
+    another way, and emailed too when the organization has a mailbox. Not for yourself (use Forgot password), nor for
+    someone whose role is beyond yours."""
+    import invites
+    member = next((m for m in db.execute_proc('sp_get_org_members', (g.current_org_id,)) or [] if str(m['user_id']) == str(user_id)), None)
+    if not member or member.get('status') != 'active':
+        return jsonify(error="That person isn't in the team."), 404
+    if str(user_id) == str(g.current_user['user_id']) or not permissions.may_give(permissions.of(member)):
+        return jsonify(error="You can't make a reset link for them."), 403
+    token = invites.new_token()
+    db.execute_proc('sp_create_password_reset', (user_id, invites.token_hash(token), g.current_user['user_id'], invites.RESET_MINUTES))
+    link = url_for('auth_bp.reset_password', token=token, _external=True)
+    emailed = invites.send(g.current_org_id, member['email'], invites.reset_message(link), session.get('org_name') or '')
+    return jsonify(_sent(link, emailed, member['email']))
 
 
 @api_bp.route('/payments')

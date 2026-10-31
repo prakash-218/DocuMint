@@ -4,6 +4,7 @@ Database chores.
     python scripts/dbtool.py migrate            # apply migrations (alembic upgrade head)
     python scripts/dbtool.py reset              # DROP everything, migrate  (refuses on Railway production)
     python scripts/dbtool.py demo               # reset + load the TechFlow demo data (tests/fixtures/demo.json)
+    python scripts/dbtool.py invite-org EMAIL https://app.example   # an invite to start a new organization (prints its link)
 
 The database is DATABASE_URL (default: local Docker Postgres on port 5434).
 """
@@ -81,6 +82,19 @@ def load_fixture(url=None, path=FIXTURE):
     engine.dispose()
 
 
+def invite_org(email: str, base: str) -> str:
+    """An invite for this address to start a new organization (DocuMint is invite-only; only the operator makes these):
+    its link, to send them. It works once, for invites.INVITE_DAYS days."""
+    import invites
+    from db import db
+    found = invites.clean_email(email)
+    if not found or not base.startswith(('http://', 'https://')):
+        raise SystemExit('usage: dbtool.py invite-org EMAIL https://app.example')
+    token = invites.new_token()
+    db.execute_proc('sp_create_invite', (None, found, 'owner', None, invites.token_hash(token), None, invites.INVITE_DAYS))
+    return f"{base.rstrip('/')}/auth/invite/{token}"
+
+
 if __name__ == '__main__':
     cmd = sys.argv[1] if len(sys.argv) > 1 else 'migrate'
     if cmd == 'migrate':
@@ -90,6 +104,9 @@ if __name__ == '__main__':
     elif cmd == 'demo':
         reset()
         load_fixture()
+    elif cmd == 'invite-org' and len(sys.argv) == 4:
+        print(invite_org(sys.argv[2], sys.argv[3]))
+        raise SystemExit(0)
     else:
         raise SystemExit(__doc__)
     print('done')

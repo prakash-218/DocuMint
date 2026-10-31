@@ -22,13 +22,11 @@ STAFF_PAGES = [
     '/templates/T-A',
     '/settings/',
     '/settings/select-org',
-    '/settings/organizations/create',
-    '/settings/organizations/join',
     '/settings/audit-log',
     f'/settings/organizations/{ORG_A}/edit',
 ]
 
-PUBLIC_PAGES = ['/', '/auth/login', '/auth/register', '/customer/login', '/does-not-exist']
+PUBLIC_PAGES = ['/', '/auth/login', '/auth/register', '/auth/forgot', '/customer/login', '/does-not-exist']
 
 
 @pytest.mark.parametrize('path', STAFF_PAGES)

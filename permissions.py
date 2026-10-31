@@ -59,7 +59,7 @@ PERMISSIONS: Dict[str, str] = {
     'templates.write': 'Make and change templates',
     'business.write': 'Change the business profile: tax registrations, bank, numbering, letterhead',
     'organization.write': "Change the organization's name and address",
-    'team.manage': 'Approve, change and deactivate members',
+    'team.manage': 'Invite, change and deactivate members',
     'team.owners': 'Make or change owners',
     'audit.read': 'See the audit log',
 }
@@ -362,6 +362,10 @@ ENDPOINTS: Dict[str, Rule] = {
     'api_bp.email_thread': 'emails.read',
     'api_bp.notifications': 'notifications.read',
     'api_bp.settings': ANYONE,
+    'api_bp.invite_create': 'team.manage',
+    'api_bp.invite_again': 'team.manage',
+    'api_bp.invite_cancel': 'team.manage',
+    'api_bp.member_reset': 'team.manage',
     'api_bp.organization': 'organization.write',
     'api_bp.audit_log': 'audit.read',
     'api_bp.business_profile': 'business.write',
@@ -380,8 +384,7 @@ ENDPOINTS: Dict[str, Rule] = {
 }
 
 # Endpoints that need no organization (signing in, choosing one, the customer portal): require_org isn't on them
-OUTSIDE = {'static', 'index', 'healthz', 'settings_bp.select_org', 'settings_bp.create_organization',
-           'settings_bp.join_organization'}
+OUTSIDE = {'static', 'index', 'healthz', 'settings_bp.select_org'}
 OUTSIDE_BLUEPRINTS = {'auth_bp', 'customer_portal_bp', 'shared_bp'}     # shared_bp: a private link's token is its key
 # Refused with a plain 403, as if there were nothing there: costs and margins, and the mailboxes
 QUIET = {'costings_bp', 'emails_bp'}

@@ -1,11 +1,13 @@
 import { Dropdown, choices } from '../../mantine/Dropdown';
+import { useState, type FormEvent } from 'react';
+import { api, ApiError } from '../../api';
 import { PageHeader } from '../../app/PageHeader';
 import { ask, Loading, useLoad } from '../../app/ui';
 import { day } from '../../format';
 import { Icon } from '../../icons';
 
-// The settings page (GET /api/settings, settings_view.index): its links, and for those who manage the team the requests
-// to join and the team; for everyone the organizations they're in. The team's forms post to settings_bp.approve_member
+// The settings page (GET /api/settings, settings_view.index): its links, and for those who manage the team its invites
+// (DocuMint is invite-only: invites.py), any old requests to join, and the team; for everyone the organizations they're in. The team's forms post to settings_bp.approve_member
 // (a role is a built-in one's name or a custom one's id: roles they may give), switching posts to settings_bp.select_org.
 
 interface Data {
@@ -14,12 +16,20 @@ interface Data {
   team: string;
   roles: [string, string][];          // [value, label]: the roles they may give
   requests: { user_id: string; email: string; asked: string | null }[];
-  members: { user_id: string; email: string; role: string; role_label: string; status: string; you: boolean; manage: boolean }[];
+  members: { user_id: string; email: string; role: string; role_label: string; status: string; you: boolean; manage: boolean;
+             reset: string | null }[];
+  /** Inviting someone (api_bp.invite_create), for those who manage the team. */
+  invite: string | null;
+  invites: Invite[];
   orgs: { id: string; name: string; domain: string; role: string; current: boolean }[];
   switch: string;
-  join: string;
-  create: string;
 }
+
+export interface Invite { id: string; email: string; role_label: string; sent: string | null; expires: string | null; expired: boolean;
+                          by: string; again: string; cancel: string }
+
+/** What came back from inviting or a reset link: the link (shown once), and whether it went by email. */
+interface Sent { link: string; emailed: boolean; to: string; what: 'invite' | 'reset' }
 
 const title = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -51,10 +61,118 @@ function Requests({ data }: { data: Data }) {
   );
 }
 
-function Team({ data }: { data: Data }) {
+/** The link just made: emailed or not, to copy or send on WhatsApp. It isn't shown again. */
+function SentLink({ sent, onDone }: { sent: Sent; onDone: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const what = sent.what === 'invite' ? 'invite' : 'link to set a new password';
+  const text = sent.what === 'invite' ? `You're invited to our DocuMint. Open this link to set your password: ${sent.link}`
+    : `Here's a link to set a new DocuMint password (it works once, for 2 hours): ${sent.link}`;
+  return (
+    <div className="sent-link" role="status">
+      <p>{sent.emailed ? <>Emailed the {what} to <strong>{sent.to}</strong>. You can also send it yourself:</>
+        : <>The {what} for <strong>{sent.to}</strong> wasn't emailed (this organization has no mailbox to send from). Send it yourself:</>}</p>
+      <div className="sent-link-row">
+        <input className="form-input mono" readOnly value={sent.link} aria-label="The link" onFocus={(e) => e.target.select()} />
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
+          navigator.clipboard?.writeText(sent.link).then(() => setCopied(true), () => undefined);
+        }}>{copied ? 'Copied' : 'Copy'}</button>
+        <a className="btn btn-secondary btn-sm" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onDone}>Done</button>
+      </div>
+      <p className="form-text">It works once{sent.what === 'invite' ? ', for 7 days' : ', for 2 hours'}, and only for {sent.to}. It isn't shown again: send it again for a new one.</p>
+    </div>
+  );
+}
+
+function Invites({ data, sent, onSent }: { data: Data; sent: Sent | null; onSent: (s: Sent | null) => void }) {
+  const [invites, setInvites] = useState(data.invites);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const refresh = () => api.get<Data>('/api/settings').then((d) => setInvites(d.invites)).catch(() => undefined);
+
+  async function run(go: () => Promise<Sent | null>) {
+    setError('');
+    setBusy(true);
+    try {
+      const done = await go();
+      if (done) onSent(done);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "That didn't work. Check your connection.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function invite(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const values = Object.fromEntries(new FormData(form)) as Record<string, string>;
+    void run(async () => {
+      const r = await api.post<Omit<Sent, 'what'>>(data.invite!, { email: values.email, role: values.role });
+      form.reset();
+      return { ...r, what: 'invite' };
+    });
+  }
+
+  return (
+    <section className="card">
+      <div className="card-header"><h2 className="card-title">Invite someone</h2></div>
+      <div className="card-body stack">
+        <form className="invite-form" onSubmit={invite}>
+          <div className="form-group">
+            <label htmlFor="invite-email" className="form-label">Email</label>
+            <input id="invite-email" name="email" type="email" className="form-input" required placeholder="name@company.com or name@gmail.com" />
+          </div>
+          <div className="form-group">
+            <label htmlFor="invite-role" className="form-label">Role</label>
+            <Dropdown id="invite-role" name="role" data={choices(data.roles)}
+                      defaultValue={data.roles.some(([value]) => value === 'member') ? 'member' : data.roles[0]?.[0]} />
+          </div>
+          <button type="submit" className="btn btn-primary" disabled={busy}><Icon name="userPlus" />Invite</button>
+        </form>
+        <p className="form-text">Only people you invite can get in. Any address works, Gmail too: they open the link, set a password and they're in, with
+          the role you chose.</p>
+        {error && <p className="error" role="alert">{error}</p>}
+        {sent && <SentLink sent={sent} onDone={() => onSent(null)} />}
+        {invites.length > 0 && (
+          <ul className="member-list" aria-label="Invites not used yet">
+            {invites.map((i) => (
+              <li key={i.id}>
+                <div className="pick-main">
+                  <span className="pick-title">{i.email}</span>
+                  <span className="pick-sub">{i.role_label} · {i.expired ? 'Expired' : `Invited ${day(i.sent)}, until ${day(i.expires)}`}{i.by && ` · by ${i.by}`}</span>
+                </div>
+                <div className="member-actions">
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
+                          onClick={() => void run(async () => ({ ...await api.post<Omit<Sent, 'what'>>(i.again, {}), what: 'invite' }))}>Send again</button>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={busy}
+                          onClick={() => { if (window.confirm(`Cancel the invite for ${i.email}?`)) void run(async () => { await api.del(i.cancel); return null; }); }}>Cancel</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Team({ data, onSent }: { data: Data; onSent: (s: Sent) => void }) {
+  const [error, setError] = useState('');
+  async function reset(m: Data['members'][number]) {
+    setError('');
+    try {
+      onSent({ ...await api.post<Omit<Sent, 'what'>>(m.reset!, {}), what: 'reset' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "That didn't work. Check your connection.");
+    }
+  }
   return (
     <section className="card">
       <div className="card-header"><h2 className="card-title">Team</h2></div>
+      {error && <p className="error" role="alert" style={{ margin: 'var(--spacing-md)' }}>{error}</p>}
       <ul className="member-list">
         {data.members.map((m) => (
           <li key={m.user_id}>
@@ -70,6 +188,10 @@ function Team({ data }: { data: Data }) {
                   <label className="sr-only" htmlFor={`mrole-${m.user_id}`}>Role</label>
                   <Dropdown id={`mrole-${m.user_id}`} name="role" size="xs" defaultValue={m.role} submitOnChange data={choices(data.roles)} />
                 </form>
+                {m.reset && (
+                  <button type="button" className="btn btn-ghost btn-sm" title="For when they forgot it and email doesn't reach them"
+                          onClick={() => void reset(m)}>Password link</button>
+                )}
                 <form action={data.team} method="post" onSubmit={m.status === 'active' ? ask(`Deactivate ${m.email}?`) : undefined}>
                   <input type="hidden" name="user_id" value={m.user_id} />
                   {m.status === 'active'
@@ -86,6 +208,7 @@ function Team({ data }: { data: Data }) {
 }
 
 function SettingsView({ data }: { data: Data }) {
+  const [sent, setSent] = useState<Sent | null>(null);
   return (
     <>
       <PageHeader title={data.title} />
@@ -104,22 +227,17 @@ function SettingsView({ data }: { data: Data }) {
             </ul>
           </section>
         )}
+        {data.invite && <Invites data={data} sent={sent} onSent={setSent} />}
         {data.requests.length > 0 && <Requests data={data} />}
-        {data.members.length > 0 && <Team data={data} />}
+        {data.members.length > 0 && <Team data={data} onSent={setSent} />}
         <section className="card">
-          <div className="card-header">
-            <h2 className="card-title">Organizations</h2>
-            <div className="btn-group">
-              <a href={data.join} className="btn btn-ghost btn-sm">Join</a>
-              <a href={data.create} className="btn btn-secondary btn-sm"><Icon name="plus" />New</a>
-            </div>
-          </div>
+          <div className="card-header"><h2 className="card-title">Organizations</h2></div>
           <ul className="member-list">
             {data.orgs.map((o) => (
               <li key={o.id}>
                 <div className="pick-main">
                   <span className="pick-title">{o.name}{o.current && <> <span className="badge badge-info">Current</span></>}</span>
-                  <span className="pick-sub">{o.domain} · {o.role}</span>
+                  <span className="pick-sub">{[o.domain, o.role].filter(Boolean).join(' · ')}</span>
                 </div>
                 {!o.current && (
                   <form method="post" action={data.switch}>

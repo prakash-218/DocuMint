@@ -1,19 +1,14 @@
 import type { ComponentType } from 'react';
 
-// The pages outside the app (nav.public): logging in, registering (email, then a password and an organization, or
-// joining one), choosing, making or joining an organization, and the customer portal's login. templates/public.html
-// draws the frame and the page's messages; these draw the form in it from the boot data's props. Every form posts to
-// the same Flask route as before, which decides what comes next.
+// The pages outside the app (nav.public): logging in, what to do without an account (DocuMint is invite-only), an
+// invite's page, forgetting and setting a password, choosing an organization, and the customer portal's login.
+// templates/public.html draws the frame and the page's messages; these draw the form in it from the boot data's props.
+// Every form posts to the Flask route that drew it, which decides what comes next.
 
-interface Link { href: string; label: string }
 interface Org { id: string; name: string; domain: string; created?: string; status?: string }
 
 type Props = Record<string, unknown>;
 const s = (p: Props, k: string) => (p[k] as string) ?? '';
-
-function Hidden({ values }: { values: Record<string, string> }) {
-  return <>{Object.entries(values).filter(([, v]) => v).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}</>;
-}
 
 function Field({ name, label, type = 'text', help, ...rest }: {
   name: string; label: string; type?: string; help?: string; required?: boolean; autoFocus?: boolean; autoComplete?: string;
@@ -44,19 +39,6 @@ function Address() {
   );
 }
 
-function OrgChoices({ orgs, sub }: { orgs: Org[]; sub: (o: Org) => string }) {
-  return (
-    <div className="org-choices">
-      {orgs.map((o) => (
-        <label key={o.id} className="org-choice">
-          <input type="radio" name="org_id" value={o.id} required />
-          <span><strong>{o.name}</strong><span className="text-tertiary">{sub(o)}</span></span>
-        </label>
-      ))}
-    </div>
-  );
-}
-
 function Login({ p }: { p: Props }) {
   return (
     <>
@@ -68,97 +50,10 @@ function Login({ p }: { p: Props }) {
         <button type="submit" className="btn btn-primary btn-lg btn-block">Log in</button>
       </form>
       <p className="auth-footer">
-        New to DocuMint? <a href={s(p, 'register')}>Create an account</a><br />
+        <a href={s(p, 'forgot')}>Forgot your password?</a><br />
+        New here? <a href={s(p, 'register')}>DocuMint is invite-only</a><br />
         <span className="text-tertiary">Are you a customer? <a href={s(p, 'portal')}>Open the customer portal</a></span>
       </p>
-    </>
-  );
-}
-
-function Register({ p }: { p: Props }) {
-  return (
-    <>
-      <h1>Create an account</h1>
-      <p className="lead">Step 1 of 2: your work email. We'll find your company's organization from it.</p>
-      <form method="post" action={s(p, 'action')}>
-        <Field name="email" label="Email" type="email" autoComplete="email" placeholder="you@company.com" required autoFocus />
-        <button type="submit" className="btn btn-primary btn-lg btn-block">Continue</button>
-      </form>
-      <p className="auth-footer">Already have an account? <a href={s(p, 'login')}>Log in</a></p>
-    </>
-  );
-}
-
-function Verify({ p }: { p: Props }) {
-  return (
-    <>
-      <h1>Verify your account</h1>
-      <p className="lead">An account with <strong>{s(p, 'email')}</strong> already exists. Enter its password to join an organization or create one.</p>
-      <form method="post" action={s(p, 'action')}>
-        <Hidden values={{ email: s(p, 'email'), domain: s(p, 'domain') }} />
-        <Field name="password" label="Password" type="password" autoComplete="current-password" required autoFocus />
-        <button type="submit" className="btn btn-primary btn-lg btn-block">Verify and continue</button>
-      </form>
-      <p className="auth-footer"><a href={s(p, 'register')}>Back to email</a> · <a href={s(p, 'login')}>Log in instead</a></p>
-    </>
-  );
-}
-
-function ChooseOrg({ p }: { p: Props }) {
-  const orgs = (p.orgs as Org[]) ?? [];
-  const hidden = { email: s(p, 'email'), domain: s(p, 'domain') };
-  return (
-    <>
-      <h1>Choose your organization</h1>
-      <p className="lead">{p.existing_user ? '' : 'Step 2 of 3: '}Join your company's organization, or create a new one. Signed up as <strong>{s(p, 'email')}</strong>.</p>
-      {orgs.length > 0 && (
-        <form method="post" action={s(p, 'action')}>
-          <Hidden values={hidden} />
-          <p className="form-text">{orgs.length === 1 ? 'An organization uses' : `${orgs.length} organizations use`} {s(p, 'domain')}. An owner approves you before you get in.</p>
-          <OrgChoices orgs={orgs} sub={(o) => o.domain} />
-          <button type="submit" name="action" value="join" className="btn btn-primary btn-lg btn-block">Join the selected organization</button>
-        </form>
-      )}
-      <form method="post" action={s(p, 'action')} style={{ marginTop: 'var(--spacing-lg)' }}>
-        <Hidden values={{ ...hidden, action: 'create' }} />
-        {!orgs.length && <p className="form-text">No organization uses {s(p, 'domain')} yet.</p>}
-        <button type="submit" className={`btn ${orgs.length ? 'btn-secondary' : 'btn-primary'} btn-lg btn-block`}>Create a new organization</button>
-      </form>
-      <p className="auth-footer"><a href={s(p, 'register')}>Back to email</a> · You can join or create more later, in Settings.</p>
-    </>
-  );
-}
-
-function RegisterOrg({ p }: { p: Props }) {
-  const org = p.org as Org | null;
-  const joining = !!s(p, 'org_id');
-  const back = p.back as Link;
-  return (
-    <>
-      <h1>{p.existing_user ? (joining ? 'Join the organization' : 'Create your organization') : 'Complete your registration'}</h1>
-      <p className="lead">{p.existing_user ? '' : `Step 2 of 2: a password${joining ? '' : ' and your organization'}. `}Signed up as <strong>{s(p, 'email')}</strong>.</p>
-      {org && <div className="alert alert-info"><span>You're joining <strong>{org.name}</strong> ({org.domain}). An owner approves you before you get in.</span></div>}
-      <form method="post" action={s(p, 'action')}>
-        <Hidden values={{ email: s(p, 'email'), domain: s(p, 'domain'), org_id: s(p, 'org_id'), existing_user: p.existing_user ? 'true' : '' }} />
-        {!p.existing_user && (
-          <>
-            <Field name="password" label="Password" type="password" autoComplete="new-password" minLength={8} required help="At least 8 characters." />
-            <Field name="confirm_password" label="Confirm password" type="password" autoComplete="new-password" required />
-          </>
-        )}
-        {!joining && (
-          <>
-            <Field name="org_name" label="Organization name" required />
-            <Field name="org_domain" label="Organization domain" placeholder="example.com" defaultValue={s(p, 'domain')} required
-                   help="People with emails at this domain can find it and ask to join." />
-            <Address />
-          </>
-        )}
-        <button type="submit" className="btn btn-primary btn-lg btn-block">
-          {joining ? (p.existing_user ? 'Ask to join' : 'Create account and ask to join') : (p.existing_user ? 'Create organization' : 'Create account')}
-        </button>
-      </form>
-      <p className="auth-footer"><a href={back.href}>{back.label}</a></p>
     </>
   );
 }
@@ -189,49 +84,115 @@ function SelectOrg({ p }: { p: Props }) {
   );
 }
 
-function CreateOrg({ p }: { p: Props }) {
+function InviteOnly({ p }: { p: Props }) {
   return (
     <>
-      <h1>Create an organization</h1>
-      <p className="lead">Its own customers, templates and documents. You'll be its owner.</p>
-      <form method="post" action={s(p, 'action')}>
-        <Field name="org_name" label="Organization name" placeholder="Acme Engineering" required autoFocus />
-        <Field name="org_domain" label="Domain" placeholder="acme.com" required help="People with emails at this domain can find it and ask to join." />
-        <Address />
-        <div className="form-actions" style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-          <button type="submit" className="btn btn-primary">Create organization</button>
-          <a href={s(p, 'cancel')} className="btn btn-secondary">Cancel</a>
-        </div>
-      </form>
+      <h1>DocuMint is invite-only</h1>
+      <p className="lead">To join your company's DocuMint, ask its owner or an admin to invite you. The invite comes by email, or as a
+        link they send you; open it to set your password. Any email address works, Gmail too.</p>
+      <p className="auth-footer">
+        Have an account? <a href={s(p, 'login')}>Log in</a><br />
+        <a href={s(p, 'forgot')}>Forgot your password?</a>
+      </p>
     </>
   );
 }
 
-function JoinOrg({ p }: { p: Props }) {
-  const orgs = (p.orgs as Org[]) ?? [];
-  const domain = s(p, 'domain');
-  const mine = s(p, 'user_domain');
+const PROBLEMS: Record<string, string> = {
+  missing: "This invite link doesn't work. Check that you opened the whole link, or ask for a new invite.",
+  used: 'This invite was used already. If it was you, log in.',
+  cancelled: 'This invite was cancelled. Ask whoever invited you for a new one.',
+  expired: 'This invite has expired. Ask whoever invited you to send it again.',
+};
+
+function AcceptInvite({ p }: { p: Props }) {
+  const problem = s(p, 'problem');
+  if (problem) {
+    return (
+      <>
+        <h1>Your invite</h1>
+        <p className="lead">{PROBLEMS[problem] ?? PROBLEMS.missing}</p>
+        <p className="auth-footer"><a href={s(p, 'login')}>Log in</a></p>
+      </>
+    );
+  }
+  const newOrg = !!p.new_org;
+  const account = !!p.has_account;
   return (
     <>
-      <h1>Join an organization</h1>
-      <p className="lead">Find your company's organization by its domain{mine ? <>: yours is <strong>{mine}</strong></> : ''}. An owner approves you before you get in.</p>
-      <form method="get" action={s(p, 'action')}>
-        <Field name="domain" label="Domain" placeholder={mine || 'acme.com'} defaultValue={domain || mine} required autoFocus
-               help={mine ? `You can join organizations at ${mine}.` : 'You can join organizations at your email\'s domain.'} />
-        <button type="submit" className="btn btn-secondary">Search</button>
+      <h1>{newOrg ? 'Start your organization' : `Join ${s(p, 'org')}`}</h1>
+      <p className="lead">
+        {newOrg ? "You'll be its owner, and can invite your team."
+          : <>{s(p, 'invited_by') ? `${s(p, 'invited_by')} invited you` : "You're invited"} as <strong>{s(p, 'role').toLowerCase()}</strong>.</>}
+      </p>
+      <form method="post" action={s(p, 'action')}>
+        <div className="form-group">
+          <span className="form-label">Email</span>
+          <div className="form-static">{s(p, 'email')}</div>
+        </div>
+        {account ? (
+          <Field name="password" label="Your password" type="password" autoComplete="current-password" required autoFocus
+                 help="This address has a DocuMint account already: log in with it to accept." />
+        ) : (
+          <>
+            <Field name="password" label="Choose a password" type="password" autoComplete="new-password" minLength={8} required autoFocus
+                   help="At least 8 characters." />
+            <Field name="confirm_password" label="The password again" type="password" autoComplete="new-password" minLength={8} required />
+          </>
+        )}
+        {newOrg && (
+          <>
+            <Field name="org_name" label="Organization name" placeholder="Demo Engineering" required />
+            <Address />
+          </>
+        )}
+        <button type="submit" className="btn btn-primary btn-lg btn-block">{newOrg ? 'Start my organization' : 'Accept and join'}</button>
       </form>
-      {domain && (orgs.length ? (
-        <form method="post" action={s(p, 'action')} style={{ marginTop: 'var(--spacing-lg)' }}>
-          <input type="hidden" name="domain" value={domain} />
-          <OrgChoices orgs={orgs} sub={(o) => o.domain} />
-          <div className="form-actions" style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-            <button type="submit" className="btn btn-primary">Ask to join</button>
-            <a href={s(p, 'cancel')} className="btn btn-secondary">Cancel</a>
-          </div>
-        </form>
+      {account && <p className="auth-footer"><a href={s(p, 'forgot')}>Forgot your password?</a></p>}
+    </>
+  );
+}
+
+function Forgot({ p }: { p: Props }) {
+  return (
+    <>
+      <h1>Forgot your password</h1>
+      {p.sent ? (
+        <p className="lead">If that address has a DocuMint account, a link to set a new password is on its way. It works for 2 hours.
+          No email? Your organization's owner or an admin can make you a reset link from Settings → Team.</p>
       ) : (
-        <p className="form-text" style={{ marginTop: 'var(--spacing-lg)' }}>No organization uses {domain}. <a href={s(p, 'create')}>Create one</a> instead.</p>
-      ))}
+        <>
+          <p className="lead">We'll email you a link to set a new one.</p>
+          <form method="post" action={s(p, 'action')}>
+            <Field name="email" label="Email" type="email" autoComplete="email" required autoFocus />
+            <button type="submit" className="btn btn-primary btn-lg btn-block">Email me a link</button>
+          </form>
+        </>
+      )}
+      <p className="auth-footer"><a href={s(p, 'login')}>Back to log in</a></p>
+    </>
+  );
+}
+
+function Reset({ p }: { p: Props }) {
+  if (p.problem) {
+    return (
+      <>
+        <h1>New password</h1>
+        <p className="lead">This link doesn't work any more: it was used, or it's more than 2 hours old.</p>
+        <p className="auth-footer"><a href={s(p, 'forgot')}>Get a new link</a></p>
+      </>
+    );
+  }
+  return (
+    <>
+      <h1>New password</h1>
+      <p className="lead">For {s(p, 'email')}.</p>
+      <form method="post" action={s(p, 'action')}>
+        <Field name="password" label="New password" type="password" autoComplete="new-password" minLength={8} required autoFocus help="At least 8 characters." />
+        <Field name="confirm_password" label="The password again" type="password" autoComplete="new-password" minLength={8} required />
+        <button type="submit" className="btn btn-primary btn-lg btn-block">Set my password</button>
+      </form>
     </>
   );
 }
@@ -253,8 +214,8 @@ function PortalLogin({ p }: { p: Props }) {
 }
 
 const SCREENS: Record<string, ComponentType<{ p: Props }>> = {
-  login: Login, register: Register, verify: Verify, choose_org: ChooseOrg, register_org: RegisterOrg,
-  select_org: SelectOrg, create_org: CreateOrg, join_org: JoinOrg, portal_login: PortalLogin,
+  login: Login, invite_only: InviteOnly, accept_invite: AcceptInvite, forgot: Forgot, reset: Reset,
+  select_org: SelectOrg, portal_login: PortalLogin,
 };
 
 export function Public({ screen, props }: { screen: string; props: Props }) {
