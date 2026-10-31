@@ -32,7 +32,7 @@ const NEXT = {
   actions: [
     { kind: 'post' as const, label: 'Mark accepted', action: '/quotes/Q-1/status', fields: { status: 'accepted' }, primary: false, confirm: null },
     { kind: 'email' as const, label: 'Send a follow-up', invoice_id: 'Q-1', primary: true },
-    { kind: 'dialog' as const, label: 'Make a revision', dialog: 'change-dialog', primary: false },
+    { kind: 'dialog' as const, label: 'Revise', dialog: 'change-dialog', primary: false },
   ],
 };
 
@@ -50,7 +50,7 @@ describe('DocumentNext', () => {
 
   it('opens the page\'s change dialog, and the email form for the document', async () => {
     render(<DocumentNext next={NEXT} steps={STEPS} invoiceId="Q-1" projectId="P-1" />);
-    expect(screen.getByRole('button', { name: 'Make a revision' })).toHaveAttribute('data-open-dialog', 'change-dialog');
+    expect(screen.getByRole('button', { name: 'Revise' })).toHaveAttribute('data-open-dialog', 'change-dialog');
     const fetch = vi.fn(async () => new Response(JSON.stringify(COMPOSE), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetch);
     fireEvent.click(screen.getByRole('button', { name: 'Send a follow-up' }));

@@ -41,15 +41,15 @@ def test_a_draft_is_finalized_or_edited():
 def test_a_sent_quotation_waits_then_is_followed_up():
     fresh = look(doc('quote', 'sent', issue='2026-10-14'))
     assert fresh['tone'] == 'wait' and fresh['sub'] == 'No answer for 6 days.'
-    assert labels(fresh) == ['Mark accepted*', 'Send a follow-up', 'Mark declined', 'Make a revision']
-    assert fresh['actions'][3] == {'label': 'Make a revision', 'kind': 'dialog', 'dialog': 'change-dialog', 'primary': False}
+    assert labels(fresh) == ['Mark accepted*', 'Send a follow-up', 'Mark declined', 'Revise']
+    assert fresh['actions'][3] == {'label': 'Revise', 'kind': 'dialog', 'dialog': 'change-dialog', 'primary': False}
 
     old = look(doc('quote', 'sent', issue='2026-09-30'))
     assert old['tone'] == 'action' and old['sub'] == 'No answer for 20 days. Time to follow it up.'
-    assert labels(old) == ['Mark accepted', 'Send a follow-up*', 'Mark declined', 'Make a revision']
+    assert labels(old) == ['Mark accepted', 'Send a follow-up*', 'Mark declined', 'Revise']
     assert old['actions'][1]['kind'] == 'email' and old['actions'][1]['invoice_id'] == 'D-1'
 
-    assert labels(look(doc('quote', 'sent'), email=False)) == ['Mark accepted*', 'Mark declined', 'Make a revision']  # no project
+    assert labels(look(doc('quote', 'sent'), email=False)) == ['Mark accepted*', 'Mark declined', 'Revise']  # no project
     assert states(doc('quote', 'sent'))[1:3] == [('sent', 'done', '14 Oct'), ('answer', 'now', 'Waiting · 6 days')]
 
 
@@ -65,7 +65,7 @@ def test_an_accepted_quotation_is_taken_forward():
 
 def test_a_declined_quotation_can_be_revised():
     nxt = look(doc('quote', 'declined'))
-    assert nxt['tone'] == 'late' and labels(nxt) == ['Make a revision*', 'Undo: not answered yet']
+    assert nxt['tone'] == 'late' and labels(nxt) == ['Revise*', 'Undo: not answered yet']
     assert states(doc('quote', 'declined'))[2] == ('answer', 'late', 'Declined')
 
 
@@ -73,7 +73,7 @@ def test_a_proforma_waits_for_its_advance_then_becomes_the_tax_invoice():
     summary = {'total': 100000, 'advance': {'percent': 40, 'amount': 40000}}
     waiting = look(doc('proforma', 'sent', number='PI/007'), summary)
     assert waiting['text'] == "Sent on 14 Oct. The advance of ₹40,000 hasn't arrived."
-    assert labels(waiting) == ['Record the advance*', 'Email a reminder', 'Create tax invoice anyway', 'Make a revision']
+    assert labels(waiting) == ['Record the advance*', 'Email a reminder', 'Create tax invoice anyway', 'Revise']
     assert waiting['actions'][0]['href'] == '#payment'
     assert states(doc('proforma', 'sent'), summary)[2:] == [('advance', 'now', '₹40,000 asked'), ('forward', 'todo', '')]
 

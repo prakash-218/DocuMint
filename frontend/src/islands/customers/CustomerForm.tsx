@@ -1,5 +1,5 @@
 import { Dropdown } from '../../mantine/Dropdown';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '../../app/PageHeader';
 import { Loading, useLoad, usePosted } from '../../app/ui';
 import type { CustomerForm as Data } from './types';
@@ -20,9 +20,18 @@ function Text({ name, label, value, help, ...rest }: {
   );
 }
 
+/** The state a GSTIN is registered in, from its first two digits; '' when it isn't one (documents.gstin_state). */
+function gstinState(gstin: string, states: Record<string, string>): string {
+  const code = gstin.replace(/[\s-]/g, '').toUpperCase();
+  return /^\d{2}[0-9A-Z]{13}$/.test(code) ? states[code.slice(0, 2)] ?? '' : '';
+}
+
 export function CustomerFormView({ data }: { data: Data }) {
   const posted = usePosted();
   const v = (key: string) => posted?.[key] ?? data.values[key] ?? '';
+  const [gstin, setGstin] = useState(() => v('tax_id'));
+  const [state, setState] = useState(() => v('state'));
+  const registered = gstinState(gstin, data.gst_states ?? {});
   useEffect(() => {
     if (data.name) document.title = `Edit ${data.name} · DocuMint`;
   }, [data.name]);
@@ -49,7 +58,16 @@ export function CustomerFormView({ data }: { data: Data }) {
               </div>
             )}
             <div className="form-row">
-              <Text name="tax_id" label="GSTIN / Tax ID" value={v('tax_id')} />
+              <div className="form-group">
+                <label htmlFor="tax_id" className="form-label">GSTIN / Tax ID</label>
+                <input type="text" id="tax_id" name="tax_id" className="form-input" value={gstin}
+                       onChange={(e) => {
+                         setGstin(e.target.value);
+                         const found = gstinState(e.target.value, data.gst_states ?? {});
+                         if (found && !state.trim()) setState(found);          // an empty State takes the GSTIN's
+                       }} />
+                {registered && <p className="form-text">Registered in {registered}. Its state decides CGST + SGST or IGST.</p>}
+              </div>
               <Text name="email_domains" label="Email domains" value={v('email_domains')} placeholder="hydroparts.com, hydroparts.us"
                     help={data.domains_help} />
             </div>
@@ -64,7 +82,10 @@ export function CustomerFormView({ data }: { data: Data }) {
             <Text name="street_address" label="Address" value={v('street_address')} />
             <div className="form-row">
               <Text name="city" label="City" value={v('city')} />
-              <Text name="state" label="State" value={v('state')} />
+              <div className="form-group">
+                <label htmlFor="state" className="form-label">State</label>
+                <input type="text" id="state" name="state" className="form-input" value={state} onChange={(e) => setState(e.target.value)} />
+              </div>
             </div>
             <div className="form-row">
               <Text name="zip_code" label="PIN / ZIP code" value={v('zip_code')} />

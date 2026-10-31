@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 
 from flask import get_flashed_messages, render_template, request, session, url_for
 
-DOCUMENT_LINKS = (('quote', 'Quotations', 'file-pen-line', '/quotes'), ('proforma', 'Proforma invoices', 'file-clock', '/proformas'),
+DOCUMENT_LINKS = (('quote', 'Quotations', 'file-pen-line', '/quotes'), ('proforma', 'Proformas', 'file-clock', '/proformas'),
                   ('invoices', 'Invoices', 'file-text', '/invoices'))
 
 
@@ -24,33 +24,37 @@ def _item(key, label, icon, href, prefix, badge=0) -> Dict:
 
 def sidebar(perms, unread: int = 0) -> List[Dict]:
     """[{title, items: [{key, label, icon, href, prefix, badge}]}]: the links someone with these permissions may open
-    (permissions.granted(), or a built-in role's name)."""
+    (permissions.granted(), or a built-in role's name), grouped as the prototype has them: Home and Projects, then Sales,
+    People, Library and Organization. A group with nothing in it is left out."""
     import permissions
     perms = permissions.of(perms)
 
     def opens(endpoint, doc_type=None):
         return permissions.allows(endpoint, doc_type, perms)
 
-    main = []
+    main, sales, people, library = [], [], [], []
     if opens('dashboard_bp.index'):
-        main.append(_item('home', 'Dashboard', 'layout-dashboard', url_for('dashboard_bp.index'), '/dashboard'))
+        main.append(_item('home', 'Home', 'house', url_for('dashboard_bp.index'), '/dashboard'))
     if opens('notifications_bp.index'):
         main.append(_item('notifications', 'Notifications', 'bell', url_for('notifications_bp.index'), '/notifications', unread))
     if opens('projects_bp.list_projects'):
         main.append(_item('projects', 'Projects', 'briefcase', url_for('projects_bp.list_projects'), '/projects'))
-    if opens('emails_bp.inbox'):
-        main.append(_item('emails', 'Emails', 'mail', url_for('emails_bp.inbox'), '/emails'))
     for key, label, icon, prefix in DOCUMENT_LINKS:
         if opens('invoices_bp.list_invoices', 'invoice' if key == 'invoices' else key):
-            main.append(_item(key, label, icon, url_for('invoices_bp.list_invoices', type=None if key == 'invoices' else key), prefix))
+            sales.append(_item(key, label, icon, url_for('invoices_bp.list_invoices', type=None if key == 'invoices' else key), prefix))
     if opens('customers_bp.list_customers'):
-        main.append(_item('customers', 'Customers', 'users', url_for('customers_bp.list_customers'), '/customers'))
+        people.append(_item('customers', 'Customers', 'users', url_for('customers_bp.list_customers'), '/customers'))
+    if opens('emails_bp.inbox'):
+        people.append(_item('emails', 'Emails', 'mail', url_for('emails_bp.inbox'), '/emails'))
     if opens('templates_bp.list_templates'):
-        main.append(_item('templates', 'Templates', 'layout-template', url_for('templates_bp.list_templates'), '/templates'))
+        library.append(_item('templates', 'Templates', 'layout-template', url_for('templates_bp.list_templates'), '/templates'))
+    if opens('costings_bp.rates'):
+        library.append(_item('rates', 'Rates', 'list', url_for('costings_bp.rates'), '/costings/rates'))
     org = [_item('settings', 'Settings', 'settings', url_for('settings_bp.index'), '/settings')]
     if opens('settings_bp.audit_log'):
         org.append(_item('audit', 'Audit log', 'history', url_for('settings_bp.audit_log'), '/settings/audit-log'))
-    return [{'title': None, 'items': main}, {'title': 'Organization', 'items': org}]
+    groups = [(None, main), ('Sales', sales), ('People', people), ('Library', library), ('Organization', org)]
+    return [{'title': title, 'items': items} for title, items in groups if items]
 
 
 def active(sections: List[Dict], path: str) -> Optional[str]:

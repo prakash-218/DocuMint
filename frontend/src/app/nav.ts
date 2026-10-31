@@ -21,9 +21,9 @@ export function activeKey(sections: NavSection[], path: string): string | null {
 
 // The sidebar's Lucide names, as icons.tsx has them
 const ICONS: Record<string, IconName> = {
-  'layout-dashboard': 'layoutDashboard', bell: 'bell', briefcase: 'briefcase', mail: 'mail',
+  house: 'house', 'layout-dashboard': 'layoutDashboard', bell: 'bell', briefcase: 'briefcase', mail: 'mail',
   'file-pen-line': 'filePenLine', 'file-clock': 'fileClock', 'file-text': 'fileText', users: 'users',
-  'layout-template': 'layoutTemplate', settings: 'settings', history: 'history', plus: 'plus',
+  'layout-template': 'layoutTemplate', list: 'list', settings: 'settings', history: 'history', plus: 'plus',
 };
 
 export function lucide(name: string): IconName {

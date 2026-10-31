@@ -237,21 +237,63 @@ def is_india(country) -> bool:
     return _norm(country) in ('india', 'in', 'ind', 'bharat')
 
 
-def suggest_tax_mode(doc_type: str, org: dict, customer: dict) -> str:
-    """Pick the usual GST treatment from where the buyer is. Only for GST-registered
-    businesses (a GSTIN in the profile); everyone else defaults to no tax."""
+# The GST state codes: a GSTIN's first two digits are the state it's registered in. 25 (Daman and Diu) was merged into
+# 26, and Andhra Pradesh has the old 28 and the new 37, so they compare by name.
+GST_STATES = {
+    '01': 'Jammu and Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', '05': 'Uttarakhand',
+    '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim',
+    '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya',
+    '18': 'Assam', '19': 'West Bengal', '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh',
+    '24': 'Gujarat', '25': 'Dadra and Nagar Haveli and Daman and Diu', '26': 'Dadra and Nagar Haveli and Daman and Diu',
+    '27': 'Maharashtra', '28': 'Andhra Pradesh', '29': 'Karnataka', '30': 'Goa', '31': 'Lakshadweep', '32': 'Kerala',
+    '33': 'Tamil Nadu', '34': 'Puducherry', '35': 'Andaman and Nicobar Islands', '36': 'Telangana', '37': 'Andhra Pradesh',
+    '38': 'Ladakh', '97': 'Other Territory',
+}
+
+
+def gstin_state(gstin) -> str:
+    """The state a GSTIN is registered in, from its first two digits ('33...' is Tamil Nadu); '' when it isn't a GSTIN."""
+    code = re.sub(r'[\s-]', '', gstin or '').upper()
+    return GST_STATES.get(code[:2], '') if re.fullmatch(r'\d{2}[0-9A-Z]{13}', code) else ''
+
+
+def tax_suggestion(doc_type: str, org: dict, customer: dict) -> dict:
+    """{'mode', 'why'}: the usual GST treatment from where the buyer is, and why in a few words ('Karnataka GSTIN, another
+    state'; '' when it's only a guess). When both sides have a GSTIN, the states are its first two digits; otherwise
+    they're the addresses' states. Only for GST-registered businesses (a GSTIN in the profile); everyone else defaults
+    to no tax."""
     profile = load_json(org.get('profile'))
     if not profile.get('gstin') or doc_type == 'quote':
         # Quotations state the GST rate in their terms instead of adding tax rows
-        return 'none'
-    customer_country = customer.get('country') or customer.get('customer_country')
-    if doc_type == 'export_invoice' or (customer_country and not is_india(customer_country)):
-        return 'lut'
-    org_state = _norm(org.get('state') or org.get('organization_state'))
-    customer_state = _norm(customer.get('state') or customer.get('customer_state'))
-    if org_state and customer_state and org_state != customer_state:
-        return 'igst'
-    return 'cgst_sgst'
+        return {'mode': 'none', 'why': ''}
+    customer_country = (customer.get('country') or customer.get('customer_country') or '').strip()
+    if doc_type == 'export_invoice':
+        return {'mode': 'lut', 'why': 'An export invoice'}
+    if customer_country and not is_india(customer_country):
+        return {'mode': 'lut', 'why': f'{customer_country}, outside India'}
+    ours, theirs = gstin_state(profile.get('gstin')), gstin_state(customer.get('tax_id') or customer.get('customer_tax_id'))
+    if ours and theirs:
+        return {'mode': 'cgst_sgst', 'why': f'{theirs} GSTIN'} if ours == theirs else             {'mode': 'igst', 'why': f'{theirs} GSTIN, another state'}
+    org_state = (org.get('state') or org.get('organization_state') or '').strip()
+    customer_state = (customer.get('state') or customer.get('customer_state') or '').strip()
+    if org_state and customer_state and _norm(org_state) != _norm(customer_state):
+        return {'mode': 'igst', 'why': f'{customer_state}, another state'}
+    return {'mode': 'cgst_sgst', 'why': customer_state if org_state else ''}
+
+
+TAX_SHORT = {'cgst_sgst': 'CGST + SGST', 'igst': 'IGST', 'lut': 'no GST under LUT'}
+
+
+def tax_note(suggestion: dict) -> str:
+    """A tax_suggestion in words, as the editor and the customer page say it: 'Tamil Nadu GSTIN, so CGST + SGST', or just
+    'IGST' without a reason; '' for no tax."""
+    short = TAX_SHORT.get(suggestion['mode'], '')
+    return f"{suggestion['why']}, so {short}" if short and suggestion['why'] else short
+
+
+def suggest_tax_mode(doc_type: str, org: dict, customer: dict) -> str:
+    """The usual GST treatment for this buyer (tax_suggestion's mode)."""
+    return tax_suggestion(doc_type, org, customer)['mode']
 
 
 def default_tax_rate(profile: dict) -> float:

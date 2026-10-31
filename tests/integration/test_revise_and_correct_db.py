@@ -44,8 +44,8 @@ def test_correcting_a_sent_invoice_and_taking_sent_back(client, gst_org):
     client.post(f'/invoices/{invoice_id}/finalize')
     # A sent document can't be edited the old way...
     response = client.get(f'/invoices/{invoice_id}/edit')
-    assert response.status_code == 302 and 'Change' in ' '.join(_flashes(client))
-    # ...its page offers Change: correct, or back to draft (no revisions for tax invoices)
+    assert response.status_code == 302 and 'Use "Edit" on its page' in ' '.join(_flashes(client))
+    # ...its page offers Edit: correct, or back to draft (no revisions for tax invoices)
     change = document(client, f'/invoices/{invoice_id}')['change']
     assert change['short'] == 'invoice' and change['correct'] and change['revise'] is None
     assert change['reopen'] == {'blocker': None, 'action': f'/invoices/{invoice_id}/reopen'}

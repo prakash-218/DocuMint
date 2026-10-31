@@ -35,4 +35,6 @@ export interface CustomerForm {
   domains_help: string;
   payment_help: string;
   custom: { key: string; label: string; value: string }[];
+  /** A GSTIN's first two digits → the state it's registered in ('33' → Tamil Nadu). */
+  gst_states: Record<string, string>;
 }

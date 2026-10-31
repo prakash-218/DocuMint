@@ -57,7 +57,7 @@ def test_a_sent_quotation_waits_for_the_answer():
     assert states(st)[:2] == [('quoted', 'done', '14 Oct'), ('accepted', 'now', 'Waiting · 6 days')]
     assert st['pill'] == {'text': 'Waiting for an answer', 'tone': 'wait'}
     assert nxt['text'] == f"Quotation {q['doc_number']} sent on 14 Oct." and nxt['sub'] == 'No answer for 6 days.'
-    assert labels(nxt) == ['Mark accepted*', 'Send a follow-up', 'Mark declined', 'Make a revision']
+    assert labels(nxt) == ['Mark accepted*', 'Send a follow-up', 'Mark declined', 'Revise']
     accept = nxt['actions'][0]
     assert accept['kind'] == 'post' and accept['action'] == f"/invoices_bp.set_status/invoice_id={q['invoice_id']}"
     assert accept['fields'] == {'status': 'accepted'}
@@ -68,13 +68,13 @@ def test_after_two_weeks_without_an_answer_the_next_step_is_to_chase_it():
     q = doc('quote', 'sent', issue='2026-10-01')
     st, nxt = look([q])
     assert nxt['tone'] == 'action' and nxt['sub'] == 'No answer for 19 days. Time to follow it up.'
-    assert labels(nxt) == ['Mark accepted', 'Send a follow-up*', 'Mark declined', 'Make a revision']
+    assert labels(nxt) == ['Mark accepted', 'Send a follow-up*', 'Mark declined', 'Revise']
 
 
 def test_a_declined_quotation():
     st, nxt = look([doc('quote', 'declined')])
     assert states(st)[1] == ('accepted', 'late', 'Declined') and st['pill'] == {'text': 'Declined', 'tone': 'late'}
-    assert nxt['tone'] == 'late' and labels(nxt) == ['Make a revision*', 'Cancel the project']
+    assert nxt['tone'] == 'late' and labels(nxt) == ['Revise*', 'Cancel the project']
 
 
 def test_once_accepted_the_advance_is_asked_for():

@@ -129,6 +129,8 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
                  'project': {'label': projects.project_label(project), 'title': project['title'], 'url': project_url} if project else None},
         'next': ctx['doc_next'], 'money': ctx['doc_money'],
         'pdf': _pdf(ctx, t, status, can_edit, url, perms),
+        # a draft opens in the editor; a sent one offers a revision or a correction (the "Revise" or "Edit" button)
+        'edit': url('invoices_bp.edit_invoice', invoice_id=invoice['invoice_id']) if status == 'draft' and can_edit else None,
         'change': _change(ctx, t, url) if status != 'draft' and can_edit else None,
         'payments': _payments(ctx, t, status, can_edit and permissions.can('payments.write', perms=perms), url) if (t.takes_payments or t.takes_advances) and status != 'draft' else None,
         'versions_html': _html("{% include 'invoices/_versions.html' %}", ctx) if ctx['versions'] else None,

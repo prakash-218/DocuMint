@@ -82,7 +82,7 @@ def build(org_id, customer: Dict, perms, url: Callable, today: Optional[date] = 
     import revisions
     from db import db
     from document_service import get_org_profile
-    from documents import fy_start_month, load_json, suggest_tax_mode
+    from documents import fy_start_month, load_json, tax_note, tax_suggestion
     from layout import custom_field_defs
     today = today or date.today()
     profile = get_org_profile(org_id)[1]
@@ -119,9 +119,7 @@ def build(org_id, customer: Dict, perms, url: Callable, today: Optional[date] = 
             money.pop('customers')
 
     org = get_org_profile(org_id)[0] or {}
-    state = customer.get('state') or ''
-    tax_note = {'cgst_sgst': f'{state}, so CGST + SGST' if state else 'CGST + SGST', 'igst': f'{state}, so IGST' if state else 'IGST',
-                'lut': 'Export, under LUT'}.get(suggest_tax_mode('invoice', org, customer), '')
+    tax = tax_note(tax_suggestion('invoice', org, customer))             # 'Karnataka GSTIN, another state, so IGST'
     portal = (db.execute_proc('sp_get_customer_users', (customer_id,)) or [None])[0] if can['manage'] else None
     kinds = {k: v for k, v in projects.DOCUMENT_KINDS.items() if permissions.file_kind_allowed(k, perms)}
     people = contacts.for_customer(org_id, customer)
@@ -141,7 +139,7 @@ def build(org_id, customer: Dict, perms, url: Callable, today: Optional[date] = 
             'address': [x for x in [customer.get('street_address'),
                                     ', '.join(filter(None, [customer.get('city'), customer.get('state'), customer.get('zip_code')])),
                                     customer.get('country')] if x],
-            'archived': bool(customer.get('is_archived')), 'custom': custom, 'tax_note': tax_note, 'payment_terms': terms,
+            'archived': bool(customer.get('is_archived')), 'custom': custom, 'tax_note': tax, 'payment_terms': terms,
         },
         'can': can,
         'money': money,
@@ -226,7 +224,7 @@ def form(org_id, customer: Optional[Dict], defaults: Dict, url: Callable) -> Dic
     """A customer's form, new (defaults: an "Add site" starts from its parent's details) or to edit. It posts the
     server page's fields to customers_bp.create_customer or edit_customer, which save them."""
     from blueprints.customers_bp import _form_context
-    from documents import load_json
+    from documents import GST_STATES, load_json
     ctx = _form_context(org_id, customer, defaults)
     c = customer or defaults or {}
     values = {k: '' if c.get(k) is None else str(c.get(k)) for k in FORM_FIELDS}
@@ -253,4 +251,5 @@ def form(org_id, customer: Optional[Dict], defaults: Dict, url: Callable) -> Dic
         'payment_help': ("How many days after the invoice date they pay; 0 is on receipt. It sets when their invoices "
                          f"count as overdue, and isn't printed. {empty}"),
         'custom': [{'key': f['key'], 'label': f['label'], 'value': custom.get(f['key'], '')} for f in ctx['custom_defs']],
+        'gst_states': GST_STATES,                     # a GSTIN's first two digits: the state it's registered in
     }

@@ -26,15 +26,16 @@ logger = logging.getLogger(__name__)
 # (title, endpoint, url arguments, icon, other words people may type). Each is listed for those whose permissions let
 # them open it (permissions.allows).
 PAGES = [
-    ('Dashboard', 'dashboard_bp.index', {}, 'layout-dashboard', 'home overview revenue'),
+    ('Home', 'dashboard_bp.index', {}, 'house', 'dashboard overview needs attention to receive'),
     ('Notifications', 'notifications_bp.index', {}, 'bell', 'activity alerts'),
     ('Projects', 'projects_bp.list_projects', {}, 'briefcase', 'jobs'),
     ('Emails', 'emails_bp.inbox', {}, 'mail', 'inbox mail'),
     ('Quotations', 'invoices_bp.list_invoices', {'type': 'quote'}, 'file-pen-line', 'quotes'),
-    ('Proforma invoices', 'invoices_bp.list_invoices', {'type': 'proforma'}, 'file-clock', 'pi'),
+    ('Proformas', 'invoices_bp.list_invoices', {'type': 'proforma'}, 'file-clock', 'pi proforma invoices advance'),
     ('Invoices', 'invoices_bp.list_invoices', {}, 'file-text', 'tax export bills'),
     ('Customers', 'customers_bp.list_customers', {}, 'users', 'clients buyers'),
     ('Templates', 'templates_bp.list_templates', {}, 'layout-template', 'formats'),
+    ('Rates', 'costings_bp.rates', {}, 'list', 'rates list costing prices materials machining'),
     ('Settings', 'settings_bp.index', {}, 'settings', 'business profile bank seal signature numbering team'),
     ('Roles', 'settings_bp.roles', {}, 'shield', 'permissions access custom roles team'),
     ('Audit log', 'settings_bp.audit_log', {}, 'history', 'history changes'),

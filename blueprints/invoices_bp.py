@@ -659,7 +659,9 @@ def edit_invoice(invoice_id):
         # A sent document is corrected in place (same number) only when asked for: ?correct=1
         correcting = current_status != 'draft' and request.values.get('correct') == '1'
         if current_status != 'draft' and not correcting:
-            flash('This document has been sent. Use "Change" on its page to correct it or make a revision.', 'error')
+            revisable = (invoice_header.get('doc_type') or 'invoice') in REVISABLE
+            flash('This document has been sent. Use "Revise" on its page to make a revision or correct it.' if revisable
+                  else 'This document has been sent. Use "Edit" on its page to correct it.', 'error')
             return redirect(_back(invoice_id))
         total_before = invoice_header.get('total_amount')
     except DatabaseError as e:

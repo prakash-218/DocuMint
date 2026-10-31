@@ -85,6 +85,34 @@ def test_suggest_tax_mode(doc_type, org, customer, expected):
     assert suggest_tax_mode(doc_type, org, customer) == expected
 
 
+def test_the_gstins_decide_the_state_and_say_why():
+    from documents import gstin_state, tax_note, tax_suggestion
+    assert (gstin_state('33ABCDE1234F1Z5'), gstin_state(' 29abcde1234f1z5 '), gstin_state('37ABCDE1234F1Z5')) ==         ('Tamil Nadu', 'Karnataka', 'Andhra Pradesh')
+    assert gstin_state('33ABCDE') == gstin_state('ABN 51 824 753 556') == gstin_state(None) == ''   # not a GSTIN
+    # the GSTIN wins over an address typed another way ('TN'), or a wrong one
+    same = tax_suggestion('invoice', GST_ORG, {'tax_id': '33AAACG0000X1Z5', 'state': 'TN', 'country': 'India'})
+    other = tax_suggestion('invoice', GST_ORG, {'tax_id': '29AAACG0000X1Z5', 'state': 'Tamil Nadu', 'country': 'India'})
+    assert same == {'mode': 'cgst_sgst', 'why': 'Tamil Nadu GSTIN'} and tax_note(same) == 'Tamil Nadu GSTIN, so CGST + SGST'
+    assert other == {'mode': 'igst', 'why': 'Karnataka GSTIN, another state'}
+    assert tax_note(other) == 'Karnataka GSTIN, another state, so IGST'
+    # without a GSTIN, the addresses; abroad, an export
+    by_address = tax_suggestion('invoice', GST_ORG, {'state': 'Kerala', 'country': 'India'})
+    assert tax_note(by_address) == 'Kerala, another state, so IGST'
+    assert tax_note(tax_suggestion('invoice', GST_ORG, {'state': 'Tamil Nadu'})) == 'Tamil Nadu, so CGST + SGST'
+    assert tax_note(tax_suggestion('invoice', GST_ORG, {})) == 'CGST + SGST'                  # a guess: no reason given
+    assert tax_note(tax_suggestion('proforma', GST_ORG, {'country': 'USA'})) == 'USA, outside India, so no GST under LUT'
+    assert tax_note(tax_suggestion('quote', GST_ORG, {'tax_id': '29AAACG0000X1Z5'})) == ''     # quotations add no tax rows
+
+
+def test_the_editor_gets_each_customers_tax_and_why():
+    from document_service import customer_tax_hints
+    hints = customer_tax_hints('invoice', GST_ORG, [{'customer_id': 'C-1', 'tax_id': '29AAACG0000X1Z5'},
+                                                    {'customer_id': 'C-2', 'state': 'Tamil Nadu'}])
+    assert hints == {'C-1': {'mode': 'igst', 'note': 'Karnataka GSTIN, another state, so IGST'},
+                     'C-2': {'mode': 'cgst_sgst', 'note': 'Tamil Nadu, so CGST + SGST'}}
+    assert customer_tax_hints('quote', GST_ORG, [{'customer_id': 'C-1'}]) == {'C-1': {'mode': 'none', 'note': ''}}
+
+
 def test_settings_from_form_validates():
     s = settings_from_form({'tax_mode': 'cgst_sgst', 'tax_rate': '18', 'advance_percent': '50', 'advance_basis': 'total'})
     assert s == {'tax_mode': 'cgst_sgst', 'tax_rate': 18.0, 'advance_percent': 50.0, 'advance_basis': 'total'}

@@ -14,6 +14,7 @@ const DOC: DocumentData = {
   pdf: { seal: true, links: [{ label: 'All copies', icon: 'file-down', href: '/invoices/D-7/pdf' },
                              { label: 'Original only', icon: 'file', href: '/invoices/D-7/pdf?copies=1' }],
          packing: '/invoices/D-7/packing', delete: null },
+  edit: null,
   change: { number: 'TF/INV/007', short: 'invoice', takes_payments: true, proforma: false, sent_word: 'finalized', undo: 'Finalize', again: 'finalize',
             correct: '/invoices/D-7/edit?correct=1', revise: null, reopen: { blocker: 'Payments are recorded on it.', action: '/invoices/D-7/reopen' } },
   payments: {
@@ -140,5 +141,7 @@ describe('DocumentPage', () => {
     expect(within(dialog).getByRole('link', { name: 'Correct it', hidden: true })).toHaveAttribute('href', '/invoices/D-7/edit?correct=1');
     expect(within(dialog).getByText(/Not possible: payments are recorded on it/)).toBeInTheDocument();
     expect(within(dialog).queryByText('Make a revision')).not.toBeInTheDocument();
+    // a tax invoice can't be revised, so it's "Edit", not "Revise"
+    expect(within(dialog).getByRole('heading', { name: 'Edit TF/INV/007', hidden: true })).toBeInTheDocument();
   });
 });
