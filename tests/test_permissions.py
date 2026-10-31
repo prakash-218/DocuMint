@@ -105,7 +105,8 @@ def _sales_pages_before(endpoint, doc_type):
     pages = {
         'projects_bp': None, 'search_bp': None,
         'invoices_bp': {'list_invoices', 'create_invoice', 'view_invoice', 'view_invoice_new', 'export_pdf', 'finalize_invoice',
-                        'set_status', 'revise', 'edit_invoice', 'reopen', 'delete_invoice'},
+                        'set_status', 'revise', 'edit_invoice', 'reopen', 'delete_invoice',
+                        'export_csv', 'export_zip'},                    # since: their quotations, several at once
         'customers_bp': {'list_customers', 'view_customer', 'view_customer_new', 'create_customer', 'edit_customer',
                          'save_contact', 'delete_contact'},
         'api_bp': {'me', 'documents', 'document_page', 'new_document', 'edit_document', 'compose', 'send_email', 'list_projects',

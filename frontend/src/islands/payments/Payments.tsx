@@ -1,7 +1,9 @@
 import { Dropdown } from '../../mantine/Dropdown';
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../../api';
+import { download } from '../../download';
 import { money, totals } from '../../format';
+import { Icon } from '../../icons';
 import { Skeleton } from '../../Skeleton';
 import { PageHeader } from '../../app/PageHeader';
 import { fiscalYear } from '../documents/DocumentList';
@@ -29,6 +31,8 @@ export interface PaymentList {
   title: string;
   tabs: { key: string; label: string }[];
   rows: PaymentRow[];
+  /** The shown ones as a CSV (exports.payments_csv): post their ids. */
+  export: string;
 }
 
 /** Every word typed is in the document's number, the customer, the project, the method or the bank reference. */
@@ -124,6 +128,10 @@ export default function Payments({ tab: firstTab = 'all', query: firstQuery = ''
           <label htmlFor="pay-year" className="sr-only">Financial year</label>
           <Dropdown id="pay-year" value={year} onChange={setYear}
                     data={[{ value: '', label: 'All years' }, ...years.map((y) => ({ value: y, label: `FY ${y}` }))]} />
+          {shown.length > 0 && (
+            <button type="button" className="btn btn-secondary" onClick={() => download(data.export, shown.map((r) => r.id))}
+                    title={`The ${shown.length} shown, for the accountant`}><Icon name="download" />Export CSV</button>
+          )}
         </div>
 
         <div className="rows" aria-label="Payments">

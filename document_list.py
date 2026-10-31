@@ -106,4 +106,6 @@ def build(group: str, docs: List[Dict], url: Callable, can_create: bool, today: 
             'tabs': [{'key': k, 'label': label} for k, label in info['tabs']],
             'rows': rows(mine, url, today, usual_days),
             'new_url': url('invoices_bp.create_invoice', doc_type=info['new_type']) if can_create else None,
+            # several at once: their PDFs in a ZIP, or a CSV (exports.py)
+            'exports': {'csv': url('invoices_bp.export_csv', doc_path=group), 'zip': url('invoices_bp.export_zip', doc_path=group)},
             'new_label': f"New {get_type(info['new_type']).short.lower()}"})

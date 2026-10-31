@@ -234,7 +234,10 @@ Rule = Union[Tuple[str, ...], str, Doc]
 ENDPOINTS: Dict[str, Rule] = {
     # The documents
     'invoices_bp.list_invoices': Doc('read'),
+    'invoices_bp.export_csv': Doc('read'),                # several at once, from the list
+    'invoices_bp.export_zip': Doc('read'),
     'payments_bp.index': 'invoices.read',                # every payment: what invoices are paid with
+    'payments_bp.export_csv': 'invoices.read',
     'invoices_bp.create_invoice': Doc('write'),
     'invoices_bp.view_invoice': Doc('read'),
     'invoices_bp.view_invoice_new': Doc('read'),

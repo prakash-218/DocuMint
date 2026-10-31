@@ -1,6 +1,7 @@
 import { Dropdown } from '../../mantine/Dropdown';
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../../api';
+import { download } from '../../download';
 import { day, money, totals } from '../../format';
 import { Icon } from '../../icons';
 import { Skeleton } from '../../Skeleton';
@@ -42,6 +43,8 @@ export interface DocList {
   rows: DocRow[];
   new_url: string | null;
   new_label: string;
+  /** Several at once (exports.py): post their ids. */
+  exports: { csv: string; zip: string };
 }
 
 const words = (text: string) => text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9/]+/g, ' ').split(' ').filter(Boolean);
@@ -99,6 +102,7 @@ function ListScreen({ group, tab: firstTab = 'all', query: firstQuery = '' }: { 
   const [query, setQuery] = useState(firstQuery);
   const [customer, setCustomer] = useState('');
   const [year, setYear] = useState('');
+  const [picked, setPicked] = useState<Set<string> | null>(null);     // choosing rows: their ids; null when not
 
   useEffect(() => {
     api.get<DocList>(`/api/documents/${group}`).then((d) => {
@@ -157,29 +161,57 @@ function ListScreen({ group, tab: firstTab = 'all', query: firstQuery = '' }: { 
         <label htmlFor="dl-year" className="sr-only">Financial year</label>
         <Dropdown id="dl-year" value={year} onChange={setYear}
                   data={[{ value: '', label: 'All years' }, ...years.map((y) => ({ value: y, label: `FY ${y}` }))]} />
+        {!picked && shown.length > 0 && (
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setPicked(new Set())}><Icon name="checkCheck" />Select</button>
+            <button type="button" className="btn btn-secondary" onClick={() => download(data.exports.csv, shown.map((r) => r.id))}
+                    title={`A row for each of the ${shown.length} shown, with the taxable value and GST`}><Icon name="download" />Export CSV</button>
+          </>
+        )}
       </div>
 
-      <Rows data={data} rows={shown} />
+      {picked && (
+        <div className="bulkbar" role="region" aria-label="Chosen documents">
+          <span>{picked.size} selected</span>
+          <button type="button" className="btn btn-xs" onClick={() => setPicked(picked.size === shown.length ? new Set() : new Set(shown.map((r) => r.id)))}>
+            {picked.size === shown.length ? 'Clear' : `Select all ${shown.length}`}
+          </button>
+          <span className="spacer" />
+          <button type="button" className="btn btn-xs" disabled={!picked.size || picked.size > MAX_PDFS} title={picked.size > MAX_PDFS ? `Up to ${MAX_PDFS} at a time` : undefined}
+                  onClick={() => download(data.exports.zip, [...picked])}><Icon name="download" />Download PDFs</button>
+          <button type="button" className="btn btn-xs" disabled={!picked.size} onClick={() => download(data.exports.csv, [...picked])}>Export CSV</button>
+          <button type="button" className="btn btn-xs" onClick={() => setPicked(null)}>Done</button>
+        </div>
+      )}
+
+      <Rows data={data} rows={shown} picked={picked}
+            onPick={(id) => setPicked((now) => { const next = new Set(now); if (next.has(id)) next.delete(id); else next.add(id); return next; })} />
     </div>
   );
 }
 
-function Rows({ data, rows }: { data: DocList; rows: DocRow[] }) {
+/** As exports.MAX_PDFS: a ZIP is made while you wait. */
+const MAX_PDFS = 60;
+
+function Rows({ data, rows, picked, onPick }: { data: DocList; rows: DocRow[]; picked: Set<string> | null; onPick: (id: string) => void }) {
   const invoices = data.group === 'invoices';
   const until = data.until && rows.some((r) => r.until) ? data.until : null;      // no column when none has a date
-  const grid = { gridTemplateColumns: ['minmax(0, 2.2fr)', 'minmax(0, 1.5fr)', '64px', until && '84px', 'minmax(0, 1.1fr)', '112px',
+  const grid = { gridTemplateColumns: [picked && '20px', 'minmax(0, 2.2fr)', 'minmax(0, 1.5fr)', '64px', until && '84px', 'minmax(0, 1.1fr)', '112px',
     invoices && '104px'].filter(Boolean).join(' ') };
   return (
     <div className="rows" aria-label={data.title}>
       <div className="rh" style={grid}>
-        <span>Number</span><span>Customer</span><span>Date</span>{until && <span>{until}</span>}<span>Status</span>
+        {picked && <span />}<span>Number</span><span>Customer</span><span>Date</span>{until && <span>{until}</span>}<span>Status</span>
         <span className="c-num">Total</span>{invoices && <span className="c-num">Balance</span>}
       </div>
       {rows.map((r) => {
         const about = [r.subject || r.project?.title, invoices && r.kind !== 'Tax Invoice' ? r.kind : ''].filter(Boolean).join(' · ');
         const late = r.tab === 'overdue' ? ' late' : '';
+        // choosing: the row is the checkbox's label, rather than a link to the document
+        const Row = picked ? 'label' : 'a';
         return (
-          <a key={r.id} className="rr" href={r.url} style={grid}>
+          <Row key={r.id} className={`rr${picked ? ' picking' : ''}`} {...(picked ? {} : { href: r.url })} style={grid}>
+            {picked && <input type="checkbox" checked={picked.has(r.id)} onChange={() => onPick(r.id)} aria-label={`Choose ${r.number}`} />}
             <div className="c-main">
               <div className="c-title mono">{r.number}</div>
               <div className="c-sub">
@@ -199,7 +231,7 @@ function Rows({ data, rows }: { data: DocList; rows: DocRow[] }) {
               // on a phone, only when it isn't the whole total
               <div className={`c-num${late}${r.balance === r.total ? ' c-hide' : ''}`}><span className="c-lbl">Due</span>{r.balance ? money(r.balance, r.currency) : '—'}</div>
             )}
-          </a>
+          </Row>
         );
       })}
       {rows.length === 0 && <p className="empty-rows">{data.rows.length ? 'Nothing matches. Clear the search or the filters to see them all.' : `No ${data.title.toLowerCase()} yet.`}</p>}
