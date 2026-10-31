@@ -1230,6 +1230,11 @@ input[type="date"].form-input { padding-right: 8px; }
 .member-list { list-style: none; margin: 0; padding: 0; }
 .member-list li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--spacing-sm) var(--spacing-md); padding: 12px var(--spacing-lg); border-top: 1px solid var(--line-1); }
 .member-list li:first-child { border-top: 0; }
+/* Buying a costing's lines on a purchase order */
+.k-buy { border: 1px solid var(--line-1); border-radius: var(--radius-sm, 6px); margin: 0 0 var(--spacing-sm); padding: 6px 12px 10px; display: grid; gap: 4px; }
+.k-buy legend { font-weight: 600; font-size: var(--font-size-sm); padding: 0 4px; }
+.k-buy .checkbox { display: flex; gap: 8px; align-items: baseline; font-size: var(--font-size-sm); cursor: pointer; }
+.btn.is-disabled { opacity: .5; pointer-events: none; }
 /* Who a company is to us (the customer form): a customer, a supplier, or both */
 .kinds { border: 0; margin: 0 0 var(--spacing-md); padding: 0; display: grid; gap: 6px; }
 .kinds .checkbox { display: flex; gap: 8px; align-items: baseline; font-size: var(--font-size-sm); cursor: pointer; }

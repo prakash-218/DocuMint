@@ -352,6 +352,21 @@ share_link = Table(
     Index('uq_share_link_on', 'invoice_id', unique=True, postgresql_where=text('turned_off_at IS NULL')),
 )
 
+# What arrived on a purchase order: one delivery, its date and the supplier's delivery challan, and how much of each
+# of the order's lines came ([{line: its row number, qty}]). When everything has, the order is received.
+po_receipt = Table(
+    'po_receipt', metadata,
+    _id('receipt_id'),
+    _ref('org_id', 'organization.org_id', 'CASCADE'),
+    _ref('invoice_id', 'invoice.invoice_id', 'CASCADE'),
+    Column('received_on', Date, nullable=False),
+    Column('challan_no', String(60)),
+    Column('note', Text),
+    Column('lines', JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    _ref('created_by', 'users.user_id', 'SET NULL', nullable=True, index=False),
+    _created(),
+)
+
 # Working out a quote's prices before making it: internal, owners and admins only.
 # sheet: {"items": [{key, name, description, qty, unit, cost_each, profit_percent, price_each,
 #                    lines: [{description, make, qty, unit, unit_cost, markup}]}],

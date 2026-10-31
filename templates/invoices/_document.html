@@ -40,7 +40,7 @@
             </p>
         </div>
         <div>
-            <p class="party-label">{{ 'To' if t.key == 'quote' else 'Bill to' }}</p>
+            <p class="party-label">{{ 'To' if t.key == 'quote' or t.purchase else 'Bill to' }}</p>
             <p class="party-name">{{ invoice.customer_name }}</p>
             <p class="party-address">
                 {% if invoice.customer_street_address %}{{ invoice.customer_street_address }}<br>{% endif %}

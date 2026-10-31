@@ -184,8 +184,10 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
     }
 
 
-def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id: Optional[str], url: Callable) -> Dict:
-    """A new document's step: the project it's for, then its template, then the editor."""
+def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id: Optional[str], url: Callable,
+             from_costing: Optional[Dict] = None) -> Dict:
+    """A new document's step: the project it's for, then its template, then the editor. from_costing ({'id', 'lines':
+    picks}): a purchase order of a costing's lines (costing.purchase_lines), the editor's rows filled with them."""
     from blueprints.invoices_bp import _document_form_context, _editor_sections, _latest_templates, _templates_for
     from db import db
     from document_service import get_org_profile
@@ -215,8 +217,10 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
             create_starter_templates(org_id, only=('Purchase Order',))
             templates = sorted(_latest_templates(org_id), key=lambda x: (x.get('name') or '').lower())
             mine, others = _templates_for(org_id, templates, doc_type)
+        carry = {'from_costing': from_costing['id'], 'lines': ','.join(from_costing['lines'])} if from_costing else {}
         link = lambda x: {'name': x.get('name') or 'Template', 'currency': x.get('currency_code'),  # noqa: E731
-                          'href': url('invoices_bp.create_invoice', doc_type=t.key, template_id=x['template_id'], project_id=project['project_id'])}
+                          'href': url('invoices_bp.create_invoice', doc_type=t.key, template_id=x['template_id'], project_id=project['project_id'],
+                                      **carry)}
         return {'step': 'template', 'title': f'New {t.label.lower()}', 'type': {'key': t.key, 'label': t.label},
                 'missing': bool(template_id), 'project': _project(project, url),
                 'kinds': [{'key': k, 'short': DOC_TYPES[k].short, 'icon': DOC_TYPES[k].icon, 'current': k == t.key,
@@ -237,8 +241,37 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
         hint = doc['customer_hints'].get(project['customer_id'])
         if hint:
             doc['values']['tax_mode'] = hint['mode']
-    return _editor(doc, _editor_sections(get_template_fields(template_id)), url, project=project, customers=customers,
+    sections = _editor_sections(get_template_fields(template_id))
+    if from_costing and t.purchase:
+        _fill_lines(sections, _costing_lines(org_id, project, from_costing))
+    return _editor(doc, sections, url, project=project, customers=customers,
                    template_id=template_id, template_name=selected.get('name') or '')
+
+
+def _costing_lines(org_id, project: Dict, from_costing: Dict) -> List[Dict]:
+    """The picked lines of one of the project's costings (costing.purchase_lines); none from another project's."""
+    import costing
+    row = costing.get(from_costing['id'], org_id)
+    if not row or str(row.get('project_id')) != str(project['project_id']):
+        return []
+    return costing.purchase_lines(row, from_costing['lines'])
+
+
+def _fill_lines(sections: Dict, lines: List[Dict]) -> None:
+    """The first line items table's rows, from lines [{description, qty, unit, rate}], into the fields of those names
+    (a price field takes the rate); fields worked out by formula are left to work out."""
+    table = next((s for s in sections.values() if s['type'] == 'line_item'), None)
+    if not table or not lines:
+        return
+    names = {'description': ('description', 'item', 'item_details', 'particulars', 'description_of_goods'), 'qty': ('qty', 'quantity'),
+             'unit': ('unit', 'uom', 'per'), 'rate': ('rate', 'price', 'unit_price', 'rate_unit')}
+    for f in table['fields']:
+        if f.get('calculation_formula'):
+            continue
+        key = next((k for k, options in names.items() if (f.get('field_name') or '').lower() in options), None)
+        if key:
+            kind = 'val_number' if f.get('data_type') == 'number' else 'val_string'
+            f['values'] = {n: {kind: line[key]} for n, line in enumerate(lines, start=1)}
 
 
 def edit_page(org_id: str, header: Dict, correcting: bool, url: Callable) -> Dict:

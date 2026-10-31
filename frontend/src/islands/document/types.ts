@@ -1,3 +1,4 @@
+import type { Receiving } from './Receiving';
 // GET /api/document/<id> (document_page.py): everything a document's page shows.
 import type { Page, Tone } from '../project/types';
 import type { Head } from './DocumentNext';
@@ -64,6 +65,8 @@ export interface DocumentData {
   share: string | null;
   change: Change | null;
   payments: Payments | null;
+  /** A purchase order's: what's arrived (Receiving.tsx). */
+  receiving?: Receiving | null;
   versions_html: string | null;
   document_html: string;
   chain: { kind: string; number: string; pill: { text: string; tone: Tone }; total: number; currency: string; url: string; here: boolean; paid: boolean }[];

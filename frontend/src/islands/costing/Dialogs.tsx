@@ -354,3 +354,44 @@ export function ImportDialog({ open, onClose, url, base, items, onAddItems, onAd
     </Dialog>
   );
 }
+
+// ---------------------------------------------------------------- Buy some of its lines: a purchase order
+
+/** The saved costing's cost lines, ticked to buy from one supplier: the purchase order's editor opens with them (the
+ *  supplier, the rest of the order and the prices are checked there; nothing is saved until it's made). */
+export function PurchaseDialog({ open, onClose, url, items, unsaved }: {
+  open: boolean; onClose: () => void; url: string; unsaved: boolean;
+  items: { key: string; name: string; qty: unknown; lines: Record<keyof Line, unknown>[] }[];
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const toggle = (k: string) => setPicked((now) => { const next = new Set(now); if (next.has(k)) next.delete(k); else next.add(k); return next; });
+  const href = `${url}${url.includes('?') ? '&' : '?'}lines=${encodeURIComponent([...picked].join(','))}`;
+  const withLines = items.filter((i) => i.lines.length);
+  return (
+    <Dialog open={open} onClose={onClose} id="k-purchase" title="Make a purchase order" wide
+            foot={<>
+              <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+              <a className={`btn btn-primary${picked.size ? '' : ' is-disabled'}`} href={picked.size ? href : undefined} aria-disabled={!picked.size}>
+                <Icon name="filePlus" />Open the purchase order{picked.size ? ` (${picked.size} line${picked.size === 1 ? '' : 's'})` : ''}
+              </a>
+            </>}>
+      <p className="form-text" style={{ marginTop: 0 }}>Tick what you buy from one supplier. Each line comes across with its make, its quantity for all the
+        items, its unit and its cost as the rate; you pick the supplier and check it before it's made.{unsaved && <strong> The lines are as last saved: save the costing first to take your changes.</strong>}</p>
+      {withLines.length ? withLines.map((item) => (
+        <fieldset key={item.key} className="k-buy">
+          <legend>{item.name || 'Item'}{stored(item.qty) && ` × ${stored(item.qty)}`}</legend>
+          {item.lines.map((line, n) => {
+            const k = `${item.key}:${n}`;
+            return (
+              <label key={k} className="checkbox">
+                <input type="checkbox" checked={picked.has(k)} onChange={() => toggle(k)} />
+                <span>{stored(line.description) || 'Line'}{stored(line.make) && <span className="text-tertiary"> ({stored(line.make)})</span>}
+                  <span className="text-tertiary"> · {stored(line.qty) || 1}{stored(line.unit) && ` ${stored(line.unit)}`} at {money(Number(line.unit_cost) || 0, 'INR')}</span></span>
+              </label>
+            );
+          })}
+        </fieldset>
+      )) : <p className="muted">This costing has no cost lines to buy yet.</p>}
+    </Dialog>
+  );
+}

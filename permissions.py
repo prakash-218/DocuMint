@@ -243,6 +243,8 @@ ENDPOINTS: Dict[str, Rule] = {
     'invoices_bp.list_invoices': Doc('read'),
     'invoices_bp.export_csv': Doc('read'),                # several at once, from the list
     'invoices_bp.export_zip': Doc('read'),
+    'invoices_bp.add_receipt': 'purchases.write',           # what arrived on a purchase order (only those)
+    'invoices_bp.delete_receipt': 'purchases.write',
     'payments_bp.index': 'invoices.read',                # every payment: what invoices are paid with
     'payments_bp.export_csv': 'invoices.read',
     'suppliers_bp.list_suppliers': 'customers.read',     # suppliers are companies like customers
