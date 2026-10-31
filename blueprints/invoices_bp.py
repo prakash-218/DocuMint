@@ -420,6 +420,66 @@ def export_pdf(invoice_id):
     return redirect(_back(invoice_id))
 
 
+def _exported(ids):
+    """The list's chosen documents (exports.chosen): the organization's own, of the list's kinds."""
+    import document_list
+    import exports
+    docs = db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
+    return exports.chosen(docs, ids, document_list.GROUPS[g.doc_path]['types'])
+
+
+def _attachment(data: bytes, name: str, mimetype: str):
+    response = make_response(data)
+    response.headers['Content-Type'] = mimetype
+    response.headers['Content-Disposition'] = f'attachment; filename="{name}"'
+    return response
+
+
+@invoices_bp.route('/export.csv', methods=['POST'])
+@require_org
+def export_csv():
+    """The chosen documents (ids) as a CSV: a row each, with the taxable value and the GST (exports.documents_csv)."""
+    import exports
+    from access import fetch_invoice
+    from payment_terms import usual_days
+    items = []
+    for d in _exported(request.form.getlist('ids')):
+        header, values = fetch_invoice(d['invoice_id'])
+        payments = db.execute_proc('sp_get_invoice_payments', (d['invoice_id'],)) or []
+        items.append((d, header, invoice_summary(header, build_sections(header, values), payments)))
+    title = {'quotes': 'Quotations', 'proformas': 'Proformas'}.get(g.doc_path, 'Invoices')
+    data = exports.documents_csv(items, usual_days(get_org_profile(g.current_org_id)[1]))
+    return _attachment(data, f'{title}-{date.today().isoformat()}.csv', 'text/csv; charset=utf-8')
+
+
+@invoices_bp.route('/export.zip', methods=['POST'])
+@require_org
+def export_zip():
+    """The chosen documents' PDFs in one ZIP, each as it goes by email (the original copy, sealed); at most
+    exports.MAX_PDFS at a time."""
+    import exports
+    from access import fetch_invoice
+    docs = _exported(request.form.getlist('ids'))
+    if not docs:
+        flash('Choose the documents to download first', 'error')
+        return redirect(url_for('invoices_bp.list_invoices', doc_path=g.doc_path))
+    if len(docs) > exports.MAX_PDFS:
+        flash(f'Up to {exports.MAX_PDFS} PDFs at a time: choose fewer', 'error')
+        return redirect(url_for('invoices_bp.list_invoices', doc_path=g.doc_path))
+
+    def pdf(d):
+        header, values = fetch_invoice(d['invoice_id'])
+        response = render_invoice_pdf(header, values, copies=1)
+        return response.headers['Content-Disposition'].split('filename="')[1].rstrip('"'), response.get_data()
+    try:
+        data = exports.pdfs_zip(docs, pdf)
+    except PdfUnavailable:
+        flash('PDF export is not available on this server', 'error')
+        return redirect(url_for('invoices_bp.list_invoices', doc_path=g.doc_path))
+    title = {'quotes': 'Quotations', 'proformas': 'Proformas'}.get(g.doc_path, 'Invoices')
+    return _attachment(data, f'{title}-{date.today().isoformat()}.zip', 'application/zip')
+
+
 @invoices_bp.route('/<invoice_id>/finalize', methods=['POST'])
 @require_org
 def finalize_invoice(invoice_id):

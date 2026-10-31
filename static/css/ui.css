@@ -226,6 +226,15 @@
 .ui .rr { border-top: 1px solid var(--line); color: inherit; text-decoration: none; }
 .ui a.rr:hover { background: var(--page); text-decoration: none; }
 .ui .rr .c-main { min-width: 0; }
+.ui .rr.picking { cursor: pointer; }
+.ui .rr.picking input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
+/* Several chosen, and what to do with them (the prototype's bulk bar) */
+.ui .bulkbar { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--ink); color: var(--page);
+               border-radius: 8px; padding: 8px 12px; font-size: 13.5px;
+               position: sticky; top: 72px; z-index: 5; }       /* under the app's header, while you tick rows further down */
+.ui .bulkbar .spacer { flex: 1; }
+.ui .bulkbar .btn { background: transparent; color: var(--page); border: 1px solid rgba(255, 255, 255, .3); }
+.ui .bulkbar .btn:disabled { opacity: .5; }
 .ui .rr .c-title { font-weight: 500; overflow-wrap: anywhere; }
 .ui .rr .c-sub { color: var(--ink-3); font-size: 12.5px; overflow-wrap: anywhere; }
 .ui .rr .c-num { font-family: var(--mono); font-size: 13.5px; text-align: right; white-space: nowrap; }

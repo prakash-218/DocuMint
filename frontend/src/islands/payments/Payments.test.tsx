@@ -15,6 +15,7 @@ function row(id: string, over: Partial<PaymentRow> = {}): PaymentRow {
 const DATA: PaymentList = {
   title: 'Payments',
   tabs: [{ key: 'all', label: 'All' }, { key: 'advance', label: 'Advances' }, { key: 'invoice', label: 'Against invoices' }],
+  export: '/payments/export.csv',
   rows: [
     row('58'),
     row('12', { tab: 'advance', note: 'Advance on TF/PI/012/26-27', amount: 20000, method: 'UPI', reference: '',

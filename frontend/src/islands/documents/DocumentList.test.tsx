@@ -23,6 +23,7 @@ const INVOICES: DocList = {
                        customer: { id: 'C-2', name: 'Axle Works', site: null } }),
   ],
   new_url: '/invoices/create?doc_type=invoice', new_label: 'New invoice',
+  exports: { csv: '/invoices/export.csv', zip: '/invoices/export.zip' },
 };
 
 function serve(data: DocList) {
@@ -73,6 +74,31 @@ describe('DocumentList', () => {
     await pick(screen.getByLabelText('Financial year'), 'All years');
     await pick(screen.getByLabelText('Customer'), /Gear Cutters/);
     expect(numbers()).toEqual(['058', '057']);
+  });
+
+  it('chooses documents, then downloads their PDFs or a CSV of them', async () => {
+    serve(INVOICES);
+    const posted: { action: string; ids: string[] }[] = [];
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+      posted.push({ action: this.getAttribute('action')!, ids: [...new FormData(this).getAll('ids')] as string[] });
+    });
+    render(<DocumentList group="invoices" />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Export CSV' }));          // what's shown, without choosing
+    expect(posted.at(-1)).toEqual({ action: '/invoices/export.csv', ids: ['58', '57', '56'] });
+    await userEvent.click(screen.getByRole('button', { name: 'Select' }));
+    expect(screen.queryByRole('link', { name: /058/ })).toBeNull();                              // rows are choices now, not links
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Choose 058' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Choose 056' }));
+    const bar = screen.getByRole('region', { name: 'Chosen documents' });
+    expect(bar).toHaveTextContent('2 selected');
+    await userEvent.click(within(bar).getByRole('button', { name: 'Download PDFs' }));
+    expect(posted.at(-1)).toEqual({ action: '/invoices/export.zip', ids: ['58', '56'] });
+    await userEvent.click(within(bar).getByRole('button', { name: 'Select all 3' }));
+    await userEvent.click(within(bar).getByRole('button', { name: 'Export CSV' }));
+    expect(posted.at(-1)?.ids).toEqual(['58', '57', '56']);
+    await userEvent.click(within(bar).getByRole('button', { name: 'Done' }));
+    expect(screen.getByText('058').closest('a')).toHaveAttribute('href', '/invoices/D-58');
+    submit.mockRestore();
   });
 
   it('says so when nothing matches', async () => {

@@ -58,4 +58,4 @@ def build(payments: List[Dict], docs: List[Dict], url: Callable) -> Dict:
     """Everything the payments screen draws."""
     import project_view
     return project_view._plain({'title': 'Payments', 'tabs': [{'key': k, 'label': label} for k, label in TABS],
-                                'rows': rows(payments, docs, url)})
+                                'rows': rows(payments, docs, url), 'export': url('payments_bp.export_csv')})
