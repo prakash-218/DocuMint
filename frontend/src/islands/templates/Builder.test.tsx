@@ -59,7 +59,7 @@ describe('the template builder', () => {
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Totals › Total']);
     await userEvent.click(screen.getAllByRole('button', { name: 'Remove section' })[1]);
     expect(total).toHaveValue('');
-    expect(total).toHaveAttribute('placeholder', 'Add a number field to a fields section');
+    expect(total).toHaveAttribute('placeholder', 'No number fields in a fields section');
   });
 
   it('comes back with what was sent when the save is turned down', () => {

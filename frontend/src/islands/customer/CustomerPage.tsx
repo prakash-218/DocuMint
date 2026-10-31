@@ -217,7 +217,7 @@ function Overview({ data }: { data: CustomerData }) {
                 <div className="c-sub">{[s.tax_id || 'No GSTIN', s.archived && 'Archived'].filter(Boolean).join(' · ')}</div></div>
               <div className="c-date">{s.documents} document{s.documents === 1 ? '' : 's'}</div>
             </a>
-          )) : <div className="card-b muted">Plants, branches or sister companies billed separately go here.</div>}
+          )) : <div className="card-b muted">No sites yet.</div>}
         </section>
       )}
 
@@ -231,7 +231,7 @@ function Overview({ data }: { data: CustomerData }) {
             <div><dt>GSTIN</dt><dd className="mono">{c.tax_id || '—'}</dd></div>
             {c.address.length > 0 && <div><dt>Address</dt><dd>{c.address.join('\n')}</dd></div>}
             {c.email_domains && <div><dt>Email domains</dt><dd>{c.email_domains}</dd></div>}
-            <div><dt>Payment terms</dt><dd>{c.payment_terms || 'Not set: invoices count as due only when they have a due date'}</dd></div>
+            <div><dt>Payment terms</dt><dd>{c.payment_terms || 'Not set'}</dd></div>
             {c.custom.map((f) => <div key={f.label}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}
           </dl>
           {data.portal && <Portal portal={data.portal} />}
@@ -302,8 +302,7 @@ function Files({ data, onSave }: { data: CustomerData; onSave: (fileId: string, 
         <form className="drop" data-dropzone method="post" action={upload.action} encType="multipart/form-data" style={{ marginBottom: 12 }}>
           <input type="hidden" name="customer_id" value={data.customer.id} />
           <input id="cp-file" type="file" name="file" multiple accept={ACCEPT} className="sr-only" />
-          <span data-drop-label>Drop files for {data.customer.site || data.customer.name} here or <label htmlFor="cp-file" className="linkish">choose files</label>.
-            They go in no project; move them into one from their tag.</span>
+          <span data-drop-label>Drop files for {data.customer.site || data.customer.name} here or <label htmlFor="cp-file" className="linkish">choose files</label></span>
         </form>
       )}
       {!data.files.length && <div className="rows"><p className="empty-rows" style={{ borderTop: 0 }}>No files yet.</p></div>}
@@ -358,10 +357,11 @@ function Portal({ portal }: { portal: NonNullable<CustomerData['portal']> }) {
   if (!portal.create) return null;
   return open ? (
     <form method="post" action={portal.create} className="stack-form" style={{ marginTop: 12, maxWidth: 360 }}>
-      <label htmlFor="cp-portal-email" className="form-label">Their email, to sign in to the customer portal</label>
+      <label htmlFor="cp-portal-email" className="form-label">Portal email</label>
       <input id="cp-portal-email" type="email" name="email" className="form-input" required />
-      <label htmlFor="cp-portal-password" className="form-label">A password for them <span className="muted">(8 characters or more)</span></label>
-      <input id="cp-portal-password" type="password" name="password" className="form-input" required minLength={8} autoComplete="new-password" />
+      <label htmlFor="cp-portal-password" className="form-label">Password</label>
+      <input id="cp-portal-password" type="password" name="password" className="form-input" required minLength={8} autoComplete="new-password"
+             placeholder="8 characters or more" />
       <div className="form-actions-row">
         <button type="submit" className="btn btn-primary btn-xs">Give portal access</button>
         <button type="button" className="btn btn-ghost btn-xs" onClick={() => setOpen(false)}>Cancel</button>

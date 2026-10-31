@@ -38,7 +38,7 @@ export function ProjectStep({ data }: { data: ProjectData }) {
                 <div className="pp-bar">
                   <div className="search-input pp-search">
                     <Icon name="search" />
-                    <input type="search" className="form-input pp-query" placeholder="Search projects by name, number or customer" autoComplete="off"
+                    <input type="search" className="form-input pp-query" placeholder="Search projects" autoComplete="off"
                            aria-label="Search projects" value={query} onChange={(e) => setQuery(e.target.value)} />
                   </div>
                 </div>
@@ -73,7 +73,7 @@ export function ProjectStep({ data }: { data: ProjectData }) {
                 <input type="text" id="np-title" name="title" className="form-input" required maxLength={200} placeholder="Drill jig for bracket" />
               </div>
             </div>
-            {data.new_project.add_customer && <p className="form-text"><a href={data.new_project.add_customer}>Add a customer</a> first.</p>}
+            {data.new_project.add_customer && <p className="form-text">No customers yet. <a href={data.new_project.add_customer}>Add a customer</a></p>}
             <button type="submit" className="btn btn-primary">Create project and continue</button>
           </form>
         </section>
@@ -120,7 +120,6 @@ export function TemplateStep({ data }: { data: TemplateData }) {
           ) : (
             <div className="empty-state">
               <h3>No templates yet</h3>
-              <p>Add the ready-made templates from Settings, or build your own.</p>
               <a href={data.templates_page} className="btn btn-primary">Templates</a>
             </div>
           )}

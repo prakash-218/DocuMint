@@ -20,7 +20,6 @@ function DiscountInput({ id, name, label, value, onChange, placeholder }: {
   return (
     <input type="text" inputMode="decimal" id={id} name={name} value={value} aria-label={label} placeholder={placeholder} autoComplete="off"
            className={`form-input discount-input${invalid ? ' is-invalid' : ''}`} aria-invalid={invalid || undefined}
-           title="An amount, like 5000, or a percent, like 10%"
            ref={(el) => el?.setCustomValidity(invalid ? 'Type an amount, like 5000, or a percent, like 10%.' : '')}
            onChange={(e) => onChange(e.target.value)} />
   );
@@ -254,9 +253,7 @@ export function Editor({ data }: { data: EditorData }) {
         {Object.entries(data.hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
         {data.correcting && (
           <div className="alert alert-warning">
-            <span>You're correcting a {t.label.toLowerCase()} that was {t.sent_word}. It keeps its number and
-              status{t.takes_payments ? '; if the total changes, paid / pending follows the payments recorded' : ''}. The correction is
-              recorded in the audit log. Download the PDF again afterwards and send the corrected one.</span>
+            <span>You're correcting a {t.label.toLowerCase()} that was {t.sent_word}.</span>
           </div>
         )}
         <div className="invoice-layout editor-layout">
@@ -276,7 +273,7 @@ export function Editor({ data }: { data: EditorData }) {
                                 data={customerChoices(data.customer.groups)}
                                 onChange={(v) => { setCustomerId(v); if (data.tax_hints[v]) setTaxMode(data.tax_hints[v].mode); }} />
                     )}
-                    {data.customer.add && <p className="form-text">No suppliers yet. <a href={data.customer.add}>Add a supplier</a>, then come back.</p>}
+                    {data.customer.add && <p className="form-text">No suppliers yet. <a href={data.customer.add}>Add a supplier</a></p>}
                   </div>
                   <div className="form-group">
                     <label htmlFor="doc_number" className="form-label">Number</label>
@@ -333,8 +330,7 @@ export function Editor({ data }: { data: EditorData }) {
                 </div>
                 <div className="form-group">
                   <label htmlFor="discount" className="form-label">Discount on the total</label>
-                  <DiscountInput id="discount" name="discount" value={discount} onChange={setDiscount} placeholder="None" />
-                  <p className="form-text">An amount (5000) or a percent (10%), taken off before tax.</p>
+                  <DiscountInput id="discount" name="discount" value={discount} onChange={setDiscount} placeholder="5000 or 10%" />
                 </div>
                 <div className="form-group">
                   <label htmlFor="tax_mode" className="form-label">Tax</label>

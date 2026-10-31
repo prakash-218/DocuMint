@@ -45,7 +45,7 @@ def test_a_sent_quotation_waits_then_is_followed_up():
     assert fresh['actions'][3] == {'label': 'Revise', 'kind': 'dialog', 'dialog': 'change-dialog', 'primary': False}
 
     old = look(doc('quote', 'sent', issue='2026-09-30'))
-    assert old['tone'] == 'action' and old['sub'] == 'No answer for 20 days. Time to follow it up.'
+    assert old['tone'] == 'action' and old['sub'] == 'No answer for 20 days.'
     assert labels(old) == ['Mark accepted', 'Send a follow-up*', 'Mark declined', 'Revise']
     assert old['actions'][1]['kind'] == 'email' and old['actions'][1]['invoice_id'] == 'D-1'
 
@@ -59,7 +59,7 @@ def test_an_accepted_quotation_is_taken_forward():
     assert nxt['actions'][0]['fields'] == {'target': 'proforma', 'template_id': 'T-PRO'}
     assert nxt['actions'][2]['fields'] == {'status': 'sent'}
     sales = look(doc('quote', 'accepted'), can={'edit': True, 'sales': True})
-    assert labels(sales) == ['Undo: not answered yet'] and 'office' in sales['sub']
+    assert labels(sales) == ['Undo: not answered yet'] and sales['sub'] == ''
     assert states(doc('quote', 'accepted'))[2:] == [('answer', 'done', ''), ('forward', 'now', 'Proforma or invoice')]
 
 

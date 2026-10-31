@@ -17,10 +17,10 @@ describe('the pages outside the app', () => {
     expect(screen.getByRole('link', { name: 'Open the customer portal' })).toHaveAttribute('href', '/customer/login');
   });
 
-  it('has no sign-up form: it says to ask for an invite, Gmail too', () => {
+  it('has no sign-up form: it says to ask for an invite', () => {
     render(<Public screen="invite_only" props={{ login: '/auth/login', forgot: '/auth/forgot' }} />);
     expect(posted()).toEqual([]);
-    expect(screen.getByText(/ask its owner or an admin to invite you/)).toHaveTextContent('Gmail too');
+    expect(screen.getByText("Ask your company's owner or an admin to invite you.")).toBeInTheDocument();
   });
 
   it('accepts an invite with a new password', () => {
@@ -51,12 +51,12 @@ describe('the pages outside the app', () => {
     expect(posted()).toEqual([]);
   });
 
-  it('asks for the address to email a reset link to, then says what to do if none comes', () => {
+  it('asks for the address to email a reset link to, then says one is on its way', () => {
     const { unmount } = render(<Public screen="forgot" props={{ action: '/auth/forgot', sent: false, login: '/auth/login' }} />);
     expect(posted()).toEqual([{ method: 'post', action: '/auth/forgot', fields: { email: '' } }]);
     unmount();
     render(<Public screen="forgot" props={{ action: '/auth/forgot', sent: true, login: '/auth/login' }} />);
-    expect(screen.getByText(/can make you a reset link from Settings/)).toBeInTheDocument();
+    expect(screen.getByText(/a link to set a new password is on its way/)).toBeInTheDocument();
   });
 
   it('sets a new password from a reset link', () => {

@@ -174,7 +174,8 @@ export function BuilderForm({ data }: { data: Data }) {
                                       data={asChoices(data.field_types)} />
                           </td>
                           <td data-label="Formula" className="formula-cell">
-                            <input type="text" name={`${q}formula`} value={f.formula} className="form-input field-formula" placeholder="—" aria-label="Formula"
+                            <input type="text" name={`${q}formula`} value={f.formula} className="form-input field-formula"
+                                   placeholder={!number ? '—' : s.type === 'line_item' ? 'this.rate * this.qty' : 'SUM(items.amount)'} aria-label="Formula"
                                    spellCheck={false} disabled={!number} onChange={(e) => setField(s.i, f.j, { formula: e.target.value })} />
                           </td>
                           <td data-label="Money" className="center">
@@ -206,11 +207,7 @@ export function BuilderForm({ data }: { data: Data }) {
             <div className="form-group">
               <label htmlFor="total" className="form-label">Document total</label>
               <Dropdown id="total" name="total" value={chosen} onChange={setTotal} data={asChoices(choices)}
-                        placeholder="Add a number field to a fields section" />
-            </div>
-            <div className="form-group">
-              <span className="form-label">Formulas</span>
-              <p className="form-text" style={{ margin: '6px 0 0' }}><code>this.rate * this.qty</code> on a line · <code>SUM(items.amount)</code> for a column total</p>
+                        placeholder="No number fields in a fields section" />
             </div>
           </div>
         </section>

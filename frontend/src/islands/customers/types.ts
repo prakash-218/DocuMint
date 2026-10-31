@@ -36,7 +36,8 @@ export interface CustomerForm {
   site_count: number;       // its sites: then it can't be a site itself
   parents: { id: string; name: string }[];
   domains_help: string;
-  payment_help: string;
+  /** What an empty payment terms field means for them, as its placeholder: '30 days (your usual)' */
+  payment_empty: string;
   custom: { key: string; label: string; value: string }[];
   /** A GSTIN's first two digits → the state it's registered in ('33' → Tamil Nadu). */
   gst_states: Record<string, string>;

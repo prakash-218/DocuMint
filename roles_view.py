@@ -26,7 +26,7 @@ def _custom(row: Dict) -> Dict:
 
 
 def listing(org_id, perms, url: Callable) -> Dict:
-    """The built-in roles (what each may do, who has it) and the organization's own, each editable by someone whose
+    """The built-in roles (how many permissions, who has it) and the organization's own, each editable by someone whose
     permissions cover it."""
     import permissions as P
     from db import db
@@ -35,7 +35,7 @@ def listing(org_id, perms, url: Callable) -> Dict:
     own = db.execute_proc('sp_list_roles', (org_id,)) or []
     return {
         'title': 'Roles',
-        'built_in': [{'key': r, 'name': P.ROLE_LABELS[r], 'summary': P.ROLE_SUMMARIES[r], 'members': counts.get(r, 0),
+        'built_in': [{'key': r, 'name': P.ROLE_LABELS[r], 'members': counts.get(r, 0),
                       'permissions': len(P.ROLES[r]),
                       'copy': url('settings_bp.new_role', **{'from': r}) if r != 'owner' else None}
                      for r in BUILT_IN],

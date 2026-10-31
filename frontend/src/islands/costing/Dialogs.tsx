@@ -140,7 +140,6 @@ export function CopyDialog({ open, onClose, library, itemsUrl, self, onAdd }: {
               </li>
             ))}
           </ul>
-          <p className="form-text">Each item comes with its cost lines. Shared costs stay behind.</p>
         </div>
       )}
     </Dialog>
@@ -287,7 +286,6 @@ export function ImportDialog({ open, onClose, url, base, items, onAddItems, onAd
             <input ref={input} type="file" accept=".xlsx,.xlsm,.csv" aria-label="Workbook" onChange={(e) => read(e.target.files?.[0])} />
             <Icon name="upload" size={28} />
             <span><strong>Choose a workbook</strong> (.xlsx or .csv)</span>
-            <span className="text-tertiary">It's read to pick the rows from; the file isn't kept.</span>
           </label>
           {error && <p className="form-text k-error" role="alert">{error}</p>}
         </div>
@@ -348,7 +346,7 @@ export function ImportDialog({ open, onClose, url, base, items, onAddItems, onAd
           </div>
           <p className="form-text">{n
             ? `${n} ${n === 1 ? 'row' : 'rows'} to add${n > 8 ? ' (the first 8 are shown)' : ''}${got.skipped ? `. ${got.skipped} skipped: totals, or no amount.` : '.'}`
-            : 'No rows with an item and an amount under that heading row. Check the sheet, the heading row and the columns.'}</p>
+            : 'No rows with an item and an amount under that heading row.'}</p>
         </div>
       )}
     </Dialog>
@@ -375,8 +373,7 @@ export function PurchaseDialog({ open, onClose, url, items, unsaved }: {
                 <Icon name="filePlus" />Open the purchase order{picked.size ? ` (${picked.size} line${picked.size === 1 ? '' : 's'})` : ''}
               </a>
             </>}>
-      <p className="form-text" style={{ marginTop: 0 }}>Tick what you buy from one supplier. Each line comes across with its make, its quantity for all the
-        items, its unit and its cost as the rate; you pick the supplier and check it before it's made.{unsaved && <strong> The lines are as last saved: save the costing first to take your changes.</strong>}</p>
+      {unsaved && <p className="form-text" style={{ marginTop: 0 }}><strong>Unsaved changes aren't included. Save the costing first.</strong></p>}
       {withLines.length ? withLines.map((item) => (
         <fieldset key={item.key} className="k-buy">
           <legend>{item.name || 'Item'}{stored(item.qty) && ` × ${stored(item.qty)}`}</legend>

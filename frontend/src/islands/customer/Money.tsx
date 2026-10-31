@@ -31,7 +31,7 @@ export function Statement({ accounts, links = {} }: { accounts: Account[]; links
   return (
     <>
       <div className="toolbar">
-        <span className="muted">{fy ? `FY ${fy}` : 'Every year'}, as of {day(new Date().toISOString())}. Proformas aren't on a statement until paid.</span>
+        <span className="muted">{fy ? `FY ${fy}` : 'Every year'}, as of {day(new Date().toISOString())}</span>
         <span style={{ flex: 1 }} />
         {accounts.length > 1 && (
           <>
@@ -75,7 +75,7 @@ export function Statement({ accounts, links = {} }: { accounts: Account[]; links
             ))}
           </tbody>
           <tfoot>
-            <tr><td /><td>{closing < -0.005 ? 'Paid ahead (an advance not on an invoice yet)' : 'Balance due'}</td><td /><td />
+            <tr><td /><td>{closing < -0.005 ? 'Paid ahead' : 'Balance due'}</td><td /><td />
               <td className="r">{money(closing, cur)}</td></tr>
           </tfoot>
         </table>

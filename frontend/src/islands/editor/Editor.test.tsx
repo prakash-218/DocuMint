@@ -155,12 +155,12 @@ describe('Editor', () => {
     expect(screen.getByText('Discount (5%)').nextElementSibling).toHaveTextContent('-₹112.50');
   });
 
-  it('says what correcting a sent document means, and keeps it from being renumbered by accident', () => {
+  it('says it is correcting a sent document, and keeps it from being renumbered by accident', () => {
     render(<Editor data={{ ...DATA, correcting: true, editing: true, title: 'Correct TF/INV/007', submit: 'Save the correction',
                            type: { ...DATA.type, label: 'Tax Invoice', key: 'invoice', sent_word: 'finalized', takes_payments: true },
                            customer: { fixed: { id: null, name: 'Gear Cutters Ltd' }, groups: [] },
                            hidden: { doc_type: 'invoice', suggested_number: '', correct: '1' }, number: { value: 'TF/INV/007', required: true } }} />);
-    expect(screen.getByText(/You're correcting a tax invoice that was finalized/)).toHaveTextContent('paid / pending follows the payments');
+    expect(screen.getByText("You're correcting a tax invoice that was finalized.")).toBeInTheDocument();
     expect(screen.getByLabelText('Number')).toBeRequired();
     expect(posted()).toMatchObject({ correct: '1', doc_number: 'TF/INV/007' });
     expect(posted()).not.toHaveProperty('customer_id');

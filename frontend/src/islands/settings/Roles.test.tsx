@@ -98,8 +98,8 @@ describe('a role of your own', () => {
 describe('the roles page', () => {
   const LISTING: Listing = {
     title: 'Roles',
-    built_in: [{ key: 'owner', name: 'Owner', summary: 'Everything', members: 1, permissions: 33, copy: null },
-               { key: 'member', name: 'Member', summary: 'Every document', members: 3, permissions: 16, copy: '/settings/roles/new?from=member' }],
+    built_in: [{ key: 'owner', name: 'Owner', members: 1, permissions: 33, copy: null },
+               { key: 'member', name: 'Member', members: 3, permissions: 16, copy: '/settings/roles/new?from=member' }],
     custom: [{ id: 'R-1', name: 'Estimator', description: 'Prices jobs', members: 1, permissions: 4, url: '/settings/roles/R-1', editable: true }],
     new: '/settings/roles/new',
     back: '/settings/',
@@ -111,6 +111,7 @@ describe('the roles page', () => {
     expect(screen.getByText('Prices jobs · 4 permissions · 1 person')).toBeInTheDocument();
     const builtIn = screen.getByRole('heading', { name: 'Built-in roles' }).closest('section') as HTMLElement;
     expect(within(builtIn).getAllByRole('link', { name: 'Copy' })).toHaveLength(1);         // not the owner
+    expect(within(builtIn).getByText('16 permissions · 3 people')).toBeInTheDocument();
   });
 
   it('says how to start when there are none of your own', () => {

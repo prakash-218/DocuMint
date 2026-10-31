@@ -96,8 +96,8 @@ function Overview({ data }: { data: Data }) {
                     {data.layout && <a href={data.layout} className="btn btn-secondary"><Icon name="file" /><span className="btn-label">Pages &amp; printing</span></a>}
                     {data.edit && <a href={data.edit} className="btn btn-secondary"><Icon name="pencil" /><span className="btn-label">Edit fields</span></a>}
                   </>} />
-      {data.archived && <div className="alert alert-warning"><span>This template is archived. Existing documents still use it, but it can't be picked for new ones.</span></div>}
-      {data.broken > 0 && <div className="alert alert-error"><span>{data.broken} formula{data.broken === 1 ? '' : 's'} won't calculate. See the Formulas panel.</span></div>}
+      {data.archived && <div className="alert alert-warning"><span>This template is archived.</span></div>}
+      {data.broken > 0 && <div className="alert alert-error"><span>{data.broken} formula{data.broken === 1 ? '' : 's'} won't calculate.</span></div>}
       <div className="invoice-layout">
         <div>
           <article className="card">
@@ -105,7 +105,6 @@ function Overview({ data }: { data: Data }) {
             <div className="card-body">
               {data.preview.length ? data.preview.map((s) => <Section key={s.title} s={s} />)
                 : <p className="text-tertiary">This template has no fields yet.</p>}
-              {data.breakups && <p className="form-text" style={{ marginTop: 0 }}>Cost break-up lines explain an item's price and are never added to the total.</p>}
             </div>
           </article>
         </div>
@@ -128,7 +127,7 @@ function Overview({ data }: { data: Data }) {
                   ))}
                 </ul>
               ) : <p className="text-tertiary" style={{ margin: 0 }}>No calculated fields.</p>}
-              {data.no_total && <p className="form-text" style={{ color: 'var(--warning-ink)' }}>No document total selected. Choose one in Edit.</p>}
+              {data.no_total && <p className="form-text" style={{ color: 'var(--warning-ink)' }}>No document total selected.</p>}
             </div>
           </div>
 

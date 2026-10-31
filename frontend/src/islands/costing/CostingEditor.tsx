@@ -194,8 +194,7 @@ export function CostingEditor({ data }: { data: CostingData }) {
   return (
     <>
       <PageHeader title={data.title} heading
-                  description={<><a href={c.project.url}>{c.project.label} · {c.project.title}</a> · {c.customer} ·{' '}
-                    <span className="text-tertiary">Only owners and admins see costings</span></>} />
+                  description={<><a href={c.project.url}>{c.project.label} · {c.project.title}</a> · {c.customer}</>} />
       <form method="post" action={data.urls.save} className="k-form" data-mode={settings.mode} data-foreign={String(foreign)}>
         <input type="hidden" name="sheet_json" value={JSON.stringify(sheet)} />
         <div className="k-top">
@@ -204,7 +203,6 @@ export function CostingEditor({ data }: { data: CostingData }) {
               <div className="form-group">
                 <label htmlFor="title" className="form-label">Costing for</label>
                 <input type="text" id="title" name="title" className="form-input" defaultValue={c.title} maxLength={200} required />
-                <p className="form-text">Becomes the quote's subject.</p>
               </div>
               <div className="form-group">
                 <span className="form-label">How are you pricing this?</span>
@@ -221,7 +219,7 @@ export function CostingEditor({ data }: { data: CostingData }) {
                 <div className="form-group k-target-only">
                   <label htmlFor="target_total" className="form-label">Known total</label>
                   <input type="number" step="any" id="target_total" name="target_total" className="form-input" value={settings.target_total}
-                         onChange={(e) => set({ target_total: e.target.value })} placeholder="What the customer will pay" />
+                         onChange={(e) => set({ target_total: e.target.value })} />
                 </div>
                 <div className="form-group">
                   <label htmlFor="profit_percent" className="form-label">Profit on cost, %</label>
@@ -243,9 +241,6 @@ export function CostingEditor({ data }: { data: CostingData }) {
                          onChange={(e) => set({ exchange_rate: e.target.value })} placeholder="e.g. 84" />
                 </div>
               </div>
-              <p className="form-text k-fx-only">Costs stay in {base}; prices, profit and the quote are in {cur} at this rate.</p>
-              <p className="form-text k-build-only" style={{ marginBottom: 0 }}>Each item's price is its cost plus the profit (an item can have its own %). Type a price to set one yourself.</p>
-              <p className="form-text k-target-only" style={{ marginBottom: 0 }}>The known total is shared over the items by their cost; the cost budget is what's left after your profit. Type a price to fix one item's share.</p>
             </div>
           </section>
 
@@ -266,7 +261,7 @@ export function CostingEditor({ data }: { data: CostingData }) {
                 <dt /><dd className="text-tertiary k-pcts">{pct(t.profit_on_cost)}% on cost · {pct(t.margin_of_price)}% of price</dd>
                 <dt className="grand">Quote total</dt><dd className="grand">{money(t.price, cur)}</dd>
               </dl>
-              {result.needs_rate && <p className="form-text k-needs-rate">Enter the exchange rate: until then the costs count as if they were in {cur}.</p>}
+              {result.needs_rate && <p className="form-text k-needs-rate">No exchange rate yet: the costs count as {cur}.</p>}
               {t.off_target ? <p className="form-text k-off">Rounding leaves the total {money(t.off_target, cur)} off the known total.</p> : null}
               <p className="form-text k-status" aria-live="polite">{problem}</p>
               <button type="submit" name="action" value="save" className="btn btn-primary btn-block"><Icon name="check" />Save costing</button>
@@ -277,7 +272,6 @@ export function CostingEditor({ data }: { data: CostingData }) {
         <section className="card items-card">
           <div className="card-header">
             <h2 className="card-title">Items</h2>
-            <span className="text-tertiary">Cost lines stay here; the quote gets the items and prices. Costs in {base}.</span>
             <a href={data.urls.rates} className="btn btn-ghost btn-sm k-rates-link"><Icon name="note" />Rates list</a>
           </div>
           <div className="items-wrap">
@@ -298,7 +292,7 @@ export function CostingEditor({ data }: { data: CostingData }) {
                     <tr className="k-item-row">
                       <td className="col-no" data-label="#"><span className="row-no">{i + 1}</span></td>
                       <td className="long" data-label="Item">
-                        <input type="text" className="form-input k-name" value={it.name} placeholder="What the customer sees on the quote" aria-label="Item"
+                        <input type="text" className="form-input k-name" value={it.name} placeholder="Item name" aria-label="Item"
                                onChange={(e) => setItem(it.key, { name: e.target.value })} />
                         <textarea rows={1} className="form-textarea line-text k-desc" value={it.description} placeholder="Description (optional)" aria-label="Description"
                                   ref={grow} onChange={(e) => { setItem(it.key, { description: e.target.value }); grow(e.target); }} />
@@ -308,7 +302,7 @@ export function CostingEditor({ data }: { data: CostingData }) {
                       <td className="short" data-label="Unit"><input type="text" className="form-input" value={it.unit} aria-label="Unit"
                                                                      onChange={(e) => setItem(it.key, { unit: e.target.value })} /></td>
                       <td className="short num" data-label="Cost / unit">
-                        {it.lines.length ? <output className="k-cost-out" title="The total of the cost lines">{money(r?.own_cost_each, base)}</output>
+                        {it.lines.length ? <output className="k-cost-out">{money(r?.own_cost_each, base)}</output>
                           : <input type="number" step="any" className="form-input k-cost-input" value={it.cost_each} aria-label="Cost per unit"
                                    onChange={(e) => setItem(it.key, { cost_each: e.target.value })} />}
                         {r?.shared_each ? <span className="k-sub k-shared-sub">+ {money(r.shared_each, base)} shared</span> : null}
@@ -319,7 +313,7 @@ export function CostingEditor({ data }: { data: CostingData }) {
                       </td>
                       <td className="short num" data-label="Price / unit">
                         <input type="number" step="any" className="form-input k-price" value={it.price_each} placeholder={plain(r?.price)}
-                               aria-label="Price per unit (leave empty to work it out)" title="Type a price to set it; clear it to work it out again"
+                               aria-label="Price per unit (leave empty to work it out)"
                                onChange={(e) => setItem(it.key, { price_each: e.target.value })} />
                       </td>
                       <td className="calc num" data-label="Amount"><output>{r ? money(r.amount, result.currency) : '—'}</output></td>
@@ -393,7 +387,6 @@ export function CostingEditor({ data }: { data: CostingData }) {
         <section className="card items-card k-shared-card">
           <div className="card-header">
             <h2 className="card-title">Shared costs</h2>
-            <span className="text-tertiary">Design, freight, a reference station, an allowance for changes: spread over the items, so their prices carry them.</span>
           </div>
           <div className="items-wrap">
             <table className="items-editor k-shared" hidden={!shared.length}>
@@ -471,9 +464,8 @@ export function CostingEditor({ data }: { data: CostingData }) {
               {c.quote ? (
                 <>
                   <p style={{ marginTop: 0 }}><a href={c.quote.url}>{c.quote.number}</a> · {c.quote.status}</p>
-                  {c.quote.status === 'draft'
-                    ? <button type="submit" name="action" value="update_quote" className="btn btn-secondary btn-block"><Icon name="refresh" />Update the quote's prices</button>
-                    : <p className="form-text">The quote has gone out, so it stays as it is. To requote, start a new version.</p>}
+                  {c.quote.status === 'draft' && (
+                    <button type="submit" name="action" value="update_quote" className="btn btn-secondary btn-block"><Icon name="refresh" />Update the quote's prices</button>)}
                   <details className="fold"><summary>Make another quote</summary><MakeQuote data={data} primary={false} /></details>
                 </>
               ) : <MakeQuote data={data} primary />}
@@ -494,7 +486,6 @@ export function CostingEditor({ data }: { data: CostingData }) {
             )}
             <div className="card-body">
               <button type="submit" form="k-new-version" className="btn btn-secondary btn-block"><Icon name="plus" />Start a new version from this</button>
-              <p className="form-text">Save first: the new version copies what's saved.</p>
               <button type="submit" form="k-delete" className="btn btn-ghost btn-block"><Icon name="trash" />Delete this version</button>
             </div>
           </section>
@@ -534,7 +525,6 @@ function MakeQuote({ data, primary }: { data: CostingData; primary: boolean }) {
                   data={data.templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))} />
       </div>
       <button type="submit" name="action" value="quote" className={`btn btn-${primary ? 'primary' : 'secondary'} btn-block`}><Icon name="file" />Save and make the quote</button>
-      <p className="form-text" style={{ marginBottom: 0 }}>A draft quotation with these items and prices; the costs stay here.</p>
     </>
   );
 }

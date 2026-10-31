@@ -124,12 +124,11 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
     if status == 'draft':
         finish = 'Mark as sent' if kind.sent_status == 'sent' else 'Finalize'
         out.update(text=f'{kind.label} {number} is a draft.',
-                   sub="Check it, then finalize it. It can't be edited afterwards; changes go into a revision.",
                    actions=[_post(finish, url('invoices_bp.finalize_invoice', invoice_id=doc_id), primary=True,
                                   confirm=f'{finish} {number}? It can\'t be edited afterwards.'),
                             _link('Edit', url('invoices_bp.edit_invoice', invoice_id=doc_id))])
     elif status == 'revised':
-        out.update(tone='draft', text=f'{number} was revised.', sub='The newest revision is the one to send or convert.')
+        out.update(tone='draft', text=f'{number} was revised.')
     elif kind.purchase:
         supplier = doc.get('customer_name') or 'the supplier'
         lines = (received or {}).get('lines') or []
@@ -138,7 +137,6 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
         record = _link('Record what arrived', '#receiving')
         if status == 'sent':
             out.update(tone='wait', text=f'Sent to {supplier}' + (f' on {sent_on}.' if sent_on else '.'),
-                       sub='When they confirm it, mark it confirmed.',
                        actions=[status_to('Mark confirmed', 'confirmed', True), record, *email('Email the supplier'),
                                 status_to('Cancel the order', 'cancelled', confirm=f'Cancel {number}?')])
         elif status == 'confirmed':
@@ -158,29 +156,27 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
             waited = (today - to_date(doc['issue_date'])).days if to_date(doc.get('issue_date')) else None
             chase = waited is not None and waited > FOLLOW_UP_AFTER
             out.update(tone='action' if chase else 'wait', text=f'Sent on {sent_on}.' if sent_on else 'Sent.',
-                       sub=(f'No answer for {waited} day{"" if waited == 1 else "s"}.' if waited is not None else '')
-                       + (' Time to follow it up.' if chase else ''),
+                       sub=f'No answer for {waited} day{"" if waited == 1 else "s"}.' if waited is not None else '',
                        actions=[status_to('Mark accepted', 'accepted', not chase), *email('Send a follow-up', chase),
                                 status_to('Mark declined', 'declined', confirm=f'Mark {number} declined?'),
                                 _dialog('Revise', 'change-dialog')])
         elif status == 'accepted':
-            out.update(text='Accepted.', sub='The office raises the proforma and the invoice.' if sales else
-                       'Raise a proforma for the advance, or invoice it in full.',
+            out.update(text='Accepted.',
                        actions=([] if sales else [convert('Raise proforma for the advance', 'proforma', True),
                                                   convert('Invoice in full instead', 'invoice')])
                        + [status_to('Undo: not answered yet', 'sent')])
         elif status == 'declined':
-            out.update(tone='late', text='Declined.', sub='Revise it to send a new offer.',
+            out.update(tone='late', text='Declined.',
                        actions=[_dialog('Revise', 'change-dialog', True), status_to('Undo: not answered yet', 'sent')])
         else:                                             # converted
-            out.update(tone='done', text='Accepted and taken forward.', sub='Its proforma or invoice is in the project.')
+            out.update(tone='done', text='Accepted and taken forward.')
     elif kind.key == 'proforma':
         due = (summary.get('advance') or {}).get('amount') or summary.get('total') or 0
         if status == 'converted':
             out.update(tone='done', text='Turned into the tax invoice.',
                        sub=f'Its advance of {money(advance_received)} went with it.' if advance_received else '')
         elif advance_received:
-            out.update(text=f'Advance of {money(advance_received)} received.', sub='Raise the tax invoice; the advance comes off it.',
+            out.update(text=f'Advance of {money(advance_received)} received.',
                        actions=[] if sales else [convert('Create tax invoice', 'invoice', True)])
         else:
             out.update(tone='wait', text=f'Sent on {sent_on}. The advance of {money(due)} hasn\'t arrived.' if sent_on

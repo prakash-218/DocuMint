@@ -58,6 +58,6 @@ def test_terms_make_an_invoice_overdue_everywhere(client, gst_org):
     try:
         save_org_profile(org_id, {**profile, 'payment_days': 0})
         assert client.get(f'/api/customers/{loner}').get_json()['customer']['payment_terms'] == 'On receipt (your usual terms)'
-        assert 'Empty: your usual terms (On receipt).' in screen(client, f'/api/customers/{loner}/form')['payment_help']
+        assert screen(client, f'/api/customers/{loner}/form')['payment_empty'] == 'On receipt (your usual)'   # the empty field's placeholder
     finally:
         save_org_profile(org_id, profile)

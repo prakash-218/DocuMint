@@ -64,7 +64,7 @@ describe('Home', () => {
     expect(within(ages).getAllByRole('listitem').map((li) => li.textContent)).toEqual(
       ['0–30 days₹10,00,0001 invoice', '31–60 days—0 invoices', '61–90 days₹12,00,0002 invoices', 'Over 90 days—0 invoices']);
     expect(receive.querySelectorAll('.agebar span')).toHaveLength(2);                                 // a coloured part for each age with money
-    expect(within(receive).getByText(/Advances requested on proformas:/)).toHaveTextContent('₹1,98,240 (1 project). They count once paid.');
+    expect(within(receive).getByText(/Advances requested on proformas:/)).toHaveTextContent('₹1,98,240 (1 project).');
     expect(within(receive).getByText('Gear Cutters Ltd · Hosur plant')).toBeInTheDocument();
   });
 

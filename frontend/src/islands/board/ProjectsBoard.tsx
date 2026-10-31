@@ -119,7 +119,6 @@ function ProjectsScreen() {
       <header className="head">
         <div>
           <h1>Projects</h1>
-          <div className="meta"><span>One row per customer job, with where it stands</span></div>
         </div>
         {data.new_project && <a className="btn btn-primary" href={data.new_project}><Icon name="plus" />New project</a>}
       </header>
@@ -189,7 +188,7 @@ function List({ rows, sales }: { rows: Row[]; sales: boolean }) {
           <div className="c-date c-hide">{day(r.last_activity)}</div>
         </a>
       ))}
-      {rows.length === 0 && <p className="empty-rows">No projects match. Clear the filters to see all of them.</p>}
+      {rows.length === 0 && <p className="empty-rows">No projects match.</p>}
     </div>
   );
 }
@@ -233,7 +232,7 @@ function Board({ data, rows }: { data: Projects; rows: Row[] }) {
       </div>
       {offBoard > 0 && (
         <p className="muted" style={{ margin: '10px 0 0', fontSize: 13 }}>
-          {offBoard} paid project{offBoard === 1 ? ' is' : 's are'} off the board: mark them completed, or see them in the list.
+          {offBoard} paid project{offBoard === 1 ? ' is' : 's are'} off the board.
         </p>
       )}
     </>

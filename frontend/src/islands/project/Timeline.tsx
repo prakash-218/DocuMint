@@ -67,7 +67,7 @@ export function Timeline({ items, canEdit, readMail, onNote, onReply, onEmail }:
           <form className="composer-row" onSubmit={add}>
             <label htmlFor="pp-note" className="sr-only">Add a note</label>
             <textarea id="pp-note" rows={1} value={note} maxLength={4000}
-                      placeholder="Add a note: a call, what was agreed, what's next" onChange={(e) => setNote(e.target.value)} />
+                      placeholder="Add a note" onChange={(e) => setNote(e.target.value)} />
             <button type="submit" className="btn btn-secondary" disabled={saving || !note.trim()}>{saving ? 'Adding…' : 'Add note'}</button>
             {onEmail && <button type="button" className="btn btn-secondary" onClick={onEmail}><Icon name="mail" />Email</button>}
           </form>

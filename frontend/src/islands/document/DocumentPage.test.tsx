@@ -16,7 +16,7 @@ const DOC: DocumentData = {
          packing: '/invoices/D-7/packing', delete: null },
   edit: null,
   share: '/api/document/D-7/share',
-  change: { number: 'TF/INV/007', short: 'invoice', takes_payments: true, proforma: false, sent_word: 'finalized', undo: 'Finalize', again: 'finalize',
+  change: { number: 'TF/INV/007', short: 'invoice',
             correct: '/invoices/D-7/edit?correct=1', revise: null, reopen: { blocker: 'Payments are recorded on it.', action: '/invoices/D-7/reopen' } },
   payments: {
     title: 'Payments', empty: 'No payments recorded yet.', record_label: 'Record payment',

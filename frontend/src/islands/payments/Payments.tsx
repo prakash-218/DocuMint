@@ -103,7 +103,7 @@ export default function Payments({ tab: firstTab = 'all', query: firstQuery = ''
         <header className="head">
           <div>
             <h1>{data.title}</h1>
-            <div className="meta"><span>{year ? `FY ${year}` : 'All years'}</span><span>Every payment received, with its bank reference</span></div>
+            <div className="meta"><span>{year ? `FY ${year}` : 'All years'}</span></div>
           </div>
         </header>
 
@@ -129,8 +129,8 @@ export default function Payments({ tab: firstTab = 'all', query: firstQuery = ''
           <Dropdown id="pay-year" value={year} onChange={setYear}
                     data={[{ value: '', label: 'All years' }, ...years.map((y) => ({ value: y, label: `FY ${y}` }))]} />
           {shown.length > 0 && (
-            <button type="button" className="btn btn-secondary" onClick={() => download(data.export, shown.map((r) => r.id))}
-                    title={`The ${shown.length} shown, for the accountant`}><Icon name="download" />Export CSV</button>
+            <button type="button" className="btn btn-secondary" onClick={() => download(data.export, shown.map((r) => r.id))}>
+              <Icon name="download" />Export CSV</button>
           )}
         </div>
 
@@ -160,8 +160,7 @@ export default function Payments({ tab: firstTab = 'all', query: firstQuery = ''
             </a>
           ))}
           {shown.length === 0 && (
-            <p className="empty-rows">{data.rows.length ? 'Nothing matches. Clear the search or the filters to see them all.'
-              : 'No payments yet. Record one on an invoice, or an advance on a proforma.'}</p>
+            <p className="empty-rows">{data.rows.length ? 'Nothing matches.' : 'No payments yet.'}</p>
           )}
         </div>
       </div>

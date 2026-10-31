@@ -94,15 +94,13 @@ def _change(ctx: Dict, t, url: Callable) -> Dict:
     revise = None
     if t.key in ('quote', 'proforma'):
         revise = {'possible': ctx['can_revise'], 'number': ctx['revision_number'],
-                  'note': None if ctx['can_revise'] else ('A newer revision replaced this one; revise the latest.' if status == 'revised'
+                  'note': None if ctx['can_revise'] else ('A newer revision replaced this one.' if status == 'revised'
                                                           else 'It was converted already.' if status == 'converted' else 'Not possible now.'),
                   'action': url('invoices_bp.revise', invoice_id=invoice['invoice_id']),
                   'templates': [{'id': str(x['template_id']), 'name': x.get('name') or 'Template', 'same': x['template_id'] == invoice.get('template_id')}
                                 for x in ctx['revise_templates']],
                   'current_template': str(invoice.get('template_id') or '')}
-    return {'number': _number(invoice), 'short': t.short.lower(), 'takes_payments': t.takes_payments, 'proforma': t.key == 'proforma',
-            'sent_word': 'finalized' if t.sent_status == 'pending' else 'sent',
-            'undo': 'Finalize' if t.sent_status == 'pending' else 'Mark as sent', 'again': 'finalize' if t.sent_status == 'pending' else 'send',
+    return {'number': _number(invoice), 'short': t.short.lower(),
             'correct': url('invoices_bp.edit_invoice', invoice_id=invoice['invoice_id'], correct=1), 'revise': revise,
             'reopen': {'blocker': ctx['reopen_blocker'] or None, 'action': url('invoices_bp.reopen', invoice_id=invoice['invoice_id'])}}
 
@@ -158,9 +156,8 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
         'document_html': _html("{% include 'invoices/_document.html' %}", {**ctx, 'sections_data': with_discount_column(ctx['sections_data'])}),
         'chain': ctx['doc_chain'],
         'people': {'list': ctx['doc_people'], 'url': project_url,
-                   'empty': (f"{invoice.get('customer_name') or 'The supplier'} has no contacts yet. Add them on its page." if t.purchase else
-                      f"Nobody on this project gets {'quotations' if t.key == 'quote' else 'proformas and invoices'} yet. "
-                      "Set who gets what on the project page.")} if project else None,
+                   'empty': (f"{invoice.get('customer_name') or 'The supplier'} has no contacts yet." if t.purchase else
+                      f"Nobody on this project gets {'quotations' if t.key == 'quote' else 'proformas and invoices'} yet.")} if project else None,
         'activity': ctx['doc_activity'][:8],
         'convert': {'label': 'Convert again' if status == 'converted' else 'Convert, choosing the template',
                     'action': url('invoices_bp.convert', invoice_id=invoice['invoice_id']),

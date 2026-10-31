@@ -67,7 +67,7 @@ def test_a_sent_quotation_waits_for_the_answer():
 def test_after_two_weeks_without_an_answer_the_next_step_is_to_chase_it():
     q = doc('quote', 'sent', issue='2026-10-01')
     st, nxt = look([q])
-    assert nxt['tone'] == 'action' and nxt['sub'] == 'No answer for 19 days. Time to follow it up.'
+    assert nxt['tone'] == 'action' and nxt['sub'] == 'No answer for 19 days.'
     assert labels(nxt) == ['Mark accepted', 'Send a follow-up*', 'Mark declined', 'Revise']
 
 
@@ -84,7 +84,7 @@ def test_once_accepted_the_advance_is_asked_for():
     assert labels(nxt) == ['Raise proforma for the advance*', 'Invoice in full instead']
     assert nxt['actions'][0]['fields'] == {'target': 'proforma'}
     sales = look([q], can={'edit': True, 'sales': True})[1]
-    assert sales['actions'] == [] and 'office' in sales['sub']
+    assert sales['actions'] == [] and sales['sub'] == ''
 
 
 def test_a_proforma_waits_for_the_advance():

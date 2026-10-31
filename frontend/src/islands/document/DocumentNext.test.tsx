@@ -28,7 +28,7 @@ const STEPS = [
 ];
 
 const NEXT = {
-  tone: 'action' as const, text: 'Sent on 14 Oct.', sub: 'No answer for 20 days. Time to follow it up.',
+  tone: 'action' as const, text: 'Sent on 14 Oct.', sub: 'No answer for 20 days.',
   actions: [
     { kind: 'post' as const, label: 'Mark accepted', action: '/quotes/Q-1/status', fields: { status: 'accepted' }, primary: false, confirm: null },
     { kind: 'email' as const, label: 'Send a follow-up', invoice_id: 'Q-1', primary: true },

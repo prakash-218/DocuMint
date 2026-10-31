@@ -425,3 +425,27 @@
 .ui .add-existing-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .ui .add-existing-row .form-select { flex: 1 1 240px; width: auto; min-width: 0; }
 .ui .fgroup .file-form { max-width: 560px; }
+
+/* Help (Settings → Help): the topics beside the sections; on a narrow screen the topics go on top */
+.ui .help-grid { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; align-items: start; }
+.ui .help-toc { position: sticky; top: 84px; }               /* below the page's sticky header */
+.ui .help-toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ui .help-toc a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--ink-2); text-decoration: none; font-size: 13.5px; }
+.ui .help-toc a:hover { background: var(--surface-2); color: var(--ink); }
+.ui .help-sections { display: grid; gap: 14px; min-width: 0; }
+.ui .help-section { scroll-margin-top: 84px; }
+.ui .help-section .card-b { max-width: 72ch; font-size: 14px; line-height: 1.55; }
+.ui .help-section p { margin: 0 0 8px; }
+.ui .help-section ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.ui .help-section code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2); padding: 1px 4px; border-radius: 4px; }
+.ui .help-terms { margin: 0 0 10px; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; }
+.ui .help-terms dt { font-weight: 600; }
+.ui .help-terms dd { margin: 0; }
+@container ui (max-width: 720px) {
+  .ui .help-grid { grid-template-columns: minmax(0, 1fr); }
+  .ui .help-toc { position: static; }
+  .ui .help-toc ul { display: flex; flex-wrap: wrap; gap: 4px; }
+  .ui .help-toc a { border: 1px solid var(--line); }
+  .ui .help-terms { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .ui .help-terms dd { margin-bottom: 6px; }
+}
