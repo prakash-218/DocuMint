@@ -115,6 +115,7 @@ def _sales_pages_before(endpoint, doc_type):
                    'settings',
                    'share', 'share_on', 'share_off'},           # since: sharing a quotation, as they email it
         'settings_bp': {'index'},
+        'suppliers_bp': {'list_suppliers'},           # since: the companies they buy from, like customers
     }
     blueprint, _, page = endpoint.partition('.')
     if blueprint not in pages or pages[blueprint] is not None and page not in pages[blueprint]:

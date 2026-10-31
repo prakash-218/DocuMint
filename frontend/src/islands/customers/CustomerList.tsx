@@ -5,8 +5,9 @@ import { EmptyState, Filters, Loading, Pager, useLoad } from '../../app/ui';
 import { Icon } from '../../icons';
 import type { CustomerList as Data, CustomerRow } from './types';
 
-// The customers, a company's sites under it, a page at a time; ?q= searches (the server keeps a matching site's
-// parent and a matching parent's sites), ?include_archived=true shows archived ones too.
+// The customers (or the suppliers: the same companies, one can be both), a company's sites under it, a page at a time;
+// ?q= searches (the server keeps a matching site's parent and a matching parent's sites), ?include_archived=true shows
+// archived ones too.
 
 /** A row is a link: a click anywhere on it opens the customer, as the server page's rows did */
 function openRow(e: MouseEvent<HTMLTableRowElement>) {
@@ -41,8 +42,8 @@ function List({ data }: { data: Data }) {
   }
   return (
     <>
-      <PageHeader title="Customers"
-                  actions={data.new && <a href={data.new} className="btn btn-primary"><Icon name="plus" /><span className="btn-label">New customer</span></a>} />
+      <PageHeader title={data.title}
+                  actions={data.new && <a href={data.new} className="btn btn-primary"><Icon name="plus" /><span className="btn-label">{data.new_label}</span></a>} />
       <Filters filters={data.filters}>
         <form className="search-input" role="search" onSubmit={search}>
           <Icon name="search" />
@@ -64,14 +65,21 @@ function List({ data }: { data: Data }) {
             </div>
             <Pager page={data.page} />
           </>
-        ) : data.query ? <EmptyState icon="search" title="No customers match" text="Try another name or city." />
-          : <EmptyState icon="users" title="No customers yet" action={data.new ? { href: data.new, label: 'New customer' } : null} />}
+        ) : data.query ? <EmptyState icon="search" title={`No ${data.title.toLowerCase()} match`} text="Try another name or city." />
+          : data.kind === 'supplier'
+            ? <EmptyState icon="truck" title="No suppliers yet" text="A company you buy from. One you also sell to can be both: tick Supplier on its page."
+                          action={data.new ? { href: data.new, label: data.new_label } : null} />
+            : <EmptyState icon="users" title="No customers yet" action={data.new ? { href: data.new, label: data.new_label } : null} />}
       </div>
     </>
   );
 }
 
-export default function CustomerList({ search }: { search: string }) {
-  const { data, error } = useLoad<Data>(`/api/customers${search}`, "Couldn't load the customers. Check your connection.");
-  return data ? <List data={data} /> : <Loading title="Customers" kind="list" error={error} />;
+export default function CustomerList({ search, kind = 'customer' }: { search: string; kind?: 'customer' | 'supplier' }) {
+  const params = new URLSearchParams(search);
+  if (kind === 'supplier') params.set('kind', 'supplier');
+  const query = params.toString();
+  const what = kind === 'supplier' ? 'suppliers' : 'customers';
+  const { data, error } = useLoad<Data>(`/api/customers${query ? `?${query}` : ''}`, `Couldn't load the ${what}. Check your connection.`);
+  return data ? <List data={data} /> : <Loading title={kind === 'supplier' ? 'Suppliers' : 'Customers'} kind="list" error={error} />;
 }

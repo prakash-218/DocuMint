@@ -34,11 +34,12 @@ describe('Pager', () => {
 const FORM: CustomerForm = {
   title: 'New customer', name: null, action: '/customers/create', cancel: '/customers/', submit: 'Create customer',
   values: { name: '', parent_id: '', site_name: '', tax_id: '', email_domains: '', payment_days: '', street_address: '', city: '',
-            state: '', zip_code: '', country: 'India' },
+            state: '', zip_code: '', country: 'India', is_customer: '1', is_supplier: '' },
   site_count: 0, parents: [{ id: 'C-1', name: 'Gear Cutters Ltd' }], domains_help: '',
   payment_help: "How many days after the invoice date they pay. Empty: your usual terms (30 days).",
   custom: [{ key: 'vendor_code', label: 'Vendor code', value: '' }],
   gst_states: { '29': 'Karnataka', '33': 'Tamil Nadu' },
+  kinds: true,
 };
 
 function drawn(boot: Partial<Boot>, path = '/customers/create', form = FORM) {
@@ -84,5 +85,23 @@ describe("a customer's GSTIN", () => {
     await userEvent.type(screen.getByLabelText('GSTIN / Tax ID'), '33ABCDE1234F1Z5');
     expect(screen.getByText(/Registered in Tamil Nadu/)).toBeInTheDocument();
     expect(screen.getByLabelText('State')).toHaveValue('TN');
+  });
+});
+
+describe('who a company is to us', () => {
+  it('is a customer unless told otherwise', () => {
+    expect(drawn({})).toMatchObject({ is_customer: '1' });
+    expect(screen.getByLabelText(/A supplier/)).not.toBeChecked();
+  });
+
+  it('starts as a supplier from the suppliers list', () => {
+    const values = drawn({}, '/customers/create', { ...FORM, values: { ...FORM.values, is_customer: '', is_supplier: '1' } });
+    expect(values).toMatchObject({ is_supplier: '1' });
+    expect(values).not.toHaveProperty('is_customer');
+  });
+
+  it("doesn't ask for a site: it's what its company is", () => {
+    drawn({}, '/customers/create', { ...FORM, kinds: false });
+    expect(screen.queryByLabelText(/A supplier/)).toBeNull();
   });
 });

@@ -558,19 +558,22 @@ def update_file(attachment_id):
 @api_bp.route('/customers')
 @require_org
 def customers():
-    """The customers list (customer_view.listing): ?q= searches, ?include_archived=true shows archived ones, ?page=."""
+    """The customers list (customer_view.listing), or the suppliers with ?kind=supplier: ?q= searches,
+    ?include_archived=true shows archived ones, ?page=."""
     import customer_view
     return jsonify(customer_view.listing(g.current_org_id, (request.args.get('q') or '').strip(),
-                                         request.args.get('include_archived', '').lower() == 'true', permissions.granted(), url_for))
+                                         request.args.get('include_archived', '').lower() == 'true', permissions.granted(), url_for,
+                                         'supplier' if request.args.get('kind') == 'supplier' else 'customer'))
 
 
 @api_bp.route('/customers/new')
 @require_org
 def new_customer():
-    """A new customer's form; ?parent_id= adds a site of that customer, starting from its details."""
+    """A new customer's form; ?parent_id= adds a site of that customer, starting from its details; ?kind=supplier
+    starts it as a supplier."""
     import customer_view
     from access import get_org_customer
-    defaults = {}
+    defaults = {'kind': 'supplier'} if request.args.get('kind') == 'supplier' else {}
     parent = get_org_customer(request.args['parent_id'], g.current_org_id)[0] if request.args.get('parent_id') else None
     if parent and not parent.get('parent_id'):
         defaults = {k: parent.get(k) for k in ('name', 'tax_id', 'state', 'country')}

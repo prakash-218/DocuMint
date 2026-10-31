@@ -57,6 +57,16 @@ export function CustomerFormView({ data }: { data: Data }) {
                       help="Tells it apart from the other sites. Defaults to the city." />
               </div>
             )}
+            {data.kinds && (
+              <fieldset className="form-group kinds">
+                <legend className="form-label">They are</legend>
+                <label className="checkbox"><input type="checkbox" name="is_customer" value="1" defaultChecked={!!v('is_customer')} />
+                  A customer <span className="text-tertiary">(we sell to them)</span></label>
+                <label className="checkbox"><input type="checkbox" name="is_supplier" value="1" defaultChecked={!!v('is_supplier')} />
+                  A supplier <span className="text-tertiary">(we buy from them, on purchase orders)</span></label>
+                <p className="form-text">A site is what its company is, whatever is ticked here.</p>
+              </fieldset>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="tax_id" className="form-label">GSTIN / Tax ID</label>

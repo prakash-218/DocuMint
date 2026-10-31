@@ -419,6 +419,8 @@ def list_customers(conn, org_id, include_archived):
     return [_rows(conn, f"""SELECT c.customer_id, c.name, c.tax_id, c.street_address, c.city, c.state, c.zip_code,
                                    c.country, c.is_archived, c.created_at, c.email_domains, c.parent_id, c.site_name,
                                    {CUSTOMER_SITE} AS site, parent.name AS parent_name,
+                                   CASE WHEN c.parent_id IS NULL THEN c.is_customer ELSE parent.is_customer END AS is_customer,
+                                   CASE WHEN c.parent_id IS NULL THEN c.is_supplier ELSE parent.is_supplier END AS is_supplier,
                                    (SELECT COUNT(*) FROM invoice i WHERE i.customer_id = c.customer_id) AS invoice_count,
                                    (SELECT COUNT(*) FROM customer s WHERE s.parent_id = c.customer_id) AS site_count
                             FROM customer c LEFT JOIN customer parent ON parent.customer_id = c.parent_id
@@ -442,12 +444,22 @@ def get_customer_details(conn, customer_id):
                                       c.zip_code, c.country, c.custom, c.email_domains, c.is_archived, c.created_at,
                                       c.parent_id, c.site_name, {CUSTOMER_SITE} AS site, parent.name AS parent_name,
                                       parent.email_domains AS parent_email_domains, c.payment_days,
-                                      parent.payment_days AS parent_payment_days
+                                      parent.payment_days AS parent_payment_days,
+                                      CASE WHEN c.parent_id IS NULL THEN c.is_customer ELSE parent.is_customer END AS is_customer,
+                                      CASE WHEN c.parent_id IS NULL THEN c.is_supplier ELSE parent.is_supplier END AS is_supplier
                                FROM customer c LEFT JOIN customer parent ON parent.customer_id = c.parent_id
                                WHERE c.customer_id = :c""", c=customer_id)
     contacts = _rows(conn, f"SELECT {CONTACT_COLUMNS} FROM contact ct WHERE ct.customer_id = :c ORDER BY lower(ct.name)",
                      c=customer_id)
     return [customer, contacts]
+
+
+@proc('sp_set_customer_kinds')
+def set_customer_kinds(conn, customer_id, org_id, is_customer, is_supplier):
+    """Whether we sell to them, buy from them, or both (at least one: neither is taken as a customer)."""
+    _exec(conn, "UPDATE customer SET is_customer = :c, is_supplier = :s WHERE customer_id = :id AND org_id = :o",
+          id=customer_id, o=org_id, c=bool(is_customer) or not is_supplier, s=bool(is_supplier))
+    return []
 
 
 @proc('sp_update_customer')

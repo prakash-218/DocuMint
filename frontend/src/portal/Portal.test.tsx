@@ -1,4 +1,4 @@
-import { render, screen } from '../test/render';
+import { render, screen, waitFor } from '../test/render';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isPortalScreen, Portal, type PortalBoot } from './Portal';
 
@@ -46,6 +46,6 @@ describe('the customer portal', () => {
     expect(await screen.findByText('Spline gauge × 2')).toBeInTheDocument();
     expect(screen.getByText('From Spline Works')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Download PDF' })).toHaveAttribute('href', `${DOC}/pdf`);
-    expect(document.title).toBe('GC/INV/007 · DocuMint');
+    await waitFor(() => expect(document.title).toBe('GC/INV/007 · DocuMint'));        // set once the page has drawn
   });
 });

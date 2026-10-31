@@ -140,6 +140,11 @@ def build(org_id, customer: Dict, perms, url: Callable, today: Optional[date] = 
                                     ', '.join(filter(None, [customer.get('city'), customer.get('state'), customer.get('zip_code')])),
                                     customer.get('country')] if x],
             'archived': bool(customer.get('is_archived')), 'custom': custom, 'tax_note': tax, 'payment_terms': terms,
+            # who they are to us; the list they're on (a supplier only: Suppliers)
+            'kinds': {'customer': bool(customer.get('is_customer', True)), 'supplier': bool(customer.get('is_supplier'))},
+            'list': ({'label': 'Suppliers', 'href': url('suppliers_bp.list_suppliers')}
+                     if customer.get('is_supplier') and not customer.get('is_customer', True)
+                     else {'label': 'Customers', 'href': url('customers_bp.list_customers')}),
         },
         'can': can,
         'money': money,
@@ -195,21 +200,28 @@ def _row(c: Dict, parent: Optional[Dict], url: Callable, site_count: int = 0) ->
             'archived': bool(c.get('is_archived')), 'site': bool(parent)}
 
 
-def listing(org_id, query: str, archived: bool, perms, url: Callable) -> Dict:
-    """The customers list (frontend/src/islands/customers/): a page of whole groups, so a site stays with its customer;
-    the search (customers.search) keeps a matching site's parent and a matching parent's sites."""
+def listing(org_id, query: str, archived: bool, perms, url: Callable, kind: str = 'customer') -> Dict:
+    """The customers list, or with kind 'supplier' the suppliers list (frontend/src/islands/customers/): a page of
+    whole groups, so a site stays with its company; the search (customers.search) keeps a matching site's parent and a
+    matching parent's sites. A company that's both is on both."""
     import customers
     import permissions
     from db import db
     from pagination import paginate
-    rows = customers.search(db.execute_proc('sp_list_customers', (org_id, archived)) or [], query)
+    suppliers = kind == 'supplier'
+    every = [c for c in db.execute_proc('sp_list_customers', (org_id, archived)) or []
+             if c.get('is_supplier' if suppliers else 'is_customer', not suppliers)]
+    rows = customers.search(every, query)
     page = paginate(customers.group(rows))
     q = query or None
+    where = 'suppliers_bp.list_suppliers' if suppliers else 'customers_bp.list_customers'
     return {
-        'title': 'Customers', 'query': query, 'archived': archived, 'any': bool(rows),
-        'new': url('customers_bp.create_customer') if permissions.can('customers.write', perms=perms) else None,
-        'filters': [{'label': 'Active', 'href': url('customers_bp.list_customers', q=q), 'active': not archived},
-                    {'label': 'All', 'href': url('customers_bp.list_customers', include_archived='true', q=q), 'active': archived}],
+        'title': 'Suppliers' if suppliers else 'Customers', 'kind': kind, 'query': query, 'archived': archived, 'any': bool(rows),
+        'new': url('customers_bp.create_customer', kind='supplier' if suppliers else None)
+        if permissions.can('customers.write', perms=perms) else None,
+        'new_label': 'New supplier' if suppliers else 'New customer',
+        'filters': [{'label': 'Active', 'href': url(where, q=q), 'active': not archived},
+                    {'label': 'All', 'href': url(where, include_archived='true', q=q), 'active': archived}],
         'groups': [{'customer': _row(g['customer'], None, url, len(g['sites'])),
                     'sites': [_row(s, g['customer'], url) for s in g['sites']]} for g in page.items],
         'page': page.json(),
@@ -229,6 +241,10 @@ def form(org_id, customer: Optional[Dict], defaults: Dict, url: Callable) -> Dic
     c = customer or defaults or {}
     values = {k: '' if c.get(k) is None else str(c.get(k)) for k in FORM_FIELDS}
     values['country'] = values['country'] or 'India'
+    # who they are to us: a customer unless they're new from the suppliers list
+    supplier_only = not customer and (defaults or {}).get('kind') == 'supplier'
+    values['is_customer'] = '' if supplier_only or (customer and not customer.get('is_customer', True)) else '1'
+    values['is_supplier'] = '1' if supplier_only or (customer and customer.get('is_supplier')) else ''
     if c.get('parent_id') and c.get('parent_payment_days') is not None:
         empty = f"Empty: {c.get('parent_name')}'s {c['parent_payment_days']} days."
     elif ctx['usual_terms']:
@@ -237,12 +253,14 @@ def form(org_id, customer: Optional[Dict], defaults: Dict, url: Callable) -> Dic
         empty = 'Empty: no due date unless the invoice has one.'
     custom = load_json(customer.get('custom')) if customer else {}
     customer_id = str(customer['customer_id']) if customer else None
+    word = 'supplier' if values['is_supplier'] and not values['is_customer'] else 'customer'
     return {
-        'title': 'Edit customer' if customer else 'New customer',
+        'title': f'Edit {word}' if customer else f'New {word}',
         'name': customer.get('name') if customer else None,
         'action': url('customers_bp.edit_customer', customer_id=customer_id) if customer else url('customers_bp.create_customer'),
-        'cancel': url('customers_bp.view_customer', customer_id=customer_id) if customer else url('customers_bp.list_customers'),
-        'submit': 'Save' if customer else 'Create customer',
+        'cancel': url('customers_bp.view_customer', customer_id=customer_id) if customer else
+        url('suppliers_bp.list_suppliers' if word == 'supplier' else 'customers_bp.list_customers'),
+        'submit': 'Save' if customer else f'Create {word}',
         'values': values,
         'site_count': ctx['site_count'],
         'parents': [{'id': str(p['customer_id']), 'name': p['name']} for p in ctx['parents']],
@@ -252,4 +270,6 @@ def form(org_id, customer: Optional[Dict], defaults: Dict, url: Callable) -> Dic
                          f"count as overdue, and isn't printed. {empty}"),
         'custom': [{'key': f['key'], 'label': f['label'], 'value': custom.get(f['key'], '')} for f in ctx['custom_defs']],
         'gst_states': GST_STATES,                     # a GSTIN's first two digits: the state it's registered in
+        # a site is what its company is, so only a company says whether it's a customer, a supplier or both
+        'kinds': not c.get('parent_id'),
     }
