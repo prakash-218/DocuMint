@@ -33,6 +33,7 @@ from blueprints.payments_bp import payments_bp
 from blueprints.emails_bp import emails_bp
 from blueprints.costings_bp import costings_bp
 from blueprints.search_bp import search_bp
+from blueprints.shared_bp import shared_bp
 from blueprints.api_bp import api_bp
 from frontend_assets import frontend_assets
 import doc_urls
@@ -71,6 +72,7 @@ def create_app(config_name=None):
     app.register_blueprint(emails_bp, url_prefix='/emails')
     app.register_blueprint(costings_bp, url_prefix='/costings')
     app.register_blueprint(search_bp, url_prefix='/search')
+    app.register_blueprint(shared_bp, url_prefix='/s')
     app.register_blueprint(api_bp, url_prefix='/api')
 
 

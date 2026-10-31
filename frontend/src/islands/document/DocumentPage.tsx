@@ -7,6 +7,7 @@ import { Icon, type IconName } from '../../icons';
 import { Skeleton } from '../../Skeleton';
 import { ACCEPT } from '../project/Side';
 import DocumentNext from './DocumentNext';
+import { ShareDialog } from './Share';
 import type { Change, DocumentData, Payments, PdfMenu } from './types';
 
 // A document's page, as the prototype draws it: its number, state and what to do next with the money under it,
@@ -388,6 +389,7 @@ function DocFiles({ data }: { data: DocumentData }) {
 export default function DocumentPage({ invoiceId }: { invoiceId: string }) {
   const [data, setData] = useState<DocumentData | null>(null);
   const [error, setError] = useState('');
+  const [sharing, setSharing] = useState(false);
   const load = useCallback(async () => {
     try {
       setData(await api.get<DocumentData>(`/api/document/${invoiceId}`));
@@ -412,6 +414,9 @@ export default function DocumentPage({ invoiceId }: { invoiceId: string }) {
     <>
       <PageHeader title={data.number} crumbs={[{ label: data.list.label, href: data.list.url }, { label: data.number }]}
                   actions={<>
+                    {data.share && (
+                      <button type="button" className="btn btn-secondary" onClick={() => setSharing(true)}><Icon name="share" /><span className="btn-label">Share</span></button>
+                    )}
                     <Pdf pdf={data.pdf} />
                     {data.edit && <a href={data.edit} className="btn btn-secondary"><Icon name="pencil" /><span className="btn-label">Edit</span></a>}
                     {data.change && (
@@ -421,6 +426,9 @@ export default function DocumentPage({ invoiceId }: { invoiceId: string }) {
                     )}
                   </>} />
       {data.change && <ChangeDialog change={data.change} />}
+      {sharing && data.share && (
+        <ShareDialog url={data.share} projectId={data.project_id} invoiceId={data.invoice_id} onClose={() => { setSharing(false); void load(); }} />
+      )}
       <div className="ui doc-page">
         <DocumentNext next={data.next} head={data.head} money={data.money} currency={data.currency} invoiceId={data.invoice_id}
                       projectId={data.project_id} />

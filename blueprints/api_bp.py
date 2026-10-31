@@ -171,6 +171,64 @@ def documents(group):
                                        usual_days=usual_days(get_org_profile(g.current_org_id)[1])))
 
 
+def _share(invoice_id, make=False):
+    """The share dialog (sharing.py): the document's private link (made now when make), the WhatsApp message and who
+    can get it, its UPI QR code, and the PDF. None when the document isn't in this organization."""
+    from access import get_org_invoice
+    from document_service import get_org_profile
+    from documents import display_number, get_type
+    from invoice_service import build_sections, invoice_summary
+    from payment_terms import usual_days
+    import sharing
+    import upi
+    header, values = get_org_invoice(invoice_id, g.current_org_id)
+    if not header:
+        return None
+    if make:
+        db.execute_proc('sp_create_share_link', (invoice_id, g.current_org_id, sharing.new_token(), g.current_user['user_id']))
+    link = (db.execute_proc('sp_get_share_link', (invoice_id, g.current_org_id)) or [None])[0]
+    payments = db.execute_proc('sp_get_invoice_payments', (invoice_id,)) or []
+    summary = invoice_summary(header, build_sections(header, values), payments)
+    profile = get_org_profile(g.current_org_id)[1]
+    pay = upi.payment(header, summary, profile)
+    out = sharing.state(header, link, url_for, lambda path: request.host_url.rstrip('/') + path)
+    project_id = projects.project_of(invoice_id, g.current_org_id)
+    found = contacts.for_project(g.current_org_id, project_id) if project_id else []
+    return {**out, 'number': display_number(header), 'kind': get_type(header.get('doc_type')).label,
+            'body': sharing.message(header, summary, out['link']['url'] if out['link'] else sharing.LINK, pay, usual_days(profile)),
+            'people': sharing.people(found, header), 'pay': pay,
+            'upi_missing': not pay and not upi.valid(profile.get('upi_id')) and (header.get('currency_code') or 'INR') == 'INR'
+                           and upi.due(header, summary) > 0,
+            'pdf': url_for('invoices_bp.export_pdf', invoice_id=invoice_id),
+            'email': bool(project_id) and permissions.can('emails.send'),
+            'actions': {'make': url_for('api_bp.share_on', invoice_id=invoice_id), 'off': url_for('api_bp.share_off', invoice_id=invoice_id)}}
+
+
+@api_bp.route('/document/<invoice_id>/share')
+@require_org
+def share(invoice_id):
+    """What the share dialog shows, without making a link."""
+    data = _share(invoice_id)
+    return jsonify(data) if data else (jsonify(error='That document is not in this organization'), 404)
+
+
+@api_bp.route('/document/<invoice_id>/share', methods=['POST'])
+@require_org
+def share_on(invoice_id):
+    """Makes the document's private link (or keeps the one it has), for WhatsApp or to copy."""
+    data = _share(invoice_id, make=True)
+    return jsonify(data) if data else (jsonify(error='That document is not in this organization'), 404)
+
+
+@api_bp.route('/document/<invoice_id>/share', methods=['DELETE'])
+@require_org
+def share_off(invoice_id):
+    """Turns the document's link off: anyone who has it gets "this link was turned off"."""
+    db.execute_proc('sp_turn_off_share_link', (invoice_id, g.current_org_id))
+    data = _share(invoice_id)
+    return jsonify(data) if data else (jsonify(error='That document is not in this organization'), 404)
+
+
 @api_bp.route('/payments')
 @require_org
 def payments():

@@ -330,6 +330,9 @@ ENDPOINTS: Dict[str, Rule] = {
     'api_bp.send_email': 'emails.send',
     'api_bp.home': 'invoices.read',
     'api_bp.document_page': Doc('read'),
+    'api_bp.share': Doc('write'),                         # a private link is a way of sending it
+    'api_bp.share_on': Doc('write'),
+    'api_bp.share_off': Doc('write'),
     'api_bp.new_document': Doc('write'),
     'api_bp.edit_document': Doc('write'),
     'api_bp.packing': Doc('write', also=('invoices.write',)),
@@ -376,7 +379,7 @@ ENDPOINTS: Dict[str, Rule] = {
 # Endpoints that need no organization (signing in, choosing one, the customer portal): require_org isn't on them
 OUTSIDE = {'static', 'index', 'healthz', 'settings_bp.select_org', 'settings_bp.create_organization',
            'settings_bp.join_organization'}
-OUTSIDE_BLUEPRINTS = {'auth_bp', 'customer_portal_bp'}
+OUTSIDE_BLUEPRINTS = {'auth_bp', 'customer_portal_bp', 'shared_bp'}     # shared_bp: a private link's token is its key
 # Refused with a plain 403, as if there were nothing there: costs and margins, and the mailboxes
 QUIET = {'costings_bp', 'emails_bp'}
 

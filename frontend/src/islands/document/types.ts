@@ -60,6 +60,8 @@ export interface DocumentData {
   pdf: PdfMenu;
   /** A draft: its editor. */
   edit: string | null;
+  /** Sent, and you may send it: the share dialog's data (api_bp.share). */
+  share: string | null;
   change: Change | null;
   payments: Payments | null;
   versions_html: string | null;

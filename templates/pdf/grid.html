@@ -362,14 +362,15 @@
             <table class="noborder">
                 <tr><td colspan="2"><span class="lbl">Our Banker</span></td></tr>
                 {% for label, key in [('Bank Name', 'bank_name'), ('A/c No', 'bank_account'), ('IFSC code', 'bank_ifsc'), ('Branch', 'bank_branch'), ('SWIFT', 'bank_swift')] if profile.get(key) %}
-                <tr><td style="width: 35%;">{{ label }}:</td><td>{{ profile.get(key) }}</td></tr>
+                <tr><td style="width: {{ '60pt' if upi_pay else '35%' }};">{{ label }}:</td><td>{{ profile.get(key) }}</td></tr>
                 {% endfor %}
             </table>
             {% endif %}
             </td>
             {% if upi_pay %}
-            <td style="width: 66pt; vertical-align: top; text-align: center;">
-                <img src="{{ upi_pay.qr }}" style="width: 46pt; height: 46pt;"><br>
+            {# 64pt: about half a millimetre a module, which a phone reads easily #}
+            <td style="width: 108pt; vertical-align: top; text-align: center;">
+                <img src="{{ upi_pay.qr }}" style="width: 64pt; height: 64pt;"><br>
                 <span class="lbl">Scan to pay {{ money(upi_pay.amount) }}</span>
             </td>
             {% endif %}

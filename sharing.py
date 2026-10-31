@@ -13,6 +13,11 @@ from urllib.parse import quote
 
 from documents import display_number, get_type, load_json
 from money import format_money
+import upi
+
+
+# Where the message's link goes until there is one
+LINK = '[link]'
 
 
 def new_token() -> str:
@@ -57,22 +62,19 @@ def message(header: Dict, summary: Dict, link: str, pay: Optional[Dict], usual_d
     about = f'our {what} {number}' + (f' for {subject[:1].lower()}{subject[1:]}' if subject else '')
     total = float(summary.get('total') or 0)
     gst = ' incl. GST' if summary.get('tax_lines') else ''
+    owed = pay['amount'] if pay else upi.due(header, summary)
     lines = []
-    if kind.key == 'quote':
+    if owed <= 0.005:
         lines.append(f'Please find {about}: {money(total)}{gst}.')
-    elif pay or (kind.takes_payments and float(summary.get('balance') or 0) > 0.005):
-        owed = pay['amount'] if pay else float(summary.get('balance') or 0)
-        due = due_on(header, usual_days) if kind.takes_payments else None
-        if kind.takes_advances:
-            lines.append(f'Please find {about}. The advance of {money(owed)} is due.')
-        else:
-            late = due and due < (today or date.today())
-            lines.append(f'Please find {about}: {money(total)}{gst}, {money(owed)} '
-                         + (f'due since {_when(due)}.' if late else f'due by {_when(due)}.' if due else 'due.'))
-        if pay:
-            lines.append(f"Pay by UPI to {pay['upi_id']}, or scan the QR code on the page.")
+    elif kind.takes_advances:
+        lines.append(f'Please find {about}. The advance of {money(owed)} is due.')
     else:
-        lines.append(f'Please find {about}: {money(total)}{gst}.')
+        due = due_on(header, usual_days)
+        late = due and due < (today or date.today())
+        lines.append(f'Please find {about}: {money(total)}{gst}, {money(owed)} '
+                     + (f'due since {_when(due)}.' if late else f'due by {_when(due)}.' if due else 'due.'))
+    if pay:
+        lines.append(f"Pay by UPI to {pay['upi_id']}, or scan the QR code on the page.")
     lines += [link, '', 'Regards,', header.get('organization_name') or '']
     return '\n'.join(lines)
 
