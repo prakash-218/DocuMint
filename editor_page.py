@@ -264,10 +264,14 @@ def new_page(org_id: str, doc_type: str, project_id: Optional[str], template_id:
         if hint:
             doc['values']['tax_mode'] = hint['mode']
     sections = _editor_sections(get_template_fields(template_id))
-    if from_costing and t.purchase and project:
-        _fill_lines(sections, _costing_lines(org_id, project, from_costing))
-    return _editor(doc, sections, url, project=project, customers=customers,
+    bought = _costing_lines(org_id, project, from_costing) if from_costing and t.purchase and project else []
+    if bought:
+        _fill_lines(sections, bought)
+    page = _editor(doc, sections, url, project=project, customers=customers,
                    template_id=template_id, template_name=selected.get('name') or '')
+    if bought:          # the costing it buys from, kept on the order (the job's profit sets its price against the costing)
+        page['hidden'].update(from_costing=from_costing['id'], lines=','.join(from_costing['lines']))
+    return page
 
 
 def _costing_lines(org_id, project: Dict, from_costing: Dict) -> List[Dict]:

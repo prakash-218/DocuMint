@@ -194,6 +194,27 @@ describe('ProjectPage', () => {
     expect(screen.queryByRole('link', { name: 'New proforma' })).not.toBeInTheDocument();
   });
 
+  it('shows what the job makes as costed, committed and actual, to those who see costings', async () => {
+    serve({ ...PAGE, costings: [{ id: 'K-1', title: 'C-031', currency: 'INR', cost: 315000, price: 500000, profit_on_cost: 58.7,
+                                  quote_number: 'Q/041', url: '/costings/K-1' }],
+            profit: { currency: 'INR', costing: { id: 'K-1', title: 'C-031' },
+                      rows: [{ key: 'revenue', label: 'Revenue', costed: 500000, committed: 500000, actual: 300000 },
+                             { key: 'bought', label: 'Bought on POs', costed: 150000, committed: 216000, actual: 130000 },
+                             { key: 'own', label: 'Rest of the costing', costed: 165000, committed: 165000, actual: 165000 },
+                             { key: 'margin', label: 'Margin', costed: 185000, committed: 119000, actual: null }],
+                      notes: [{ text: '2 POs from the costing: ₹18,000 over what those lines were costed at', tone: 'late' }] } });
+    render(<ProjectPage projectId="P-1" />);
+    const card = (await screen.findByRole('heading', { name: 'Profit on this job' })).closest('section')!;
+    expect(within(card).getByRole('link', { name: 'C-031' })).toHaveAttribute('href', '/costings/K-1');
+    const rows = within(card).getAllByRole('row').map((r) => Array.from(r.children).map((c) => c.textContent));
+    expect(rows).toEqual([['What', 'Costed', 'Committed', 'Actual'],
+                          ['Revenue', '₹5,00,000', '₹5,00,000', '₹3,00,000'],
+                          ['Bought on POs', '−₹1,50,000', '−₹2,16,000', '−₹1,30,000'],
+                          ['Rest of the costing', '−₹1,65,000', '−₹1,65,000', '−₹1,65,000'],
+                          ['Margin', '₹1,85,00037%', '₹1,19,00023.8%', '—']]);
+    expect(within(card).getByText(/₹18,000 over/)).toHaveClass('tone-late');
+  });
+
   it('takes files dropped or chosen, and says what one is with its number', async () => {
     const files: Page['files'] = [{ id: 'F-1', name: 'scan 0041.pdf', kind: 'other', kind_label: 'Other', title: 'scan 0041.pdf', reference_no: null,
                                     date: '2026-10-20', size: '12 KB', from_email: false, url: '/projects/files/F-1', delete: '/projects/files/F-1/delete' }];

@@ -324,6 +324,7 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
     if sales:                                       # how far it went after the quotation isn't theirs to see
         st['steps'] = st['steps'][:2]
     profile = get_org_profile(org_id)[1]
+    ks = costing.list_for(org_id, project_id) if costings else []
     people = contacts.for_project(org_id, project_id)
     found = contacts.project_suggestions(org_id, project, people, profile.get('phone') or '') \
         if reads_mail else {'people': [], 'phones': []}
@@ -346,6 +347,10 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
         'can': can,
         'stage': st,
         'progress': statuses(facts(docs), rows, ours, sales, today or date.today(), usual_days(profile)),
+        # what the job makes, for those who see costings
+        'profit': profit(facts(docs), docs, bought, ks, {str(d['invoice_id']): received_value(org_id, d) for d in bought
+                                                          if d.get('status') not in ('draft', 'cancelled', 'revised')})
+                  if costings else None,
         'next': next_step(docs, st, project, can, url, today),
         'money': rows,
         'documents': sold,
@@ -368,7 +373,7 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
                       'cost': float(k.get('total_cost') or 0), 'price': float(k.get('total_price') or 0),
                       'profit_on_cost': k.get('profit_on_cost'), 'quote_number': k.get('quote_number'),
                       'url': url('costings_bp.edit', costing_id=k['costing_id'])}
-                     for k in costing.list_for(org_id, project_id)] if costings else None,
+                     for k in ks] if costings else None,
         'addable': [{'invoice_id': d['invoice_id'], 'number': display_number(d), 'kind': get_type(d.get('doc_type')).label,
                      'total': float(d.get('total_amount') or 0), 'currency': d.get('currency_code') or 'INR'}
                     for d in revisions.collapse(addable) if d.get('status') != 'revised'],
@@ -484,6 +489,90 @@ def _plain(value):
 
 
 EMAIL_EVENTS = ('email_received', 'email_sent')
+
+
+def pre_tax(d: Dict) -> float:
+    """A document's value before GST: its total, less what its tax mode and rate add."""
+    total = float(d.get('total_amount') or 0)
+    rate = float(d.get('tax_rate') or 0) if d.get('tax_mode') in ('cgst_sgst', 'igst') else 0.0
+    return total / (1 + rate / 100) if rate else total
+
+
+def received_value(org_id, d: Dict) -> float:
+    """How much of a purchase order has arrived, before GST: all of it once it's received, else its value in proportion
+    to the quantities its deliveries brought (receiving.py)."""
+    if d.get('status') == 'received':
+        return pre_tax(d)
+    from db import db
+    receipts = db.execute_proc('sp_list_po_receipts', (d['invoice_id'], org_id)) or []
+    if not receipts:
+        return 0.0
+    import receiving
+    from access import get_org_invoice
+    from invoice_service import build_sections
+    header, values = get_org_invoice(d['invoice_id'], org_id)
+    lines = receiving.progress(receiving.ordered(build_sections(header, values)), receipts)['lines'] if header else []
+    ordered = sum(l['qty'] for l in lines)
+    return pre_tax(d) * sum(min(l['received'], l['qty']) for l in lines) / ordered if ordered else 0.0
+
+
+def profit(f: Dict, docs: List[Dict], bought: List[Dict], costings: List[Dict], received: Dict[str, float]) -> Optional[Dict]:
+    """Profit on the job, before GST: as costed (its costing), as committed (the quotation it took, and the costing with
+    each line bought on a purchase order at what that order costs, orders not made from the costing on top) and as it
+    actually stands (what's invoiced, and what has arrived). The costing's other lines, the job's own work, count as
+    costed throughout. None with neither a costing nor a purchase order.
+    f: facts(docs); docs, bought: the sales documents and the purchase orders (list rows); costings: costing.list_for's,
+    the latest first; received: each order's arrived value (received_value), by its id.
+    {'currency', 'costing', 'rows': [{key, label, costed, committed, actual}], 'notes': [{text, tone}]}"""
+    q = f['accepted_quote'] or next((d for d in reversed(f['quotes']) if d.get('status') != 'declined'), None) or f['quote']
+    ids = ({str(q['invoice_id'])} | {str(v['invoice_id']) for v in q.get('versions') or []}) if q else set()
+    k = next((c for c in costings if str(c.get('quote_id')) in ids), costings[0] if costings else None)
+    placed = [d for d in bought if d.get('status') not in ('draft', 'cancelled', 'revised')]
+    if not k and not placed:
+        return None
+    cur = (k.get('currency') if k else None) or (q.get('currency_code') if q else None) or 'INR'
+    pos = [d for d in placed if (d.get('currency_code') or 'INR') == cur]
+    fm = lambda v: format_money(v, cur, decimals=False)  # noqa: E731
+
+    linked = [d for d in pos if k and str(d.get('costing_id')) == str(k['costing_id']) and d.get('costed_amount') is not None]
+    others = [d for d in pos if d not in linked]
+    cost, price = (float(k.get('total_cost') or 0), float(k.get('total_price') or 0)) if k else (0.0, None)
+    costed_bought = sum(float(d['costed_amount']) for d in linked)
+    rest = max(0.0, cost - costed_bought) if k else None              # the costing's lines on no order: the job's own work
+    ordered = sum(pre_tax(d) for d in pos)
+    arrived = sum(received.get(str(d['invoice_id']), 0.0) for d in pos)
+    taken = pre_tax(q) if q and f['accepted'] and (q.get('currency_code') or 'INR') == cur else None
+    billed = [d for d in docs if (get_type(d.get('doc_type')).key in INVOICE_TYPES or get_type(d.get('doc_type')).adjusts)
+              and d.get('status') not in ('draft', 'cancelled', 'revised') and (d.get('currency_code') or 'INR') == cur]
+    invoiced = sum(pre_tax(d) * (get_type(d.get('doc_type')).adjusts or 1) for d in billed)
+    done = taken is not None and invoiced >= taken - 0.5 and arrived >= ordered - 0.5
+    own = rest or 0.0
+    rows = [{'key': 'revenue', 'label': 'Revenue', 'costed': price, 'committed': taken, 'actual': invoiced if billed else None},
+            {'key': 'bought', 'label': 'Bought on POs', 'costed': costed_bought if linked else None,
+             'committed': ordered if pos else None, 'actual': arrived if pos else None}]
+    if k:
+        rows.append({'key': 'own', 'label': 'Rest of the costing', 'costed': rest, 'committed': rest, 'actual': rest})
+    rows.append({'key': 'margin', 'label': 'Margin', 'costed': price - cost if k else None,
+                 'committed': taken - ordered - own if taken is not None else None,
+                 'actual': invoiced - arrived - own if done else None})
+    notes = []
+    if linked:
+        over = sum(pre_tax(d) for d in linked) - costed_bought
+        n = len(linked)
+        if abs(over) >= 0.5:
+            notes.append({'text': f'{n} PO{"" if n == 1 else "s"} from the costing: {fm(abs(over))} {"over" if over > 0 else "under"} '
+                                  'what those lines were costed at', 'tone': 'late' if over > 0 else 'done'})
+        else:
+            notes.append({'text': f'{n} PO{"" if n == 1 else "s"} from the costing, at what those lines were costed at', 'tone': ''})
+    if others and k:
+        n = len(others)
+        notes.append({'text': f'{fm(sum(pre_tax(d) for d in others))} on {n} PO{"" if n == 1 else "s"} not made from the costing', 'tone': ''})
+    if not k:
+        notes.append({'text': 'No costing for this job', 'tone': ''})
+    if len(pos) < len(placed):
+        notes.append({'text': f'Leaves out purchase orders in currencies other than {cur}', 'tone': ''})
+    return {'currency': cur, 'costing': {'id': k['costing_id'], 'title': k.get('title') or 'Costing'} if k else None,
+            'rows': rows, 'notes': notes}
 
 
 def statuses(f: Dict, rows: List[Dict], bought: List[Dict], sales: bool, today: date, usual: Optional[int] = None) -> List[Dict]:

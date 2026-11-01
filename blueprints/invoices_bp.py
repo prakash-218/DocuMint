@@ -102,6 +102,8 @@ def create_invoice():
             recalculate_invoice(invoice_id, invoice_header, invoice_values)
             if project:
                 projects.set_project(invoice_id, org_id, project['project_id'])
+                if get_type(doc_type).purchase and request.form.get('from_costing'):
+                    _link_costing(invoice_id, org_id, project, request.form)
 
             activity.document_event('document_created', invoice_header, 'created', project_id=project['project_id'] if project else None)
             flash(f'{get_type(doc_type).label} {invoice_header.get("doc_number") or ""} created', 'success')
@@ -422,6 +424,19 @@ def finalize_invoice(invoice_id):
 
 
 QUOTE_OUTCOMES = {'accepted': 'marked as accepted', 'declined': 'marked as declined', 'sent': 'reopened'}
+
+
+def _link_costing(invoice_id, org_id, project, form):
+    """A purchase order made from a costing's lines (from_costing, lines: the picks): the costing, and what those
+    lines were costed at, kept on the order; only a costing of its project, for those who see costings."""
+    import costing
+    if not permissions.can('costings.read'):
+        return
+    row = costing.get(form.get('from_costing'), org_id)
+    if not row or str(row.get('project_id')) != str(project['project_id']):
+        return
+    picks = [p for p in (form.get('lines') or '').split(',') if p]
+    db.execute_proc('sp_set_invoice_costing', (invoice_id, org_id, row['costing_id'], costing.costed_value(row, picks)), fetch=False)
 
 
 def _po_progress(header, values=None, sections=None):

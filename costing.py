@@ -503,6 +503,15 @@ def rate_suggestions(org_id, known: List[Dict], limit=40) -> List[Dict]:
     return sorted(seen.values(), key=lambda r: (-r['used'], r['description'].lower()))[:limit]
 
 
+def costed_value(row: Dict, picks: List[str]) -> float:
+    """What the picked lines (as purchase_lines takes them) were costed at: each line's cost as the sheet counts it,
+    its markup included, times its item's quantity."""
+    wanted = set(picks or [])
+    return round(sum(_line_cost(line) * _qty(item.get('qty'))
+                     for item in (row.get('sheet') or {}).get('items') or []
+                     for n, line in enumerate(item.get('lines') or []) if f"{item.get('key')}:{n}" in wanted), 2)
+
+
 def purchase_lines(row: Dict, picks: List[str]) -> List[Dict]:
     """A costing's cost lines to buy on a purchase order: picks are "<item key>:<line number>" (from 0). Each becomes
     [{description (with its make), qty (the line's for one item, times the items), unit, rate (its unit cost)}], in

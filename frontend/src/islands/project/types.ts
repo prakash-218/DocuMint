@@ -54,6 +54,15 @@ export interface Progress {
   tone: 'done' | 'now' | 'late' | 'todo' | 'none';
 }
 
+/** What the job makes, before GST (project_view.profit): as costed, as committed, as it actually stands. */
+export interface Profit {
+  currency: string;
+  costing: { id: string; title: string } | null;
+  /** revenue, bought (on POs), own (the costing's lines on no PO), margin; null where there's nothing to go by. */
+  rows: { key: 'revenue' | 'bought' | 'own' | 'margin'; label: string; costed: number | null; committed: number | null; actual: number | null }[];
+  notes: { text: string; tone: '' | 'late' | 'done' }[];
+}
+
 /** A document in the thread (project_view.thread): the document itself is in documents or purchases. */
 export interface DocEntry {
   id: string;
@@ -136,6 +145,8 @@ export interface Page {
   stage: { steps: Step[]; current: string | null; pill: { text: string; tone: Tone } };
   /** Quotation, advance, material, invoiced, paid; Sales get the quotation only. */
   progress: Progress[];
+  /** For those who see costings; null when there's neither a costing nor a purchase order. */
+  profit?: Profit | null;
   next: { tone: Tone; text: string; sub: string; actions: Action[] };
   money: MoneyRow[];
   documents: Doc[];
