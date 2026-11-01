@@ -63,6 +63,22 @@ export interface Profit {
   notes: { text: string; tone: '' | 'late' | 'done' }[];
 }
 
+/** Invoicing part of the quotation the job took (project_view.part_invoice); amounts before GST. */
+export interface PartInvoice {
+  /** What it's made from: the job's proforma, or the quotation. */
+  source: { number: string; kind: string };
+  quote: string;
+  /** Where the form posts (invoices_bp.convert): target=invoice with part_percent or part_amount. */
+  action: string;
+  currency: string;
+  base: number;
+  tax: { mode: string; rate: number };
+  /** Already on the job's tax invoices, drafts included, less credit notes. */
+  invoiced: number;
+  /** The advance payments waiting on the proforma, in the order a part takes them (each whole, while it fits). */
+  advances: number[];
+}
+
 /** A document in the thread (project_view.thread): the document itself is in documents or purchases. */
 export interface DocEntry {
   id: string;
@@ -147,6 +163,8 @@ export interface Page {
   progress: Progress[];
   /** For those who see costings; null when there's neither a costing nor a purchase order. */
   profit?: Profit | null;
+  /** For those who make tax invoices, with an accepted quotation not all invoiced. */
+  part?: PartInvoice | null;
   next: { tone: Tone; text: string; sub: string; actions: Action[] };
   money: MoneyRow[];
   documents: Doc[];

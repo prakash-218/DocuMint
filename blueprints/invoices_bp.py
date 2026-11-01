@@ -569,11 +569,26 @@ def convert(invoice_id):
         flash('Template not found', 'error')
         return redirect(_back(invoice_id))
 
+    # a tax invoice for part of it (the project page's "Invoice part of"): a percent, or an amount before GST
+    part = None
+    if request.form.get('part_percent') or request.form.get('part_amount'):
+        try:
+            part = _part_share(source, values, org_id)
+        except ValueError as e:
+            flash(str(e), 'error')
+            return redirect(url_for('projects_bp.view_project', project_id=source['project_id']) if source.get('project_id')
+                            else _back(invoice_id))
+
+    # the quotation a part is "of": the one its proforma was made from
+    made_from = get_org_invoice(source['source_invoice_id'], org_id)[0]         if part is not None and source.get('doc_type') == 'proforma' and source.get('source_invoice_id') else None
+    of = (made_from or {}).get('doc_number') or source.get('doc_number') or 'this document'
+
     _, profile = get_org_profile(org_id)
     notes = []
     try:
         new_id = convert_document(source, values, target, org_id, profile, template_id,
-                                  discount='spread' if request.form.get('discount') == 'spread' else 'keep', notes=notes)
+                                  discount='spread' if request.form.get('discount') == 'spread' else 'keep', notes=notes,
+                                  part=part, part_of=of if made_from else None)
     except DocumentError as e:
         flash(str(e), 'error')
         return redirect(_back(invoice_id))
@@ -582,22 +597,51 @@ def convert(invoice_id):
         return redirect(_back(invoice_id))
 
     _into_project(source, new_id, org_id)
+    new_header, _ = get_org_invoice(new_id, org_id)
     carried = 0.0
     if get_type(source.get('doc_type')).takes_advances:
         try:
-            carried = advances.carry_over(org_id, invoice_id, new_id)
+            # a part takes as much of the advance as it can hold; the rest waits on the proforma for the next part
+            carried = advances.carry_over(org_id, invoice_id, new_id,
+                                          limit=float((new_header or {}).get('total_amount') or 0) if part is not None else None)
         except DatabaseError as e:
             flash(f"The proforma's advance stays on it: {e}", 'error')
-    new_header, _ = get_org_invoice(new_id, org_id)
+    what = f"for {round(part * 100, 2):g}% of {of}" if part is not None else f'from {source.get("doc_number") or "a draft"}'
     if new_header:
-        activity.document_event('document_converted', new_header, f'made from {source.get("doc_number") or "a draft"}')
+        activity.document_event('document_converted', new_header, f'made {what}')
     from money import format_money
-    flash(f'Created {get_type(target).label.lower()} from {source.get("doc_number") or "this document"}'
+    flash(f'Created {get_type(target).label.lower()} {what}'
           + (f', with its advance of {format_money(carried, source.get("currency_code"))}' if carried else '')
           + '. Check the details, then finalize it.', 'success')
     for note in notes:
         flash(note, 'warning')
     return redirect(_editor(new_id, invoice_id))
+
+
+def _part_share(source, values, org_id) -> float:
+    """The share of source a part invoice is for (0 to 1): part_percent of it, or part_amount of its value before GST;
+    at most what's left of it to invoice on its project (its tax invoices, drafts included, less credit notes).
+    ValueError, saying why, otherwise."""
+    import project_view
+    import revisions
+    from money import format_money
+    base = invoice_summary(source, build_sections(source, values), [])['taxable']
+    if base <= 0:
+        raise ValueError("There's nothing on it to invoice part of")
+    percent = (request.form.get('part_percent') or '').strip()
+    amount = (request.form.get('part_amount') or '').replace(',', '').strip()
+    try:
+        share = float(percent) / 100 if percent else float(amount) / base
+    except ValueError:
+        raise ValueError(f'“{percent or amount}” isn\'t a percent or an amount') from None
+    docs = revisions.collapse(projects.project_documents(source['project_id'], org_id)) if source.get('project_id') else []
+    left = base - project_view.invoiced(docs, source.get('currency_code') or 'INR')
+    if share <= 0:
+        raise ValueError('Invoice more than nothing')
+    if share * base > left + 1:                                 # a rupee for rounding
+        raise ValueError(f"That's more than the {format_money(max(left, 0), source.get('currency_code'))} of "
+                         f"{source.get('doc_number') or 'it'} left to invoice")
+    return min(share, max(left, 0) / base, 1.0)
 
 
 def _into_project(source, new_id, org_id):

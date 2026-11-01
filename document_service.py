@@ -10,7 +10,7 @@ from datetime import date
 from typing import Dict, List, Optional, Tuple
 
 from db import db, DatabaseError
-from documents import (DOC_TYPES, DEFAULT_EXPORT_QUOTE_TERMS, DEFAULT_QUOTE_CLOSING, DEFAULT_QUOTE_INTRO, DEFAULT_QUOTE_TERMS,
+from documents import (DOC_TYPES, INVOICE_TYPES, DEFAULT_EXPORT_QUOTE_TERMS, DEFAULT_QUOTE_CLOSING, DEFAULT_QUOTE_INTRO, DEFAULT_QUOTE_TERMS,
                        DETAIL_CARRY,
                        default_tax_rate, details_from_form, fiscal_year, format_number, fy_start_month,
                        get_type, load_json, number_format, settings_from_form, suggest_tax_mode, tax_note, tax_suggestion)
@@ -326,7 +326,8 @@ def _copy_document(source: Dict, source_values: List[Dict], target_type: str, or
 
 def convert_document(source: Dict, source_values: List[Dict], target_type: str, org_id,
                      profile: Dict, template_id: Optional[str] = None, discount: str = 'keep',
-                     notes: Optional[List[str]] = None) -> str:
+                     notes: Optional[List[str]] = None, part: Optional[float] = None,
+                     part_of: Optional[str] = None) -> str:
     """
     Create a new draft document of target_type from source (e.g. quote -> proforma).
     The source is marked 'converted' when it's a quote or proforma.
@@ -334,6 +335,10 @@ def convert_document(source: Dict, source_values: List[Dict], target_type: str, 
     discount, when the source has discounts: 'keep' gives the new document the same ones; 'spread' takes them into
     its line prices instead (discounts.spread), so it shows net prices and the same total. notes gets a word about
     any rounding left over.
+
+    part (0 to 1): a tax invoice for that share of the source, every line at that share of its price and marked so
+    ("60% of Q/031": part_of, the quotation's number, when the source is the proforma made from it), its discounts
+    taken into the prices (discounts.scale).
     """
     if target_type == 'export_invoice':
         target_type = 'invoice'
@@ -355,7 +360,23 @@ def convert_document(source: Dict, source_values: List[Dict], target_type: str, 
     if target_type == 'export_invoice' and tax_mode in ('cgst_sgst', 'igst'):
         tax_mode = 'lut'
     import discounts
-    if discounts.any_of(source):
+    if part is not None:
+        if target_type not in INVOICE_TYPES:
+            raise DocumentError('Only a tax invoice can be made for part of a document')
+        if not 0 < part <= 1:
+            raise DocumentError('A part is more than nothing and at most all of it')
+        from invoice_service import get_template_fields
+        from money import format_money
+        label = f"{round(part * 100, 2):g}% of {part_of or source.get('doc_number') or 'the quotation'}"
+        try:
+            source_values, left = discounts.scale(source, get_template_fields(source['template_id'], source.get('template_version')),
+                                                  source_values, part, label)
+        except discounts.DiscountError as e:
+            raise DocumentError(str(e)) from None
+        if left and notes is not None:
+            notes.append(f"Rounding the prices leaves the total {format_money(abs(left), source.get('currency_code'))} "
+                         f"{'under' if left > 0 else 'over'}; adjust a price if it matters.")
+    elif discounts.any_of(source):
         if discount == 'spread':
             from invoice_service import get_template_fields
             from money import format_money

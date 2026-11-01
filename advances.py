@@ -7,7 +7,7 @@ the same customer's proformas (a job billed from two PIs). Moving rather than co
 each rupee counted once, and the payment remembers its proforma (payment.advance_of).
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from db import db
 
@@ -31,8 +31,16 @@ def apply(org_id, invoice_id, payment_ids) -> int:
     return len(payment_ids)
 
 
-def carry_over(org_id, proforma_id, invoice_id) -> float:
-    """A proforma converted to an invoice: its advances not applied elsewhere go to the invoice."""
+def carry_over(org_id, proforma_id, invoice_id, limit: Optional[float] = None) -> float:
+    """A proforma converted to an invoice: its advances not applied elsewhere go to the invoice. With a limit (an
+    invoice for part of it), only the advances that fit in it, in the order they came; the rest wait for the next."""
     waiting = [a for a in on_proforma(proforma_id) if not a.get('applied')]
+    if limit is not None:
+        fits, held = [], 0.0
+        for a in waiting:
+            if held + float(a['amount'] or 0) <= limit + 0.005:
+                fits.append(a)
+                held += float(a['amount'] or 0)
+        waiting = fits
     apply(org_id, invoice_id, [a['payment_id'] for a in waiting])
     return sum(float(a['amount'] or 0) for a in waiting)

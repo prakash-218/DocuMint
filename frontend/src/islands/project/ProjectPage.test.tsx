@@ -1,4 +1,4 @@
-import { pick, render, screen, waitFor, within } from '../../test/render';
+import { fireEvent, pick, render, screen, waitFor, within } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import ProjectPage from './ProjectPage';
@@ -213,6 +213,34 @@ describe('ProjectPage', () => {
                           ['Rest of the costing', '−₹1,65,000', '−₹1,65,000', '−₹1,65,000'],
                           ['Margin', '₹1,85,00037%', '₹1,19,00023.8%', '—']]);
     expect(within(card).getByText(/₹18,000 over/)).toHaveClass('tone-late');
+  });
+
+  it('invoices part of the quotation by percent or amount, with the advance that fits, never past what is left', async () => {
+    serve({ ...PAGE, part: { source: { number: 'PI-011', kind: 'Proforma Invoice' }, quote: 'Q/041', action: '/proformas/PI-11/convert',
+                             currency: 'INR', base: 45000, tax: { mode: 'cgst_sgst', rate: 18 }, invoiced: 0, advances: [20000, 15000] } });
+    render(<ProjectPage projectId="P-1" />);
+    const card = (await screen.findByRole('heading', { name: 'Invoice part of Q/041' })).closest('section')!;
+    const rows = () => Array.from(card.querySelectorAll('.part-rows > div')).map((r) => r.textContent);
+    fireEvent.change(within(card).getByLabelText('Percent of Q/041'), { target: { value: '60' } });
+    expect(rows()).toEqual(['Q/041, before GST₹45,000', 'Invoiced so far₹0', 'This invoice₹31,860',
+                            'Before GST + CGST + SGST 18%₹27,000 + ₹4,860',
+                            'Advance on PI-011 with it−₹20,000',                    // the ₹15,000 wouldn't fit too
+                            'To pay on it₹11,860', 'Left to invoice after it₹18,000 · 40%']);
+    const form = card.querySelector('form')!;
+    expect(form).toHaveAttribute('action', '/proformas/PI-11/convert');
+    expect(form.querySelector('input[name=part_percent]')).toHaveValue('60');
+    expect(within(card).getByRole('button', { name: 'Make the tax invoice for ₹31,860' })).toBeEnabled();
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Amount' }));
+    const amount = within(card).getByLabelText('Before GST');
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '50000');
+    expect(within(card).getByRole('alert')).toHaveTextContent("That's more than the ₹45,000 left to invoice.");
+    expect(within(card).getByRole('button', { name: /Make the tax invoice/ })).toBeDisabled();
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '18000');
+    expect(form.querySelector('input[name=part_amount]')).toHaveValue('18000');
+    expect(within(card).getByRole('button', { name: 'Make the tax invoice for ₹21,240' })).toBeEnabled();
   });
 
   it('takes files dropped or chosen, and says what one is with its number', async () => {
