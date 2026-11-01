@@ -2,7 +2,7 @@ import { pick, render, screen, waitFor, within } from '../../test/render';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import ProjectPage from './ProjectPage';
-import type { Page } from './types';
+import type { Doc, Page } from './types';
 
 const PAGE: Page = {
   project: {
@@ -17,6 +17,13 @@ const PAGE: Page = {
             { key: 'paid', label: 'Paid', state: 'todo', sub: '' }],
     current: 'accepted', pill: { text: 'Waiting for an answer', tone: 'wait' },
   },
+  progress: [
+    { key: 'quotation', label: 'Quotation', text: 'Sent · Q/041', sub: 'No answer for 6 days', bar: 0.5, tone: 'now' },
+    { key: 'advance', label: 'Advance', text: '—', sub: '', bar: 0, tone: 'todo' },
+    { key: 'material', label: 'Material', text: 'No purchase orders', sub: '', bar: 0, tone: 'none' },
+    { key: 'invoiced', label: 'Invoiced', text: 'Not yet', sub: '', bar: 0, tone: 'todo' },
+    { key: 'paid', label: 'Paid', text: 'Nothing yet', sub: '', bar: 0, tone: 'todo' },
+  ],
   next: {
     tone: 'wait', text: 'Quotation Q/041 sent on 14 Oct.', sub: 'No answer for 6 days.',
     actions: [{ kind: 'post', label: 'Mark accepted', action: '/quotes/Q-1/status', fields: { status: 'accepted' }, primary: true, confirm: null },
@@ -27,7 +34,10 @@ const PAGE: Page = {
                 currency: 'INR', total: 495600, paid: 0, balance: null, url: '/quotes/Q-1', pdf: '/quotes/Q-1/pdf',
                 versions: [{ invoice_id: 'Q-0', number: 'Q/041 (original)', issue_date: '2026-10-10', total: 519200, url: '/quotes/Q-0' }] }],
   new_document: { quote: '/quotes/create?project_id=P-1', proforma: '/proformas/create?project_id=P-1', invoice: '/invoices/create?project_id=P-1' },
-  timeline: [{ id: 'e-1', type: 'note', kind: 'note', title: 'Agreed 4.5% off', body: null, when: '2026-10-13T09:00:00', who: 'meena', link: null },
+  timeline: [{ id: 'd-Q-1', type: 'document', kind: 'quote', invoice_id: 'Q-1', purchase: false, when: '2026-10-14T10:00:00',
+               history: [{ title: 'Quotation Q/041 sent', when: '2026-10-14T10:00:00', who: 'meena' },
+                         { title: 'Quotation Q/041 created', when: '2026-10-13T16:00:00', who: 'meena' }] },
+             { id: 'e-1', type: 'note', kind: 'note', title: 'Agreed 4.5% off', body: null, when: '2026-10-13T09:00:00', who: 'meena', link: null },
              { id: 'm-1', type: 'email', kind: 'email_received', title: 'Re: Quotation Q/041', body: 'Can you do better?', when: '2026-10-12T09:00:00',
                who: 'Ravi', link: '/emails/T-1', thread_id: 'T-1', files: 0, direction: 'in' }],
   people: [{ contact_id: 'K-1', customer_id: 'C-1', name: 'Ravi Kumar', email: 'ravi@gearco.example', phone: null, role: 'Purchase',
@@ -67,18 +77,17 @@ describe('ProjectPage', () => {
     serve();
     render(<ProjectPage projectId="P-1" />);
     expect(await screen.findByText('Waiting for an answer')).toBeInTheDocument();
-    const tracker = screen.getByRole('list', { name: 'Where the job is' });
-    expect(within(tracker).getAllByRole('listitem').map((li) => li.textContent)).toEqual(
-      ['Quoted14 Oct', 'AcceptedWaiting · 6 days', 'Advance', 'Invoiced', 'Paid']);
-    expect(within(tracker).getByText('Accepted').closest('li')).toHaveAttribute('aria-current', 'step');
+    const progress = screen.getByRole('list', { name: 'Where the job stands' });
+    expect(within(progress).getAllByRole('listitem').map((li) => li.textContent)).toEqual(
+      ['QuotationSent · Q/041No answer for 6 days', 'Advance—', 'MaterialNo purchase orders', 'InvoicedNot yet', 'PaidNothing yet']);
+    expect(within(progress).getByText('Sent · Q/041').closest('li')).toHaveClass('pg-now');
     expect(screen.getByText('Quotation Q/041 sent on 14 Oct.')).toBeInTheDocument();
     const accept = screen.getByRole('button', { name: 'Mark accepted' });
     const form = accept.closest('form')!;
     expect(form).toHaveAttribute('action', '/quotes/Q-1/status');
     expect(form.querySelector('input[name=status]')).toHaveValue('accepted');
-    expect(screen.getByText('₹4,95,600', { selector: '.money b' })).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Earlier versions' })).toHaveTextContent('Original · Q/041 (original)');
-    expect(screen.getByText('Proforma for the advance').closest('.slot')).toHaveClass('later');   // not the next step yet
+    expect(screen.getByRole('link', { name: 'New proforma' })).toHaveAttribute('href', '/proformas/create?project_id=P-1');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Hob arbor set');
   });
 
@@ -130,23 +139,59 @@ describe('ProjectPage', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();         // the form stays open
   });
 
-  it('filters the timeline', async () => {
+  it('filters the thread', async () => {
     serve();
     render(<ProjectPage projectId="P-1" />);
     await userEvent.click(await screen.findByRole('button', { name: 'Notes' }));
     expect(screen.getByText('Agreed 4.5% off')).toBeInTheDocument();
     expect(screen.queryByText('Re: Quotation Q/041')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Q/041' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Documents' }));
+    expect(screen.getByRole('link', { name: 'Q/041' })).toBeInTheDocument();
+    expect(screen.queryByText('Agreed 4.5% off')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Payments' })).not.toBeInTheDocument();    // none on this job
+  });
+
+  it('shows every document once in the thread, with what happened to it, and what was bought for the job', async () => {
+    const doc = (id: string, over: Partial<Doc>): Doc => ({ invoice_id: id, doc_type: 'invoice', kind: 'Tax Invoice', number: id, status: 'pending',
+      issue_date: '2026-10-20', currency: 'INR', total: 118000, paid: 0, balance: 59000, url: `/invoices/${id}`, pdf: '', versions: [], ...over });
+    const note = doc('CN/001/26-27', { doc_type: 'credit_note', kind: 'Credit Note', status: 'issued', issue_date: '2026-10-28', total: 59000,
+                                        balance: null, adjusts: -1, against: '040', url: '/credit-notes/N-1' });
+    const po = doc('PO 017', { doc_type: 'purchase_order', kind: 'Purchase Order', status: 'received', total: 40000, balance: null,
+                               party: 'Clamp Works', url: '/purchase-orders/PO-17' });
+    const entry = (d: Doc, when: string, purchase = false) => ({ id: `d-${d.invoice_id}`, type: 'document' as const, kind: d.doc_type,
+      invoice_id: d.invoice_id, purchase, when, history: [] });
+    serve({ ...PAGE, documents: [...PAGE.documents, note], purchases: [po],
+            timeline: [entry(note, '2026-10-28T10:00:00'),
+                       { id: 'e-9', type: 'event', kind: 'payment', title: 'Payment of ₹59,000 on 040', body: null, when: '2026-10-27T10:00:00',
+                         who: 'meena', link: '/invoices/040' },
+                       entry(po, '2026-10-26T10:00:00', true), ...PAGE.timeline] });
+    render(<ProjectPage projectId="P-1" />);
+    const thread = await screen.findByRole('region', { name: 'Everything on this job' });
+    const credit = within(thread).getByRole('link', { name: 'CN/001/26-27' }).closest('li')!;
+    expect(credit).toHaveTextContent('−₹59,000');
+    expect(credit).toHaveTextContent('issued 28 Oct · against 040');
+    const bought = within(thread).getByRole('link', { name: 'PO 017' }).closest('li')!;
+    expect(bought).toHaveTextContent('Purchase Order · Clamp Works');
+    expect(within(bought).getByText('Received')).toHaveClass('tone-done');
+    expect(within(bought).queryByRole('button', { name: 'Take out of the project' })).toBeNull();
+    const quote = within(thread).getByRole('link', { name: 'Q/041' }).closest('li')!;
+    expect(quote).toHaveTextContent('Quotation Q/041 sent · meena');               // its latest event, and the one before on request
+    expect(within(quote).getByText('1 earlier')).toBeInTheDocument();
+    await userEvent.click(within(thread).getByRole('button', { name: 'Payments' }));
+    expect(within(thread).getByText('Payment of ₹59,000 on 040')).toBeInTheDocument();
+    expect(within(thread).queryByRole('link', { name: 'PO 017' })).toBeNull();
   });
 
   it('gives Sales the quotation, without the money after it or the mailbox', async () => {
     serve({ ...PAGE, can: { edit: true, manage: false, read_mail: false, sales: true }, stage: { ...PAGE.stage, steps: PAGE.stage.steps.slice(0, 2) },
-            money: [{ currency: 'INR', quoted: 495600 }], found: { people: [], phones: [] }, timeline: [PAGE.timeline[0]], costings: null });
+            progress: PAGE.progress.slice(0, 1), money: [{ currency: 'INR', quoted: 495600 }], found: { people: [], phones: [] },
+            new_document: { quote: PAGE.new_document.quote }, timeline: PAGE.timeline.slice(0, 2), costings: null });
     render(<ProjectPage projectId="P-1" />);
-    expect(within(await screen.findByRole('list', { name: 'Where the job is' })).getAllByRole('listitem')).toHaveLength(2);
-    expect(screen.queryByText('Invoiced', { selector: '.pp-money-label' })).not.toBeInTheDocument();
+    expect(within(await screen.findByRole('list', { name: 'Where the job stands' })).getAllByRole('listitem')).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Emails' })).not.toBeInTheDocument();
     expect(screen.queryByText("Found in this project's emails")).not.toBeInTheDocument();
-    expect(screen.queryByText('Proforma for the advance')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'New proforma' })).not.toBeInTheDocument();
   });
 
   it('takes files dropped or chosen, and says what one is with its number', async () => {

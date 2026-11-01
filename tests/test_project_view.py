@@ -198,3 +198,68 @@ def test_how_long_a_job_has_been_where_it_is():
     invoice = dict(doc('invoice', 'pending', total=590000, paid=200000, issue='2026-08-15'), due_date='2026-09-14')
     got = V.in_stage('paid', V.facts([invoice]), None, today)
     assert (got['days'], got['late'], got['amount']) == (78, 48, 390000)          # since it was invoiced; 48 days late
+
+
+def test_an_unpaid_advance_doesnt_hold_the_job_back_once_it_is_invoiced():
+    st, nxt = look([doc('quote', 'accepted'), doc('proforma', 'sent', total=400), doc('invoice', 'pending', paid=0)])
+    assert st['current'] == 'paid' and states(st)[2] == ('advance', 'skipped', 'Invoiced instead')
+    assert labels(nxt)[0] == 'Record payment*'
+
+
+def test_where_the_job_stands_on_each_count():
+    quote = doc('quote', 'accepted', total=590000, number='Q/031')
+    proforma = doc('proforma', 'pending', total=236000, paid=236000, number='PI-011')
+    invoice = doc('invoice', 'pending', total=354000, paid=0, issue='2026-09-01', number='INV-034')     # due 1 Oct (30 days)
+    rows = [{'currency': 'INR', 'quoted': 590000.0, 'invoiced': 354000.0, 'received': 236000.0, 'advance_held': 236000.0, 'due': 354000.0}]
+    bought = [{'status': 'received', 'total': 92000.0, 'currency': 'INR'}, {'status': 'confirmed', 'total': 48000.0, 'currency': 'INR'},
+              {'status': 'draft', 'total': 76000.0, 'currency': 'INR'}, {'status': 'cancelled', 'total': 9000.0, 'currency': 'INR'}]
+    got = V.statuses(V.facts([quote, proforma, invoice]), rows, bought, False, TODAY, 30)
+    assert [(c['key'], c['text'], c['sub'], c['bar'], c['tone']) for c in got] == [
+        ('quotation', 'Accepted · Q/031', '₹5,90,000', 1, 'done'),
+        ('advance', '₹2,36,000 of ₹2,36,000 in', 'PI-011', 1.0, 'done'),
+        ('material', '1 of 2 POs received', '₹1,40,000 ordered', 0.5, 'now'),        # the draft and the cancelled one aside
+        ('invoiced', '60% · ₹3,54,000', '₹2,36,000 left to invoice', 0.6, 'now'),
+        ('paid', '40% · ₹2,36,000', '₹3,54,000 due, 19 days late', 0.4, 'late')]
+    # Sales: the quotation only
+    assert [c['key'] for c in V.statuses(V.facts([quote]), rows[:1], [], True, TODAY)] == ['quotation']
+
+
+def test_each_count_before_anything_happens_and_when_skipped():
+    got = {c['key']: (c['text'], c['tone']) for c in V.statuses(V.facts([doc('quote', 'sent', issue='2026-10-14', number='Q/002')]),
+                                                                [{'currency': 'INR', 'quoted': 1000.0, 'invoiced': 0.0, 'received': 0.0, 'due': 0.0}], [], False, TODAY)}
+    assert got == {'quotation': ('Sent · Q/002', 'now'), 'advance': ('—', 'todo'), 'material': ('No purchase orders', 'none'),
+                   'invoiced': ('Not yet', 'todo'), 'paid': ('Nothing yet', 'todo')}
+    paid = doc('invoice', 'paid', total=1000, paid=1000, number='001')
+    got = {c['key']: (c['text'], c['tone']) for c in V.statuses(V.facts([paid]),
+                                                                [{'currency': 'INR', 'quoted': 0.0, 'invoiced': 1000.0, 'received': 1000.0, 'due': 0.0}], [], False, TODAY)}
+    assert got['quotation'] == ('None on this job', 'none') and got['advance'] == ('None on this job', 'none')
+    assert got['invoiced'] == ('₹1,000', 'done') and got['paid'] == ('100% · ₹1,000', 'done')     # of what was invoiced
+
+
+def test_one_thread_with_each_document_once_and_its_events_folded_in():
+    items = [{'id': 'e-3', 'type': 'event', 'kind': 'payment', 'title': 'Payment of ₹500 on 001', 'when': '2026-10-19T10:00', 'link': '/invoices/D-1'},
+             {'id': 'e-2', 'type': 'event', 'kind': 'document_sent', 'title': 'Tax Invoice 001 sent', 'when': '2026-10-18T10:00', 'link': '/invoices/D-1', 'who': 'ravi'},
+             {'id': 'n-1', 'type': 'note', 'kind': 'note', 'title': 'Call them on Monday', 'when': '2026-10-17T09:00', 'link': None},
+             {'id': 'e-1', 'type': 'event', 'kind': 'document_created', 'title': 'Tax Invoice 001 created', 'when': '2026-10-16T10:00', 'link': '/invoices/D-1'},
+             {'id': 'e-0', 'type': 'event', 'kind': 'po_confirmed', 'title': 'Purchase Order 7 marked as confirmed', 'when': '2026-10-15T10:00', 'link': '/purchase-orders/P-7'}]
+    docs = [{'invoice_id': 'D-1', 'doc_type': 'invoice', 'issue_date': '2026-10-16'}, {'invoice_id': 'D-9', 'doc_type': 'quote', 'issue_date': '2026-10-02'}]
+    got = V.thread(items, docs, [{'invoice_id': 'P-7', 'doc_type': 'purchase_order', 'issue_date': '2026-10-14'}])
+    assert [i['id'] for i in got] == ['e-3', 'd-D-1', 'n-1', 'd-P-7', 'd-D-9']     # the payment is its own entry
+    invoice = got[1]
+    assert invoice['type'] == 'document' and invoice['when'] == '2026-10-18T10:00' and not invoice['purchase']
+    assert [h['title'] for h in invoice['history']] == ['Tax Invoice 001 sent', 'Tax Invoice 001 created']
+    assert got[3]['purchase'] and got[4]['history'] == []
+
+
+
+def test_each_count_goes_by_the_quotation_the_job_took_and_never_past_100_percent():
+    kept = doc('quote', 'sent', total=356100, number='Q/004')
+    turned_down = doc('quote', 'declined', total=123100, number='Q/040')
+    proforma = doc('proforma', 'sent', total=54280, paid=0, number='PI-002')
+    invoice = doc('invoice', 'paid', total=400000, paid=400000, number='002')
+    rows = [{'currency': 'INR', 'quoted': 123100.0, 'invoiced': 400000.0, 'received': 400000.0, 'due': 0.0}]
+    got = {c['key']: (c['text'], c['sub'], c['tone']) for c in V.statuses(V.facts([kept, turned_down, proforma, invoice]), rows, [], False, TODAY)}
+    assert got['quotation'] == ('Accepted · Q/004', '₹3,56,100', 'done')                 # not the one they turned down
+    assert got['advance'] == ('₹0 of ₹54,280 in', 'PI-002 · invoiced instead', 'none')
+    assert got['invoiced'] == ('₹4,00,000', '₹43,900 more than Q/004', 'done')            # more than quoted: no percentage
+    assert got['paid'] == ('100% · ₹4,00,000', '', 'done')                                # of what was invoiced
