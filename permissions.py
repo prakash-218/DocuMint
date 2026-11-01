@@ -345,6 +345,7 @@ ENDPOINTS: Dict[str, Rule] = {
     'api_bp.share_off': Doc('write'),
     'api_bp.new_document': Doc('write'),
     'api_bp.edit_document': Doc('write'),
+    'api_bp.preview_document': Doc('write'),                # the editor's live preview, of what's typed
     'api_bp.packing': Doc('write', also=('invoices.write',)),
     'api_bp.documents': Doc('read'),
     'api_bp.payments': 'invoices.read',

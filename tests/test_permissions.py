@@ -113,7 +113,8 @@ def _sales_pages_before(endpoint, doc_type):
                    'project', 'update_project', 'add_note', 'set_person', 'save_person', 'customer', 'save_customer_contact',
                    'delete_customer_contact', 'update_file', 'customers', 'new_customer', 'customer_form', 'new_project',
                    'settings',
-                   'share', 'share_on', 'share_off'},           # since: sharing a quotation, as they email it
+                   'share', 'share_on', 'share_off',            # since: sharing a quotation, as they email it
+                   'preview_document'},                         # since: the editor's live preview of a quotation
         'settings_bp': {'index', 'help'},             # since: the Help page, for everyone
         'suppliers_bp': {'list_suppliers'},           # since: the companies they buy from, like customers
     }

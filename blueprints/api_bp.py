@@ -128,6 +128,42 @@ def new_document(group):
                                                             request.args.get('template_id'), url_for, from_costing)))
 
 
+@api_bp.route('/editor/new/<any(quotes, proformas, invoices, "purchase-orders"):group>/preview', methods=['POST'])
+@api_bp.route('/editor/<invoice_id>/preview', methods=['POST'])
+@require_org
+def preview_document(group=None, invoice_id=None):
+    """The editor's form as the customer would get it, not saved (editor_page.draft): the page as the document's page
+    shows it, its total, and the email and WhatsApp message it would go with; with ?as=pdf, the PDF itself. The body is
+    {"fields": {name: value}}, the editor form's fields as JSON."""
+    from flask import render_template_string
+    from werkzeug.datastructures import MultiDict
+    from access import get_org_invoice
+    import editor_page
+    from invoice_service import PdfUnavailable, build_sections, invoice_summary, render_invoice_pdf, with_discount_column
+    saved = None
+    if invoice_id:
+        saved, _ = get_org_invoice(invoice_id, g.current_org_id)
+        if not saved:
+            return jsonify(error='That document is not in this organization'), 404
+    fields = _body().get('fields')
+    header, values = editor_page.draft(g.current_org_id, MultiDict(fields if isinstance(fields, dict) else {}), saved)
+    if not header:
+        return jsonify(error='Choose a template first'), 400
+    sections = build_sections(header, values)
+    payments = db.execute_proc('sp_get_invoice_payments', (invoice_id,)) or [] if invoice_id else []
+    summary = invoice_summary(header, sections, payments)
+    header['total_amount'] = summary['total']
+    if request.args.get('as') == 'pdf':
+        try:
+            return render_invoice_pdf(header, values, copies=1)
+        except PdfUnavailable:
+            return jsonify(error="PDFs can't be made on this server"), 503
+    html = render_template_string("{% include 'invoices/_document.html' %}", invoice=header,
+                                  sections_data=with_discount_column(sections), summary=summary)
+    return jsonify(html=html, total=summary['total'], currency=header.get('currency_code') or 'INR',
+                   **editor_page.preview_messages(g.current_org_id, header, summary))
+
+
 @api_bp.route('/editor/<invoice_id>')
 @require_org
 def edit_document(invoice_id):

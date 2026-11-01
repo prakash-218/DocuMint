@@ -11,6 +11,8 @@ invoices_bp.create_invoice and edit_invoice, which save it, so what's saved and 
 from datetime import date
 from typing import Callable, Dict, List, Optional
 
+import doc_urls
+
 
 def _num(v) -> str:
     return ('%.4f' % float(v)).rstrip('0').rstrip('.') if v not in (None, '') else ''
@@ -153,7 +155,6 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
     elif project:
         cancel = url('projects_bp.view_project', project_id=project['project_id'])
     elif t.purchase:
-        import doc_urls
         cancel = url('invoices_bp.list_invoices', doc_path=doc_urls.path_for(t.key))
     else:
         cancel = url('invoices_bp.list_invoices', type=t.key if t.key in ('quote', 'proforma') else None)
@@ -172,6 +173,8 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
         if t.adjusts and editing and header.get('source_invoice_id') else None,
         'change_template': None if editing else url('invoices_bp.create_invoice', doc_type=t.key, project_id=project['project_id'] if project else None),
         'action': url('invoices_bp.edit_invoice', invoice_id=header['invoice_id']) if editing else url('invoices_bp.create_invoice', doc_type=t.key),
+        'preview': (url('api_bp.preview_document', invoice_id=header['invoice_id']) if editing
+                    else url('api_bp.preview_document', group=doc_urls.path_for(t.key))),
         'cancel': cancel,
         'submit': 'Save the correction' if correcting else ('Save' if editing else 'Create'),
         'submit_side': 'Save changes' if editing else f'Create {t.label.lower()}',
@@ -304,3 +307,82 @@ def edit_page(org_id: str, header: Dict, correcting: bool, url: Callable) -> Dic
     project = projects.get_project(projects.project_of(header['invoice_id'], org_id), org_id)
     return _editor(doc, sections_with_values(header['invoice_id'], header), url, project=project, header=header,
                    correcting=correcting, template_name=header.get('template_name') or '')
+
+# ---------------------------------------------------------------- The live preview: the form, not saved
+
+def draft(org_id, form, saved: Optional[Dict] = None):
+    """A document as the editor's form has it, not saved, for the live preview: (header, values) the way fetch_invoice
+    gives them, or (None, []) without a template. saved: the document being edited; a new one is made up from the
+    organization, the customer and the template the form names. The number, dates, tax, advance, details and
+    discounts are the form's, read as saving reads them (invoice_service.form_values, documents.details_from_form)."""
+    import discounts
+    from access import get_org_template
+    from db import db
+    from document_service import get_org_profile
+    from documents import details_from_form, invoice_kind, settings_from_form
+    from invoice_service import form_values, get_template_fields
+    from layout import template_is_export
+    from money import SYMBOLS
+    if saved:
+        doc = dict(saved)
+    else:
+        template = get_org_template(form.get('template_id'), org_id)
+        if not template:
+            return None, []
+        org, _ = get_org_profile(org_id)
+        found = db.execute_proc('sp_get_customer_details', (form.get('customer_id'),)) if form.get('customer_id') else []
+        customer = (found[0][0] if found and isinstance(found[0], list) and found[0] else found[0] if found and isinstance(found[0], dict) else None) or {}
+        if customer and str(customer.get('org_id')) != str(org_id):
+            customer = {}
+        doc = {'invoice_id': None, 'org_id': org_id, 'status': 'draft', 'project_id': form.get('project_id') or None,
+               'doc_type': invoice_kind(form.get('doc_type') or 'invoice', template_is_export(template['template_id'], org_id)),
+               'template_id': template['template_id'], 'template_version': template.get('latest_version') or template.get('version'),
+               'template_name': template.get('name'), 'currency_code': template.get('currency_code') or 'INR',
+               'organization_name': org.get('name'), 'organization_street_address': org.get('street_address'),
+               'organization_city': org.get('city'), 'organization_state': org.get('state'), 'organization_zip_code': org.get('zip_code'),
+               'organization_country': org.get('country'), 'organization_profile': org.get('profile'),
+               'customer_id': customer.get('customer_id'), 'customer_name': customer.get('name') or '', 'customer_tax_id': customer.get('tax_id'),
+               'customer_custom': customer.get('custom'), 'customer_street_address': customer.get('street_address'),
+               'customer_city': customer.get('city'), 'customer_state': customer.get('state'), 'customer_zip_code': customer.get('zip_code'),
+               'customer_country': customer.get('country'), 'payment_days': customer.get('payment_days') or customer.get('parent_payment_days')}
+    fields = get_template_fields(doc['template_id'], doc.get('template_version'))
+    settings = settings_from_form(form)
+    details = details_from_form(doc['doc_type'], form)
+    currency = (form.get('currency') or '').upper()
+    if currency in SYMBOLS:
+        details['currency'] = doc['currency_code'] = currency
+    names = {str(f['section_id']): f.get('section_name') or f.get('section_display_name') or ''
+             for f in fields if (f.get('section_type') or 'normal') == 'line_item'}
+    try:
+        found_discounts = discounts.from_form(form, names)
+    except discounts.DiscountError:
+        found_discounts = None                         # the editor says what's wrong with it; the preview leaves it off
+    if found_discounts:
+        details['discounts'] = found_discounts
+    doc.update(doc_number=(form.get('doc_number') or form.get('suggested_number') or doc.get('doc_number') or '').strip(),
+               issue_date=form.get('issue_date') or doc.get('issue_date'),
+               due_date=(form.get('due_date') or None) if 'due_date' in form else doc.get('due_date'),
+               tax_mode=settings['tax_mode'], tax_rate=settings['tax_rate'] or 0,
+               advance_percent=None if doc['doc_type'] == 'quote' else settings['advance_percent'],
+               advance_basis=settings['advance_basis'], details=details)
+    by_id = {f['field_id']: f for f in fields}
+    return doc, [{**by_id[v['field_id']], **v} for v in form_values(form, fields)]
+
+
+def preview_messages(org_id, header: Dict, summary: Dict) -> Dict:
+    """What would go out with it: the email's subject and first lines, and the WhatsApp message (sharing.message),
+    its link not made yet."""
+    import mailsend
+    import projects
+    import sharing
+    from documents import display_number, get_type, load_json
+    from payment_terms import usual_days
+    kind = get_type(header.get('doc_type'))
+    number = display_number(header) or kind.label
+    project_id = header.get('project_id') or (projects.project_of(header['invoice_id'], org_id) if header.get('invoice_id') else None)
+    project = projects.get_project(project_id, org_id) if project_id else None
+    subject = f'{kind.label} {number}' + (f" · {project['title']} ({projects.project_label(project)})" if project else '')
+    body = mailsend.first_message([], [], {'kind': kind.label, 'number': number}, project['title'] if project else 'your order',
+                                  header.get('organization_name') or '')
+    whatsapp = sharing.message(header, summary, sharing.LINK, None, usual_days(load_json(header.get('organization_profile'))))
+    return {'email': {'subject': subject, 'body': body}, 'whatsapp': 'Dear …,\n\n' + whatsapp}
