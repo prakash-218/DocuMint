@@ -4,6 +4,7 @@ import { PageHeader } from '../../app/PageHeader';
 import { day } from '../../format';
 import { Icon } from '../../icons';
 import { amount, lineCells, parseDiscount, totals } from './calc';
+import { Preview } from './Preview';
 import type { CustomerGroup, EditorData, Field, Section, Value } from './types';
 
 // A document in the editor, as the server page drew it: customer, number and dates; the template's line items (add
@@ -221,6 +222,12 @@ function Details({ details }: { details: EditorData['details'] }) {
   );
 }
 
+// Whether the preview sits beside the editor: each person's choice, kept in this browser, for every kind of document
+const SIDE = 'dm-editor-preview';
+function sideByDefault(): boolean {
+  try { return localStorage.getItem(SIDE) === 'on'; } catch { return false; }
+}
+
 export function Editor({ data }: { data: EditorData }) {
   const s = data.settings;
   const [rows, setAllRows] = useState<Rows>(() => Object.fromEntries(data.sections.filter((x) => x.type === 'line_item').map((x) => [x.id, x.rows ?? []])));
@@ -237,6 +244,15 @@ export function Editor({ data }: { data: EditorData }) {
   const taxed = taxMode === 'cgst_sgst' || taxMode === 'igst';
   const rate = parseFloat(taxRate) || 0;
   const t = data.type;
+  const form = useRef<HTMLFormElement>(null);
+  const [side, setSide] = useState(sideByDefault);
+  const [version, setVersion] = useState(0);              // each change, for the preview to draw it again
+  const changed = () => setVersion((v) => v + 1);
+  useEffect(changed, [rows, normals, currency, taxMode, taxRate, discount, customerId]);
+  const toggleSide = () => setSide((on) => {
+    try { localStorage.setItem(SIDE, on ? 'off' : 'on'); } catch { /* private mode: for this visit only */ }
+    return !on;
+  });
 
   return (
     <>
@@ -248,10 +264,14 @@ export function Editor({ data }: { data: EditorData }) {
                     {data.change_template && <> · <a href={data.change_template}>Change</a></>}
                   </>}
                   actions={<>
+                    <button type="button" className="btn btn-ghost editor-side-toggle" aria-pressed={side} onClick={toggleSide}>
+                      <Icon name="columns" /><span className="btn-label">Preview beside</span>
+                    </button>
                     <a href={data.cancel} className="btn btn-ghost"><span className="btn-label">Cancel</span><Icon name="x" className="show-mobile-icon" /></a>
                     <button type="submit" form="docForm" className="btn btn-primary"><Icon name="check" /><span className="btn-label">{data.submit}</span></button>
                   </>} />
-      <form id="docForm" method="post" action={data.action}>
+      <form id="docForm" method="post" action={data.action} ref={form} onInput={changed} onChange={changed}
+            className={side ? 'editor-split' : undefined}>
         {Object.entries(data.hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
         {data.correcting && (
           <div className="alert alert-warning">
@@ -366,6 +386,7 @@ export function Editor({ data }: { data: EditorData }) {
             <button type="submit" className="btn btn-primary btn-block">{data.submit_side}</button>
           </aside>
         </div>
+        {side && <Preview url={data.preview} form={form} version={version} />}
       </form>
     </>
   );

@@ -19,7 +19,7 @@ import activity
 import advances
 import doc_urls
 import revisions
-from invoice_service import (get_template_fields, build_sections, invoice_summary, item_lines, recalculate_invoice,
+from invoice_service import (get_template_fields, build_sections, form_values, invoice_summary, item_lines, recalculate_invoice,
                              render_invoice_pdf, PdfUnavailable)
 
 logger = logging.getLogger(__name__)
@@ -77,115 +77,10 @@ def create_invoice():
             invoice_id = result[0].get('invoice_id')
 
 
-            fields_result = db.execute_proc('sp_get_template_fields', (template_id,))
-            fields = fields_result if fields_result else []
-
-
-            sections = {}
-            for field in fields:
-                # Map field_display_name to label for template compatibility
-                if 'field_display_name' in field and 'label' not in field:
-                    field['label'] = field['field_display_name']
-                # Map section_display_name to title for line item headers
-                if 'section_display_name' in field and 'section_title' not in field:
-                    field['section_title'] = field['section_display_name']
-                section_id = field['section_id']
-                if section_id not in sections:
-                    sections[section_id] = {
-                        'type': field.get('section_type', 'normal'),
-                        'title': field.get('section_title') or field.get('section_display_name') or 'Untitled Section',
-                        'fields': []
-                    }
-                sections[section_id]['fields'].append(field)
-
-
-            for section_id, section_data in sections.items():
-                section_type = section_data['type']
-
-                if section_type == 'line_item':
-
-
-                    line_item_keys = [k for k in request.form.keys() if k.startswith(f'line_item_{section_id}_')]
-
-
-                    rows = {}
-                    for key in line_item_keys:
-
-
-                        prefix = f'line_item_{section_id}_'
-                        if key.startswith(prefix):
-                            remaining = key[len(prefix):]
-                            parts = remaining.split('_field_', 1)
-                            if len(parts) == 2:
-                                row_num = int(parts[0])
-                                field_id = parts[1]
-
-                                if row_num not in rows:
-                                    rows[row_num] = {}
-                                rows[row_num][field_id] = request.form.get(key)
-
-
-                    for row_num, row_data in rows.items():
-                        for field in section_data['fields']:
-                            field_id = field['field_id']
-                            data_type = field['data_type']
-
-                            val_string = None
-                            val_number = None
-                            val_date = None
-                            val_boolean = None
-
-                            value = row_data.get(field_id)
-
-
-                            if value and value.strip():
-                                if data_type == 'string':
-                                    val_string = value.strip()
-                                elif data_type == 'number':
-                                    try:
-                                        val_number = float(value)
-                                    except ValueError:
-                                        pass
-                                elif data_type == 'date':
-                                    val_date = value
-                                elif data_type == 'boolean':
-                                    val_boolean = 1 if value.lower() in ('true', '1', 'on', 'yes') else 0
-
-
-                            db.execute_proc('sp_save_invoice_value',
-                                           (invoice_id, field_id, val_string, val_number, val_date, val_boolean, row_num),
-                                           fetch=False)
-                else:
-
-                    for field in section_data['fields']:
-                        field_id = field['field_id']
-                        data_type = field['data_type']
-
-                        val_string = None
-                        val_number = None
-                        val_date = None
-                        val_boolean = None
-
-                        form_key = f'field_{field_id}'
-                        value = request.form.get(form_key)
-
-                        if value:
-                            if data_type == 'string':
-                                val_string = value
-                            elif data_type == 'number':
-                                try:
-                                    val_number = float(value)
-                                except ValueError:
-                                    pass
-                            elif data_type == 'date':
-                                val_date = value
-                            elif data_type == 'boolean':
-                                val_boolean = 1 if value.lower() in ('true', '1', 'on', 'yes') else 0
-
-
-                        db.execute_proc('sp_save_invoice_value',
-                                       (invoice_id, field_id, val_string, val_number, val_date, val_boolean, None),
-                                       fetch=False)
+            # the lines and fields as the editor posted them (invoice_service.form_values)
+            for v in form_values(request.form, db.execute_proc('sp_get_template_fields', (template_id,)) or []):
+                db.execute_proc('sp_save_invoice_value', (invoice_id, v['field_id'], v['val_string'], v['val_number'], v['val_date'],
+                                                          v['val_boolean'], v['value_ordinal']), fetch=False)
 
 
             issue_date = request.form.get('issue_date')
@@ -878,125 +773,13 @@ def edit_invoice(invoice_id):
             logger.debug(f"DEBUG EDIT -- Loaded {len(fields)} template fields")
 
 
-            sections = {}
-            for field in fields:
-                # Map field_display_name to label for template compatibility
-                if 'field_display_name' in field and 'label' not in field:
-                    field['label'] = field['field_display_name']
-                # Map section_display_name to title for line item headers
-                if 'section_display_name' in field and 'section_title' not in field:
-                    field['section_title'] = field['section_display_name']
-                section_id = field['section_id']
-                if section_id not in sections:
-                    sections[section_id] = {
-                        'type': field.get('section_type', 'normal'),
-                        'title': field.get('section_title') or field.get('section_display_name') or 'Untitled Section',
-                        'fields': []
-                    }
-                sections[section_id]['fields'].append(field)
-
-
-            for section_id, section_data in sections.items():
-                section_type = section_data['type']
-
-                if section_type == 'line_item':
-                    # First, delete all existing line item values for this section
-                    # This ensures deleted rows are removed and prevents conflicts
-                    field_ids = [f['field_id'] for f in section_data['fields']]
-                    if field_ids:
-                        # Format field_ids as comma-separated quoted values for the stored procedure
-                        field_ids_str = ','.join([f"'{fid}'" for fid in field_ids])
-                        db.execute_proc('sp_delete_invoice_values_by_fields', (invoice_id, field_ids_str), fetch=False)
-                        logger.debug(f"DEBUG EDIT -- Deleted existing line item values for section {section_id}")
-
-                    line_item_keys = [k for k in request.form.keys() if k.startswith(f'line_item_{section_id}_')]
-                    logger.debug(f"DEBUG EDIT -- Section {section_id}: Found {len(line_item_keys)} line item form keys")
-
-
-                    rows = {}
-                    for key in line_item_keys:
-                        prefix = f'line_item_{section_id}_'
-                        if key.startswith(prefix):
-                            remaining = key[len(prefix):]
-                            parts = remaining.split('_field_', 1)
-                            if len(parts) == 2:
-                                try:
-                                    row_num = int(parts[0])
-                                    field_id = parts[1]
-
-                                    if row_num not in rows:
-                                        rows[row_num] = {}
-                                    rows[row_num][field_id] = request.form.get(key)
-                                    logger.debug(f"DEBUG EDIT -- Section {section_id}: Row {row_num}, field {field_id} = '{request.form.get(key)}'")
-                                except ValueError:
-                                    logger.debug(f"DEBUG EDIT -- ERROR: Could not parse row number from key: {key}")
-
-                    logger.debug(f"DEBUG EDIT -- Section {section_id}: Found {len(rows)} unique rows: {sorted(rows.keys())}")
-
-
-                    for row_num, row_data in rows.items():
-                        logger.debug(f"DEBUG EDIT -- Saving row {row_num} for section {section_id} with {len(row_data)} fields")
-                        for field in section_data['fields']:
-                            field_id = field['field_id']
-                            data_type = field['data_type']
-
-                            val_string = None
-                            val_number = None
-                            val_date = None
-                            val_boolean = None
-
-                            value = row_data.get(field_id)
-
-                            # Save the value even if it's empty (to clear previous values)
-                            if value is not None:
-                                value_str = str(value).strip() if value else ''
-                                if data_type == 'string':
-                                    val_string = value_str if value_str else None
-                                elif data_type == 'number':
-                                    try:
-                                        val_number = float(value_str) if value_str else None
-                                    except ValueError:
-                                        val_number = None
-                                elif data_type == 'date':
-                                    val_date = value_str if value_str else None
-                                elif data_type == 'boolean':
-                                    val_boolean = 1 if value_str.lower() in ('true', '1', 'on', 'yes') else (0 if value_str else None)
-                                
-                                logger.debug(f"DEBUG EDIT -- Saving field {field_id} (row {row_num}): string={val_string}, number={val_number}, date={val_date}, boolean={val_boolean}")
-                                db.execute_proc('sp_save_invoice_value',
-                                                (invoice_id, field_id, val_string, val_number, val_date, val_boolean, row_num),
-                                                fetch=False)
-                                logger.debug(f"DEBUG EDIT -- Saved field {field_id} for row {row_num}")
-                else:
-
-                    for field in section_data['fields']:
-                        field_id = field['field_id']
-                        data_type = field['data_type']
-
-                        val_string = None
-                        val_number = None
-                        val_date = None
-                        val_boolean = None
-
-                        form_key = f'field_{field_id}'
-                        value = request.form.get(form_key)
-
-                        if value:
-                            if data_type == 'string':
-                                val_string = value
-                            elif data_type == 'number':
-                                try:
-                                    val_number = float(value)
-                                except ValueError:
-                                    pass
-                            elif data_type == 'date':
-                                val_date = value
-                            elif data_type == 'boolean':
-                                val_boolean = 1 if value.lower() in ('true', '1', 'on', 'yes') else 0
-
-                    db.execute_proc('sp_save_invoice_value',
-                                   (invoice_id, field_id, val_string, val_number, val_date, val_boolean, None),
-                                   fetch=False)
+            # the line items are replaced row for row, then every field is saved as posted (invoice_service.form_values)
+            items = [f['field_id'] for f in fields if (f.get('section_type') or 'normal') == 'line_item']
+            if items:
+                db.execute_proc('sp_delete_invoice_values_by_fields', (invoice_id, ','.join(f"'{fid}'" for fid in items)), fetch=False)
+            for v in form_values(request.form, fields):
+                db.execute_proc('sp_save_invoice_value', (invoice_id, v['field_id'], v['val_string'], v['val_number'], v['val_date'],
+                                                          v['val_boolean'], v['value_ordinal']), fetch=False)
 
 
             _, profile = get_org_profile(org_id)

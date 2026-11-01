@@ -51,6 +51,8 @@ export interface EditorData {
   template_name: string;
   change_template: string | null;
   action: string;
+  /** Its live preview (api_bp.preview_document): POST {fields} for the page, email and message; ?as=pdf for the PDF */
+  preview: string;
   cancel: string;
   submit: string;
   submit_side: string;

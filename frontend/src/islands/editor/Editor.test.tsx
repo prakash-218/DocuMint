@@ -1,7 +1,8 @@
-import { optionsOf, pick, render, screen } from '../../test/render';
+import { optionsOf, pick, render, screen, waitFor } from '../../test/render';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { evaluate, lineCells, parseDiscount, takeOff, totals } from './calc';
+import { HeaderSlots } from '../../app/PageHeader';
 import { Editor } from './Editor';
 import type { EditorData, Section } from './types';
 
@@ -27,7 +28,7 @@ const DATA: EditorData = {
   type: { key: 'quote', label: 'Quotation', sent_word: 'sent', takes_payments: false, proforma: false, due_label: 'Valid until' },
   project: { id: 'P-1', label: 'PRJ-001', title: 'Spline gauges', url: '/projects/P-1', customer_id: 'C-1', customer_name: 'Gear Cutters Ltd' },
   template_name: 'Quotation', change_template: '/quotes/create?doc_type=quote&project_id=P-1',
-  action: '/quotes/create?doc_type=quote', cancel: '/projects/P-1', submit: 'Create', submit_side: 'Create quotation',
+  action: '/quotes/create?doc_type=quote', preview: '/api/editor/new/quotes/preview', cancel: '/projects/P-1', submit: 'Create', submit_side: 'Create quotation',
   hidden: { doc_type: 'quote', suggested_number: 'TF/Q/031', template_id: 'T-1', project_id: 'P-1' },
   customer: { fixed: null, groups: [{ label: 'Gear Cutters Ltd', options: [{ id: 'C-1', label: 'Gear Cutters Ltd' }, { id: 'C-2', label: 'Hosur plant' }] },
                                     { label: null, options: [{ id: 'C-9', label: 'Axle Works' }] }] },
@@ -164,5 +165,43 @@ describe('Editor', () => {
     expect(screen.getByLabelText('Number')).toBeRequired();
     expect(posted()).toMatchObject({ correct: '1', doc_number: 'TF/INV/007' });
     expect(posted()).not.toHaveProperty('customer_id');
+  });
+});
+
+describe('the preview beside the editor', () => {
+  const DRAWN = { html: '<article class="card invoice-doc"><h1>Q/001</h1><p>Hob arbor</p></article>', total: 1180,
+                  email: { subject: 'Quotation Q/001 · Spline gauges (PRJ-001)', body: 'Dear Sir/Madam,\n\nPlease find attached our quotation Q/001.' },
+                  whatsapp: 'Dear …,\n\nPlease find our quotation Q/001: ₹1,180 incl. GST.' };
+  afterEach(() => { vi.restoreAllMocks(); try { localStorage.removeItem('dm-editor-preview'); } catch { /* none */ } });
+  // the app's header, where the editor puts its buttons (PageHeader)
+  const withHeader = () => {
+    const actions = document.createElement('div'); document.body.append(actions);
+    return <HeaderSlots.Provider value={{ crumbs: null, actions }}><Editor data={DATA} /></HeaderSlots.Provider>;
+  };
+
+  it('draws what is typed, as its page, email and message, and remembers to sit beside it', async () => {
+    const fetched = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify(DRAWN), { status: 200 }));
+    const first = render(withHeader());
+    expect(screen.queryByRole('region', { name: 'Preview' })).toBeNull();               // off until picked
+    await userEvent.click(screen.getByRole('button', { name: 'Preview beside' }));
+    expect(await screen.findByText('Hob arbor')).toBeInTheDocument();
+    const [url, init] = fetched.mock.calls[0];
+    expect(url).toBe('/api/editor/new/quotes/preview');
+    expect(JSON.parse(String((init as RequestInit).body)).fields).toMatchObject({ doc_type: 'quote', 'line_item_S-1_3_field_F-q': '2' });
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Email' }));
+    expect(screen.getByText('Quotation Q/001 · Spline gauges (PRJ-001)')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: 'WhatsApp' }));
+    expect(screen.getByText(/Please find our quotation Q\/001/)).toBeInTheDocument();
+
+    const before = fetched.mock.calls.length;
+    await userEvent.type(screen.getAllByLabelText('Qty')[0], '5');
+    await waitFor(() => expect(fetched.mock.calls.length).toBeGreaterThan(before));   // drawn again
+    expect(JSON.parse(String((fetched.mock.calls.at(-1)![1] as RequestInit).body)).fields['line_item_S-1_3_field_F-q']).toBe('25');
+
+    first.unmount();
+    render(withHeader());                                                               // the next document opens with it beside
+    expect(screen.getByRole('region', { name: 'Preview' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Preview beside' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

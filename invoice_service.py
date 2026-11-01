@@ -39,6 +39,51 @@ def get_template_fields(template_id, version=None) -> List[Dict]:
     return fields or []
 
 
+def form_values(form, fields: List[Dict]) -> List[Dict]:
+    """The values the document editor posts for a template's fields, as invoice_value rows: [{field_id, val_string,
+    val_number, val_date, val_boolean, value_ordinal}]. A line-item section comes as line_item_<section>_<row>_field_
+    <field>, and every field of a posted row is given (an empty one as None); the other sections' fields as
+    field_<field>, with no ordinal. Rows and fields that aren't the template's are left out."""
+    def typed(field, raw):
+        value = (raw or '').strip() if isinstance(raw, str) else ''
+        out = {'val_string': None, 'val_number': None, 'val_date': None, 'val_boolean': None}
+        if not value:
+            return out
+        kind = field.get('data_type')
+        if kind == 'number':
+            try:
+                out['val_number'] = float(value)
+            except ValueError:
+                pass
+        elif kind == 'date':
+            out['val_date'] = value
+        elif kind == 'boolean':
+            out['val_boolean'] = 1 if value.lower() in ('true', '1', 'on', 'yes') else 0
+        else:
+            out['val_string'] = value
+        return out
+
+    by_section: Dict[str, List[Dict]] = {}
+    for f in fields:
+        by_section.setdefault(str(f['section_id']), []).append(f)
+    rows: Dict[str, Dict[int, Dict[str, str]]] = {}
+    for key in form.keys():
+        if not key.startswith('line_item_'):
+            continue
+        section_id, _, rest = key[len('line_item_'):].partition('_')
+        row, found, field_id = rest.partition('_field_')
+        if found and row.isdigit() and section_id in by_section:
+            rows.setdefault(section_id, {}).setdefault(int(row), {})[field_id] = form.get(key)
+    out = []
+    for section_id, section_fields in by_section.items():
+        if (section_fields[0].get('section_type') or 'normal') == 'line_item':
+            for row, posted in sorted(rows.get(section_id, {}).items()):
+                out += [{'field_id': f['field_id'], 'value_ordinal': row, **typed(f, posted.get(f['field_id']))} for f in section_fields]
+        else:
+            out += [{'field_id': f['field_id'], 'value_ordinal': None, **typed(f, form.get(f"field_{f['field_id']}"))} for f in section_fields]
+    return out
+
+
 def _invoice_fields(header: Dict) -> List[Dict]:
     return get_template_fields(header.get('template_id'), header.get('template_version'))
 
@@ -479,7 +524,7 @@ def render_invoice_pdf(header: Dict, values: List[Dict], copies: Optional[int] =
         selected = [p for p in pages_for(layout, doc_type.key) if p['with_document']]
 
     sections = build_sections(header, values)
-    payments = db.execute_proc('sp_get_invoice_payments', (header['invoice_id'],)) or []
+    payments = db.execute_proc('sp_get_invoice_payments', (header['invoice_id'],)) or [] if header.get('invoice_id') else []
     summary = invoice_summary(header, sections, payments)
     profile = load_json(header.get('organization_profile'))
     if not seal:
