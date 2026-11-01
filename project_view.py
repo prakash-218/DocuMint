@@ -156,7 +156,9 @@ def _status(label, status, primary=False):
 
 def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callable, today: Optional[date] = None) -> Dict:
     """{'tone', 'text', 'sub', 'actions': [...]}: the sentence for where the job is and every action that fits,
-    the one that moves it on marked primary. url(endpoint, **values) builds links (flask.url_for)."""
+    the one to do first marked primary. 'move', when there is one, is the action that moves it to the next stage where
+    that isn't the primary one (a quotation to chase is moved on by marking it accepted, not by the follow-up), or None
+    when nothing does. url(endpoint, **values) builds links (flask.url_for)."""
     today = today or date.today()
     f = facts(docs)
     edit, sales = can.get('edit'), can.get('sales')
@@ -184,7 +186,7 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
     elif current == 'accepted' and st['steps'][1]['state'] == 'late':
         out.update(tone='late', text=f'Quotation {no(q)} was declined.',
                    actions=[_post('Revise', url('invoices_bp.revise', invoice_id=q['invoice_id']), primary=True),
-                            _status('Cancel the project', 'cancelled')])
+                            _status('Cancel the project', 'cancelled')], move=None)
     elif current == 'accepted':
         waited = _days_since(q.get('issue_date'), today)
         chase = waited is not None and waited > FOLLOW_UP_AFTER          # long enough without an answer to chase it
@@ -195,6 +197,7 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
                             _post('Mark declined', url('invoices_bp.set_status', invoice_id=q['invoice_id']), {'status': 'declined'},
                                   confirm=f'Mark {no(q)} declined?'),
                             _post('Revise', url('invoices_bp.revise', invoice_id=q['invoice_id']))])
+        out['move'] = out['actions'][0]
     elif current == 'advance':
         source = f['accepted_quote'] or q
         if not pi:
@@ -229,7 +232,7 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
         out.update(tone='done', text='Paid in full.',
                    actions=[_status('Mark the project completed', 'completed', True)] if project.get('status') == 'open' else [])
     if not edit:
-        out['actions'] = []
+        out.update(actions=[], move=None)
     return out
 
 
@@ -372,6 +375,35 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
     })
 
 
+def in_stage(current: Optional[str], f: Dict, last_activity: Optional[str], today: date, usual: Optional[int] = None) -> Dict:
+    """How long a job has been where it is, counted from the document that put it there (the quotation it waits on an
+    answer for, the proforma it waits on an advance for, the invoice it waits on payment for), how many days past due
+    that invoice is, and the money that matters at that stage: {'days', 'late', 'amount'}."""
+    from payment_terms import due_on
+    quoted = float((f['quote'] or {}).get('total_amount') or 0)
+    def since(*docs):
+        found = [to_date(d.get('issue_date')) for d in docs if d and d.get('issue_date')]
+        return max(found) if found else to_date((last_activity or '')[:10])
+    late, amount = None, quoted
+    if current == 'accepted':
+        start = since(f['quote'])
+    elif current == 'advance':
+        asked = [d for d in f['sent_proformas'] if float(d.get('paid_amount') or 0) <= 0]
+        start = since(*asked) if asked else since(f['accepted_quote'] or f['quote'])
+        amount = sum(float(d.get('total_amount') or 0) for d in asked) or quoted
+    elif current == 'invoiced':
+        start = since(*f['proformas'], f['accepted_quote'] or f['quote'])
+    elif current == 'paid':
+        start = since(*f['unpaid']) if f['unpaid'] else None
+        amount = f['due']
+        dues = [due_on(d, usual) for d in f['unpaid']]
+        past = [(today - d).days for d in dues if d and d < today]
+        late = max(past) if past else None
+    else:
+        start = since(f['quote']) if f['quote'] else to_date((last_activity or '')[:10])
+    return {'days': (today - start).days if start else None, 'late': late, 'amount': amount}
+
+
 BOARD = (('quoted', 'Quoting'), ('accepted', 'Waiting for an answer'), ('advance', 'Advance'),
          ('invoiced', 'To invoice'), ('paid', 'Waiting for payment'))
 
@@ -383,8 +415,11 @@ def projects_list(org_id, perms, url: Callable, today: Optional[date] = None) ->
     import projects
     import revisions
     from db import db
+    from document_service import get_org_profile
+    from payment_terms import usual_days
     sales, readable = permissions.quotations_only(perms), permissions.doc_types('read', perms)
     can = {'edit': permissions.can('projects.write', perms=perms), 'sales': sales}
+    usual = usual_days(get_org_profile(org_id)[1])
     by_project: Dict[str, List[Dict]] = {}
     for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []:
         if d.get('project_id') and d.get('doc_type') in readable:
@@ -399,6 +434,8 @@ def projects_list(org_id, perms, url: Callable, today: Optional[date] = None) ->
         f = facts(docs)
         currency = (docs[0].get('currency_code') if docs else None) or 'INR'
         step = next((s for s in st['steps'] if s['key'] == st['current']), None)
+        last_activity = max(filter(None, [str(p.get('updated_at') or ''), str(p.get('last_issue_date') or '')]), default=None)
+        where = in_stage(st['current'], f, last_activity, today or date.today(), usual)
         rows.append({
             'id': p['project_id'], 'label': projects.project_label(p), 'title': p['title'], 'reference': p.get('reference') or '',
             'url': url('projects_bp.view_project', project_id=p['project_id']),
@@ -408,12 +445,16 @@ def projects_list(org_id, perms, url: Callable, today: Optional[date] = None) ->
             'pill': st['pill'], 'sub': (step or {}).get('sub') or '',
             'stage_label': stage_label(st, docs),
             'next': nxt['text'], 'action': next((a['label'] for a in nxt['actions'] if a['primary']), None),
+            # the step that moves it on, to take from a card (the Work home's drop on the next column)
+            'move': nxt['move'] if 'move' in nxt else next((a for a in nxt['actions'] if a['primary']), None),
+            'days': where['days'], 'late': None if sales else where['late'],
+            'amount': where['amount'] if not sales or st['current'] in ('quoted', 'accepted') else None,
             'tone': nxt['tone'], 'currency': currency,
             'quoted': float((f['quote'] or {}).get('total_amount') or 0),
             'due': None if sales else f['due'],
             'advance': None if sales else sum(float(d.get('total_amount') or 0) for d in f['sent_proformas']
                                               if float(d.get('paid_amount') or 0) <= 0 and d.get('status') == 'sent'),
-            'last_activity': max(filter(None, [str(p.get('updated_at') or ''), str(p.get('last_issue_date') or '')]), default=None),
+            'last_activity': last_activity,
             'numbers': [x for d in docs for x in [d.get('doc_number'), *[v.get('doc_number') for v in d.get('versions') or []]] if x],
         })
     years = sorted({r['fiscal_year'] for r in rows if r['fiscal_year']}, reverse=True)

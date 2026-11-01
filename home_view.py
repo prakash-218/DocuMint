@@ -141,6 +141,35 @@ def to_receive(invoices: List[Dict], waiting_for_advance: List[Dict], today: dat
             'advances': {'count': len(waiting_for_advance), 'total': _totals(waiting_for_advance, lambda r: r['advance'])}}
 
 
+def work(rows: List[Dict], receive: Dict, month: Dict, sales: bool, url: Callable) -> Dict:
+    """The Work home: the money bar over the pipeline (quotes awaiting an answer, accepted to bill, advances asked,
+    unpaid invoices, received this month, each the columns it picks out), and every open job in its stage's column
+    (project_view.BOARD) with each column's count and money. rows: project_view.projects_list's."""
+    import project_view
+    open_ = [r for r in rows if r['status'] == 'open' and r['stage']]
+    at = lambda *keys: [r for r in open_ if r['stage'] in keys]  # noqa: E731
+    waiting = [r for r in at('accepted') if r['tone'] != 'late']
+    to_bill = [r for r in at('advance') if not r['advance']] + at('invoiced')
+    asked = [r for r in open_ if r['advance']]
+    quoted = lambda rs: _totals(rs, lambda r: r['quoted'])  # noqa: E731
+    bar = [{'key': 'answer', 'label': 'Quotes awaiting an answer', 'total': quoted(waiting), 'count': len(waiting), 'columns': ['accepted']}]
+    if not sales:
+        bar += [{'key': 'bill', 'label': 'Accepted, to bill', 'total': quoted(to_bill), 'count': len(to_bill), 'columns': ['advance', 'invoiced']},
+                {'key': 'advance', 'label': 'Advances asked', 'total': _totals(asked, lambda r: r['advance']), 'count': len(asked), 'columns': ['advance']},
+                {'key': 'unpaid', 'label': 'Unpaid invoices', 'total': receive['total'], 'count': receive['count'], 'columns': ['paid'],
+                 'late': receive['overdue']['total'] if receive['overdue']['count'] else None},
+                {'key': 'received', 'label': f"Received in {month['label']}", 'total': month['received'], 'count': None, 'columns': [],
+                 'url': url('payments_bp.index')}]
+    columns = []
+    for key, label in project_view.BOARD:
+        if sales and key not in ('quoted', 'accepted'):
+            continue
+        cards = sorted(at(key), key=lambda r: -(r['late'] or 0) * 1000 - (r['days'] or 0))
+        columns.append({'key': key, 'label': label, 'count': len(cards), 'total': _totals(cards, lambda r: r['amount']),
+                        'cards': [{k: r[k] for k in ('id', 'label', 'title', 'url', 'customer', 'tone', 'next', 'action', 'move',
+                                                     'days', 'late', 'amount', 'currency')} for r in cards]})
+    return {'bar': bar, 'columns': columns}
+
 def first_name(email: Optional[str]) -> str:
     """'ravi@...' -> 'Ravi', for the greeting; nothing when the address isn't a name ('info@', 'demo-1@')."""
     local = (email or '').split('@')[0]
@@ -162,7 +191,6 @@ def build(org_id, perms, url: Callable, today: Optional[date] = None, email: Opt
                'currency': d.get('currency_code') or 'INR', 'url': url('invoices_bp.edit_invoice', invoice_id=d['invoice_id'])}
               for d in live if (d.get('status') or 'draft') == 'draft' and not get_type(d.get('doc_type')).purchase]
     invoices = [d for d in live if d.get('doc_type') in INVOICE_TYPES]
-    sent_quotes = [d for d in live if d.get('doc_type') == 'quote' and d.get('status') == 'sent']
     month_start = today.replace(day=1)
     payments = db.execute_proc('sp_list_org_payments', (org_id, month_start.isoformat())) or []
     refunds = db.execute_proc('sp_list_org_refunds', (org_id, month_start.isoformat())) or []
@@ -185,20 +213,21 @@ def build(org_id, perms, url: Callable, today: Optional[date] = None, email: Opt
                      'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id'])} for due, d in overdue]
     for c in receive['customers']:
         c['url'] = url('customers_bp.view_customer', customer_id=c['id'])
+    month = {'label': f'{today:%B}',
+             'invoiced': _totals(month_invoiced, lambda d: float(d.get('total_amount') or 0) * (get_type(d.get('doc_type')).adjusts or 1)),
+             # received, less what was paid back on credit notes
+             'received': _totals([{'currency': p.get('currency_code'), 'amount': p.get('amount')} for p in payments]
+                                 + [{'currency': r.get('currency_code'), 'amount': -float(r.get('amount') or 0)} for r in refunds],
+                                 lambda p: p['amount'])}
     return project_view._plain({
+        'work': work(rows, receive, month, permissions.quotations_only(perms), url),
         'attention': [dict(a, more_url=url('invoices_bp.list_invoices', status='overdue'), more_label='on the invoices list')
                       if a['key'] == 'overdue' else a for a in attention(rows, drafts, overdue_docs)],
         'unfiled_emails': {'count': unfiled, 'url': url('emails_bp.inbox')} if unfiled else None,
         'to_receive': receive,
         'hello': {'name': first_name(email), 'today': today, 'fy': fiscal_year(today, fy_start_month(get_org_profile(org_id)[1])),
                   'greeting': 'Good morning' if datetime.now().hour < 12 else 'Good afternoon' if datetime.now().hour < 17 else 'Good evening'},
-        'open_quotes': {'count': len(sent_quotes), 'total': _totals(sent_quotes, lambda d: d.get('total_amount'))},
-        'month': {'label': f'{today:%B}',
-                  'invoiced': _totals(month_invoiced, lambda d: float(d.get('total_amount') or 0) * (get_type(d.get('doc_type')).adjusts or 1)),
-                  # received, less what was paid back on credit notes
-                  'received': _totals([{'currency': p.get('currency_code'), 'amount': p.get('amount')} for p in payments]
-                                      + [{'currency': r.get('currency_code'), 'amount': -float(r.get('amount') or 0)} for r in refunds],
-                                      lambda p: p['amount'])},
+        'month': month,
         'recent': [{'id': e['event_id'], 'kind': e['kind'], 'title': e['title'], 'when': e['created_at'], 'link': e.get('link'),
                     'who': (e.get('actor_email') or '').split('@')[0] or None, 'project': e.get('project_title'),
                     'project_url': url('projects_bp.view_project', project_id=e['project_id']) if e.get('project_id') else None}

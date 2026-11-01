@@ -93,3 +93,37 @@ def test_rows_say_how_many_and_which_and_the_greeting_uses_a_first_name():
     assert one['label'] == '1 project ready to invoice'
     assert H.first_name('ravi@example.com') == 'Ravi'
     assert H.first_name('info@example.com') == '' and H.first_name('demo-1@example.com') == '' and H.first_name(None) == ''
+
+
+def _job(id, stage, quoted=0, advance=0, amount=None, tone='wait', days=1, late=None, status='open'):
+    return {'id': id, 'label': f'PRJ-{id}', 'title': f'Job {id}', 'url': f'/projects/{id}', 'customer': {'name': 'Gear Cutters Ltd'},
+            'status': status, 'stage': stage, 'tone': tone, 'next': '', 'action': None, 'move': None, 'quoted': quoted,
+            'advance': advance, 'amount': quoted if amount is None else amount, 'days': days, 'late': late, 'currency': 'INR'}
+
+
+RECEIVE = {'total': {'INR': 118000}, 'count': 1, 'overdue': {'count': 1, 'total': {'INR': 118000}}}
+MONTH = {'label': 'November', 'received': {'INR': 50000}}
+
+
+def test_the_work_home_money_bar_and_pipeline():
+    rows = [_job(1, 'quoted', 64000, tone='action'), _job(2, 'accepted', 480000, days=12), _job(3, 'accepted', 96000, tone='late'),
+            _job(4, 'advance', 240000, tone='action'), _job(5, 'advance', 708000, advance=354000, amount=354000, days=9),
+            _job(6, 'invoiced', 118000, tone='action'), _job(7, 'paid', 590000, amount=390000, days=77, late=47),
+            _job(8, 'paid', 100000, amount=100000, days=3), _job(9, None, 50000, status='open'), _job(10, 'quoted', 1, status='cancelled')]
+    got = H.work(rows, RECEIVE, MONTH, False, lambda endpoint, **kw: '/payments/')
+    bar = {b['key']: (b['total'], b['count']) for b in got['bar']}
+    assert bar['answer'] == ({'INR': 480000}, 1)                       # a declined quotation isn't awaiting an answer
+    assert bar['bill'] == ({'INR': 358000}, 2)                         # accepted with no advance asked, and to invoice
+    assert bar['advance'] == ({'INR': 354000}, 1)
+    assert bar['unpaid'] == ({'INR': 118000}, 1) and got['bar'][3]['late'] == {'INR': 118000}
+    assert bar['received'] == ({'INR': 50000}, None)
+    cols = {c['key']: c for c in got['columns']}
+    assert [c['key'] for c in got['columns']] == ['quoted', 'accepted', 'advance', 'invoiced', 'paid']
+    assert (cols['advance']['count'], cols['advance']['total']) == (2, {'INR': 594000})   # what each card waits on
+    assert [c['id'] for c in cols['paid']['cards']] == [7, 8]                              # the latest first
+    assert sum(c['count'] for c in got['columns']) == 8                                    # not paid off, nor cancelled
+
+
+def test_sales_see_only_quotations_on_the_work_home():
+    got = H.work([_job(1, 'quoted', 64000), _job(2, 'accepted', 480000)], RECEIVE, MONTH, True, lambda *a, **k: '')
+    assert [b['key'] for b in got['bar']] == ['answer'] and [c['key'] for c in got['columns']] == ['quoted', 'accepted']
