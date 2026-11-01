@@ -9,8 +9,12 @@ const GROUPS: { key: 'quote' | 'proforma' | 'invoice'; label: string; empty: str
   { key: 'invoice', label: 'Tax invoice', empty: 'Not invoiced yet', types: ['invoice', 'export_invoice'] },
 ];
 
+const NOTES: Doc['doc_type'][] = ['credit_note', 'debit_note'];
+
 export function status(d: Doc): { text: string; tone: Tone } {
   if (d.status === 'draft') return { text: 'Draft', tone: 'draft' };
+  if (d.status === 'issued') return { text: 'Issued', tone: 'done' };
+  if (d.status === 'cancelled') return { text: 'Cancelled', tone: 'draft' };
   if (d.status === 'declined') return { text: 'Declined', tone: 'late' };
   if (d.status === 'accepted') return { text: 'Accepted', tone: 'done' };
   if (d.status === 'converted') return { text: d.doc_type === 'quote' ? 'Accepted' : 'Invoiced', tone: 'done' };
@@ -64,6 +68,9 @@ export function Documents({ docs, newDocument, canEdit, sales, onEmail, current,
             }
             return mine.map((d) => <DocNode key={d.invoice_id} doc={d} canEdit={canEdit} onEmail={onEmail} documentsUrl={documentsUrl} />);
           })}
+          {!sales && docs.filter((d) => NOTES.includes(d.doc_type)).map((d) => (
+            <DocNode key={d.invoice_id} doc={d} canEdit={canEdit} onEmail={onEmail} documentsUrl={documentsUrl} />
+          ))}
         </ol>
         {canEdit && documentsUrl && addable.length > 0 && (
           <form method="post" action={documentsUrl} className="add-existing">
@@ -93,10 +100,12 @@ function DocNode({ doc: d, canEdit, onEmail, documentsUrl }: { doc: Doc; canEdit
         </div>
         <div className="doc-row">
           <a className="doc-no" href={d.url}>{d.number}</a>
-          <span className="doc-amt">{money(d.total, d.currency)}</span>
+          <span className="doc-amt">{d.adjusts === -1 ? '−' : d.adjusts === 1 ? '+' : ''}{money(d.total, d.currency)}</span>
         </div>
         <div className="doc-meta">
-          {[day(d.issue_date) && `${d.status === 'draft' ? 'started' : 'sent'} ${day(d.issue_date)}`,
+          {[day(d.issue_date) && `${d.status === 'draft' ? 'started' : d.adjusts ? 'issued' : 'sent'} ${day(d.issue_date)}`,
+            d.against ? `against ${d.against}` : '',
+            d.refunded ? `${money(d.refunded, d.currency)} refunded` : '',
             d.balance !== null && d.paid > 0 ? `${money(d.paid, d.currency)} received` : '',
             d.balance ? `${money(d.balance, d.currency)} due` : ''].filter(Boolean).join(' · ')}
         </div>

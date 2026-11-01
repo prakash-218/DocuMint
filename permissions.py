@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 from flask import g, redirect, request, url_for
 
 DOC_GROUPS = {'quote': 'quotes', 'proforma': 'proformas', 'invoice': 'invoices', 'export_invoice': 'invoices',
-              'purchase_order': 'purchases'}
+              'purchase_order': 'purchases', 'credit_note': 'invoices', 'debit_note': 'invoices'}   # notes go with invoices
 
 # Every permission, with what it lets someone do: the words a custom role's editor shows
 PERMISSIONS: Dict[str, str] = {
@@ -237,6 +237,9 @@ ENDPOINTS: Dict[str, Rule] = {
     'invoices_bp.export_csv': Doc('read'),                # several at once, from the list
     'invoices_bp.export_zip': Doc('read'),
     'invoices_bp.add_receipt': 'purchases.write',           # what arrived on a purchase order (only those)
+    'invoices_bp.make_note': 'invoices.write',               # a credit or debit note against an invoice
+    'invoices_bp.add_refund': 'payments.write',              # money paid back on a credit note
+    'invoices_bp.delete_refund': 'payments.write',
     'invoices_bp.delete_receipt': 'purchases.write',
     'payments_bp.index': 'invoices.read',                # every payment: what invoices are paid with
     'payments_bp.export_csv': 'invoices.read',

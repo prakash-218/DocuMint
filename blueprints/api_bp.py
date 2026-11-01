@@ -326,10 +326,11 @@ def payments():
     try:
         found = db.execute_proc('sp_list_org_payments', (g.current_org_id, None)) or []
         docs = db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
+        refunds = db.execute_proc('sp_list_org_refunds', (g.current_org_id, None)) or []    # money paid back on credit notes
     except DatabaseError:
         logger.exception("Failed to list payments for org %s", g.current_org_id)
         return jsonify(error="Couldn't load the payments. Try again in a moment."), 500
-    return jsonify(payments_view.build(found, docs, url_for))
+    return jsonify(payments_view.build(found, docs, url_for, refunds))
 
 
 # ---------------------------------------------------------------- The project page

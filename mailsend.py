@@ -206,7 +206,7 @@ def record(org_id, cfg: Dict, message: EmailMessage, thread_id: Optional[str], p
 
 # ---------------------------------------------------------------- From a project
 
-BILLING_TYPES = ('proforma', 'invoice', 'export_invoice')
+BILLING_TYPES = ('proforma', 'invoice', 'export_invoice', 'credit_note', 'debit_note')   # a note goes where its invoice does
 NOT_SET_UP = ("Sending email isn't set up yet. An owner adds the mailbox's SMTP settings in Railway "
               "(see mailsend.py); then Send works.")
 

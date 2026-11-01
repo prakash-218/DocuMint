@@ -54,7 +54,8 @@ ACTIONS = [
 ]
 
 # Put before a document's number for the search, so 'pi 9' finds proforma 009 and 'inv 38' invoice 038
-SHORT = {'quote': 'Q', 'proforma': 'PI', 'invoice': 'INV', 'export_invoice': 'EXP', 'purchase_order': 'PO'}
+SHORT = {'quote': 'Q', 'proforma': 'PI', 'invoice': 'INV', 'export_invoice': 'EXP', 'purchase_order': 'PO', 'credit_note': 'CN',
+         'debit_note': 'DN'}
 
 # Badge colours, as the document lists show them (_macros.status_badge)
 BADGES = {'paid': 'success', 'accepted': 'success', 'pending': 'warning', 'sent': 'info', 'declined': 'danger'}

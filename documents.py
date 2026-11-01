@@ -43,6 +43,9 @@ class DocType:
     # A purchase: to a supplier (a company marked supplier), not a customer; outside every sale and its money
     purchase: bool = False
     party: str = 'Customer'                 # who it's to, in the editor and on its page
+    # A note against a sent invoice (source_invoice_id): a credit note takes its total off what the invoice is owed
+    # (-1), a debit note adds to it (+1). It takes no payments of its own; a credit note can record refunds.
+    adjusts: int = 0
 
 
 _ORDER = (
@@ -135,8 +138,22 @@ DOC_TYPES['purchase_order'] = DocType(
         DetailField('deliver_to', 'Deliver to', 'textarea', group='delivery'),
     ),
 )
-SALES_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice')
+# Against a sent invoice, with GST as on it (Rule 53): its own series, issued or cancelled; only issued ones count
+_NOTE = (DetailField('reason', 'Reason', placeholder='Goods returned'),)
+DOC_TYPES['credit_note'] = DocType(
+    key='credit_note', label='Credit Note', short='Credit note', plural='Credit notes', icon='file-minus',
+    statuses=('draft', 'issued', 'cancelled'), sent_status='issued', default_format='CN/{num:03}/{fy}',
+    adjusts=-1, details=_NOTE,
+)
+DOC_TYPES['debit_note'] = DocType(
+    key='debit_note', label='Debit Note', short='Debit note', plural='Debit notes', icon='file-plus',
+    statuses=('draft', 'issued', 'cancelled'), sent_status='issued', default_format='DN/{num:03}/{fy}',
+    adjusts=1, details=_NOTE,
+)
+SALES_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice', 'credit_note', 'debit_note')
 PURCHASE_TYPES = ('purchase_order',)
+INVOICE_TYPES = ('invoice', 'export_invoice')
+NOTE_TYPES = ('credit_note', 'debit_note')
 
 DEFAULT_TYPE = 'invoice'
 
@@ -388,4 +405,15 @@ def sum_by_currency(docs, amount) -> Dict[str, float]:
 
 
 def balance_of(doc) -> float:
-    return max(float(doc.get('total_amount') or 0) - float(doc.get('paid_amount') or 0), 0.0)
+    """What's still owed on an invoice: its total, less payments, less what its issued notes take off (credited_amount:
+    credit notes, less debit notes, less refunds on those credit notes)."""
+    return max(float(doc.get('total_amount') or 0) - float(doc.get('paid_amount') or 0) - float(doc.get('credited_amount') or 0), 0.0)
+
+
+def credit_of(doc) -> float:
+    """What the customer is owed back on an invoice: paid more than it comes to after its credit notes (and not refunded).
+    Only with credit notes: an invoice paid over its total with none (a paisa of rounding) isn't something to refund."""
+    credited = float(doc.get('credited_amount') or 0)
+    if credited <= 0:
+        return 0.0
+    return max(float(doc.get('paid_amount') or 0) + credited - float(doc.get('total_amount') or 0), 0.0)

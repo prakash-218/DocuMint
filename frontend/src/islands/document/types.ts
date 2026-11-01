@@ -1,3 +1,4 @@
+import type { NoteRow, Refunds } from './Notes';
 import type { Receiving } from './Receiving';
 // GET /api/document/<id> (document_page.py): everything a document's page shows.
 import type { Page, Tone } from '../project/types';
@@ -62,6 +63,9 @@ export interface DocumentData {
   payments: Payments | null;
   /** A purchase order's: what's arrived (Receiving.tsx). */
   receiving?: Receiving | null;
+  /** An invoice's credit and debit notes; a credit note's refunds (Notes.tsx). */
+  notes?: { rows: NoteRow[] } | null;
+  refunds?: Refunds | null;
   versions_html: string | null;
   document_html: string;
   chain: { kind: string; number: string; pill: { text: string; tone: Tone }; total: number; currency: string; url: string; here: boolean; paid: boolean }[];

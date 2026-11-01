@@ -379,6 +379,35 @@ def convert_document(source: Dict, source_values: List[Dict], target_type: str, 
     return new_id
 
 
+NOTE_KINDS = {'credit': 'credit_note', 'debit': 'debit_note'}
+
+
+def make_note(source: Dict, source_values: List[Dict], kind: str, org_id, profile: Dict) -> str:
+    """A draft credit or debit note against a sent invoice: its lines (to change), template, currency, discounts and GST,
+    numbered in the note's own series for today. kind: 'credit' or 'debit'. Returns its id."""
+    target_type = NOTE_KINDS.get(kind)
+    if not target_type:
+        raise DocumentError('A note is a credit note or a debit note')
+    if source.get('doc_type') not in ('invoice', 'export_invoice') or (source.get('status') or 'draft') not in ('pending', 'paid'):
+        raise DocumentError('A credit or debit note is made against a sent tax invoice')
+    number, fy = allocate_number(org_id, target_type, profile, date.today())
+    source_details = load_json(source.get('details'))
+    details = {k: v for k, v in source_details.items() if k in ('currency', 'discounts')}
+    return _copy_document(source, source_values, target_type, org_id, source['template_id'], number, fy, details,
+                          source.get('tax_mode') or 'none', source.get('tax_rate'), None, source.get('advance_basis'))
+
+
+def creditable(source: Dict, notes: List[Dict], leaving_out: Optional[str] = None) -> float:
+    """How much more can be credited on an invoice: its total and its issued debit notes, less its issued credit notes
+    (leaving out one being changed)."""
+    left = float(source.get('total_amount') or 0)
+    for n in notes or []:
+        if n.get('status') != 'issued' or str(n.get('invoice_id')) == str(leaving_out):
+            continue
+        left += float(n.get('total_amount') or 0) * (1 if n.get('doc_type') == 'debit_note' else -1)
+    return round(left, 2)
+
+
 # What can be revised, from which statuses: a quotation the customer has seen, a proforma not yet invoiced
 REVISABLE = {'quote': ('sent', 'accepted', 'declined'), 'proforma': ('sent',)}
 

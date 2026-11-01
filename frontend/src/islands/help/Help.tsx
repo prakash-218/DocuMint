@@ -79,6 +79,23 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: 'notes', title: 'Credit and debit notes', needs: ['invoices.read'], body: (
+      <ul>
+        <li>A credit note lowers what an invoice is owed: goods returned, a price reduced after the invoice, or too much
+          billed. A debit note raises it, for more charged after the invoice.</li>
+        <li>Make one from a sent invoice's page. It starts with the invoice's lines, customer and GST; change the lines to
+          what's credited or charged, and give the reason.</li>
+        <li>Notes have their own numbers (CN/001/26-27 and DN/001/26-27 to start), set in the Business profile, and are
+          listed under Invoices in their own tabs.</li>
+        <li>An issued note counts on its invoice: on what's due, and the invoice is paid once nothing is left. A draft or
+          cancelled note doesn't count. A credit note can't be more than is left on its invoice.</li>
+        <li>When the invoice was paid already, a credit note leaves money to refund. Record the refund on the credit note.</li>
+        <li>Correct changes the invoice itself; a note leaves the invoice as it was sent and records the change. An invoice
+          with notes issued against it can't go back to draft or be deleted: cancel its notes first.</li>
+      </ul>
+    ),
+  },
+  {
     id: 'purchases', title: 'Purchase orders', needs: ['purchases.read'], body: (
       <ul>
         <li>A purchase order goes to one of your suppliers, for one of your projects. GST is worked out from the supplier's

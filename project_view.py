@@ -11,12 +11,11 @@ from decimal import Decimal
 from typing import Callable, Dict, List, Optional
 
 from app_helpers import to_date
-from documents import balance_of, display_number, get_type
+from documents import INVOICE_TYPES, balance_of, display_number, get_type
 from money import format_money
 
 FOLLOW_UP_AFTER = 14        # days a quotation waits for an answer before the next step is to chase it
 STEPS = (('quoted', 'Quoted'), ('accepted', 'Accepted'), ('advance', 'Advance'), ('invoiced', 'Invoiced'), ('paid', 'Paid'))
-INVOICE_TYPES = ('invoice', 'export_invoice')
 SENT_QUOTE = ('sent', 'accepted', 'declined', 'converted')
 
 
@@ -237,14 +236,18 @@ def next_step(docs: List[Dict], st: Dict, project: Dict, can: Dict, url: Callabl
 # ---------------------------------------------------------------- The rest of the page
 
 def documents(docs: List[Dict], url: Callable) -> List[Dict]:
+    numbers = {str(d['invoice_id']): display_number(d) for d in docs}
     out = []
     for d in docs:
         kind = get_type(d.get('doc_type'))
         out.append({'invoice_id': d['invoice_id'], 'doc_type': kind.key, 'kind': kind.label, 'number': display_number(d) or 'Draft',
+                    # a credit (-1) or debit (+1) note: the invoice it's against
+                    'adjusts': kind.adjusts, 'against': numbers.get(str(d.get('source_invoice_id'))) if kind.adjusts else None,
                     'customer_id': d.get('customer_id'), 'party': d.get('customer_name'), 'site': d.get('customer_site'),
                     'project_id': d.get('project_id'),
                     'status': d.get('status') or 'draft', 'issue_date': d.get('issue_date'), 'currency': d.get('currency_code'),
                     'total': float(d.get('total_amount') or 0), 'paid': float(d.get('paid_amount') or 0),
+                    'refunded': float(d.get('refunded_amount') or 0),
                     'balance': balance_of(d) if kind.takes_payments else None, 'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id']),
                     'pdf': url('invoices_bp.export_pdf', invoice_id=d['invoice_id']),
                     'versions': [{'invoice_id': v['invoice_id'], 'number': display_number(v), 'issue_date': v.get('issue_date'),

@@ -23,8 +23,15 @@
             {% endif %}
             {% endif %}
             {% if t.takes_payments %}
+            {% if summary.credited and (summary.credited > 0.005 or summary.credited < -0.005) %}
+            <div><dt>{{ 'Credit notes' if summary.credited > 0 else 'Debit notes' }}</dt><dd>{{ (0 - summary.credited) | currency(cur) }}</dd></div>
+            {% endif %}
             <div><dt>Paid</dt><dd>{{ summary.paid | currency(cur) }}</dd></div>
+            {% if summary.in_favour and summary.in_favour > 0.005 %}
+            <div class="balance"><dt>To refund</dt><dd>{{ summary.in_favour | currency(cur) }}</dd></div>
+            {% else %}
             <div class="balance"><dt>Balance due</dt><dd>{{ summary.balance | currency(cur) }}</dd></div>
+            {% endif %}
             {% endif %}
         </dl>
         {% if t.takes_payments %}

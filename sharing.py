@@ -58,13 +58,17 @@ def message(header: Dict, summary: Dict, link: str, pay: Optional[Dict], usual_d
     money = lambda v: format_money(v, currency, decimals=False)  # noqa: E731
     number = display_number(header)
     subject = short_subject(load_json(header.get('details')).get('subject'))
-    what = {'quote': 'quotation', 'proforma': 'proforma invoice', 'purchase_order': 'purchase order'}.get(kind.key, 'invoice')
+    what = {'quote': 'quotation', 'proforma': 'proforma invoice', 'purchase_order': 'purchase order',
+            'credit_note': 'credit note', 'debit_note': 'debit note'}.get(kind.key, 'invoice')
     about = f'our {what} {number}' + (f' for {subject[:1].lower()}{subject[1:]}' if subject else '')
     total = float(summary.get('total') or 0)
     gst = ' incl. GST' if summary.get('tax_lines') else ''
     owed = pay['amount'] if pay else upi.due(header, summary)
     lines = []
-    if kind.purchase:
+    if kind.adjusts:                                     # against an invoice; nothing to pay on the note itself
+        against = f" against invoice {header['source_number']}" if header.get('source_number') else ''
+        lines.append(f'Please find our {what} {number}{against}: {money(total)}{gst}.')
+    elif kind.purchase:
         delivery = load_json(header.get('details')).get('delivery')
         lines.append(f'Please find {about}: {money(total)}{gst}.' + (f' Delivery: {delivery}.' if delivery else '')
                      + ' Kindly confirm it.')
@@ -77,7 +81,7 @@ def message(header: Dict, summary: Dict, link: str, pay: Optional[Dict], usual_d
         late = due and due < (today or date.today())
         lines.append(f'Please find {about}: {money(total)}{gst}, {money(owed)} '
                      + (f'due since {_when(due)}.' if late else f'due by {_when(due)}.' if due else 'due.'))
-    if pay:
+    if pay and not kind.adjusts:
         lines.append(f"Pay by UPI to {pay['upi_id']}, or scan the QR code on the page.")
     lines += [link, '', 'Regards,', header.get('organization_name') or '']
     return '\n'.join(lines)

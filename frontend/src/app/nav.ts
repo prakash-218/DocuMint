@@ -8,11 +8,12 @@ export function activeKey(sections: NavSection[], path: string): string | null {
   let length = -1;
   for (const section of sections) {
     for (const item of section.items) {
-      const prefix = item.prefix;
-      const on = path === prefix || path.startsWith(`${prefix.replace(/\/$/, '')}/`);
-      if (on && prefix.length > length) {
-        best = item.key;
-        length = prefix.length;
+      for (const prefix of [item.prefix, ...(item.also ?? [])]) {
+        const on = path === prefix || path.startsWith(`${prefix.replace(/\/$/, '')}/`);
+        if (on && prefix.length > length) {
+          best = item.key;
+          length = prefix.length;
+        }
       }
     }
   }
@@ -22,7 +23,8 @@ export function activeKey(sections: NavSection[], path: string): string | null {
 // The sidebar's Lucide names, as icons.tsx has them
 const ICONS: Record<string, IconName> = {
   house: 'house', 'layout-dashboard': 'layoutDashboard', bell: 'bell', briefcase: 'briefcase', mail: 'mail',
-  'file-pen-line': 'filePenLine', 'file-clock': 'fileClock', 'file-text': 'fileText', users: 'users',
+  'file-pen-line': 'filePenLine', 'file-clock': 'fileClock', 'file-text': 'fileText', 'file-minus': 'fileMinus', 'file-plus': 'filePlus',
+  users: 'users',
   wallet: 'wallet', truck: 'truck', 'shopping-cart': 'shoppingCart', 'layout-template': 'layoutTemplate', list: 'list', settings: 'settings', history: 'history', plus: 'plus',
 };
 

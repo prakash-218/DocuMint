@@ -18,8 +18,13 @@ DOCUMENT_LINKS = (('quote', 'Quotations', 'file-pen-line', '/quotes'), ('proform
                   ('invoices', 'Invoices', 'file-text', '/invoices'))
 
 
+# Other addresses a link lights up for: a credit or debit note is listed inside Invoices
+ALSO = {'invoices': ['/credit-notes', '/debit-notes']}
+
+
 def _item(key, label, icon, href, prefix, badge=0) -> Dict:
-    return {'key': key, 'label': label, 'icon': icon, 'href': href, 'prefix': prefix, 'badge': badge}
+    return {'key': key, 'label': label, 'icon': icon, 'href': href, 'prefix': prefix, 'badge': badge,
+            **({'also': ALSO[key]} if key in ALSO else {})}
 
 
 def sidebar(perms, unread: int = 0) -> List[Dict]:
@@ -69,9 +74,9 @@ def active(sections: List[Dict], path: str) -> Optional[str]:
     best, length = None, -1
     for section in sections:
         for item in section['items']:
-            prefix = item['prefix']
-            if (path == prefix or path.startswith(prefix.rstrip('/') + '/')) and len(prefix) > length:
-                best, length = item['key'], len(prefix)
+            for prefix in (item['prefix'], *item.get('also', ())):
+                if (path == prefix or path.startswith(prefix.rstrip('/') + '/')) and len(prefix) > length:
+                    best, length = item['key'], len(prefix)
     return best
 
 

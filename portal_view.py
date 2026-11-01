@@ -9,7 +9,7 @@ from typing import Callable, Dict, List
 from flask import current_app, render_template_string
 
 BADGES = {'paid': 'success', 'accepted': 'success', 'pending': 'warning', 'sent': 'info', 'declined': 'danger',
-          'converted': 'secondary', 'revised': 'secondary', 'draft': 'secondary'}
+          'converted': 'secondary', 'revised': 'secondary', 'draft': 'secondary', 'issued': 'info', 'cancelled': 'secondary'}
 
 
 def _filter(name):
@@ -24,21 +24,26 @@ def documents(customer_id, url: Callable) -> Dict:
     invoices = db.execute_proc('sp_get_customer_invoices', (customer_id,)) or []
     if not isinstance(invoices, list):
         invoices = [invoices]
+    # a credit or debit note only once it's issued; it's counted on its invoice (balance_of), never owed itself
+    invoices = [i for i in invoices if not get_type(i.get('doc_type')).adjusts or i.get('status') == 'issued']
     payable = [i for i in invoices if get_type(i.get('doc_type')).takes_payments and i.get('status') == 'pending']
-    outstanding, paid = sum_by_currency(payable, balance_of), sum_by_currency(invoices, lambda i: i.get('paid_amount'))
+    outstanding = sum_by_currency(payable, balance_of)
+    paid = sum_by_currency(invoices, lambda i: float(i.get('paid_amount') or 0) - float(i.get('refunded_amount') or 0))
     page = paginate(invoices)
     currency, day = _filter('currency'), _filter('date')
     rows: List[Dict] = []
     for i in page.items:
         cur = i.get('currency_code')
-        balance = max((i.get('total_amount') or 0) - (i.get('paid_amount') or 0), 0)
+        note = bool(get_type(i.get('doc_type')).adjusts)
+        balance = balance_of(i)
         owed = i.get('doc_type') in ('invoice', 'export_invoice') and i.get('status') != 'paid' and balance
         status = {'text': 'Overdue', 'tone': 'danger'} if invoice_is_overdue(i) else \
             {'text': i.get('status') or 'draft', 'tone': BADGES.get(i.get('status') or 'draft', 'secondary')}
         rows.append({'id': str(i['invoice_id']), 'url': url('customer_portal_bp.view_invoice', invoice_id=i['invoice_id']),
                      'pdf': url('customer_portal_bp.export_pdf', invoice_id=i['invoice_id']), 'number': display_number(i),
                      'kind': get_type(i.get('doc_type')).label, 'date': day(i.get('issue_date')) or '—',
-                     'due': day(i.get('due_date')) or '—', 'status': status, 'total': currency(i.get('total_amount'), cur),
+                     'due': '—' if note else day(i.get('due_date')) or '—', 'status': status,
+                     'total': ('−' if get_type(i.get('doc_type')).adjusts < 0 else '') + currency(i.get('total_amount'), cur),
                      'balance': currency(balance, cur) if owed else None})
     totals = _filter('money_totals')
     return {

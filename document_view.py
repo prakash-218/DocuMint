@@ -1,6 +1,7 @@
 """
-A document's page (document_page.py, drawn by the React app): what to do next with a quotation, proforma or tax
-invoice, from its type and status, with every action that fits; the one that moves it on is marked primary.
+A document's page (document_page.py, drawn by the React app): what to do next with a quotation, proforma, tax
+invoice, purchase order or credit / debit note, from its type and status, with every action that fits; the one that
+moves it on is marked primary.
 Actions are links, forms to the existing routes (invoices_bp), the change dialog, or the email form.
 """
 
@@ -40,7 +41,8 @@ def _day(value) -> str:
 STEPS = {'quote': [('written', 'Written'), ('sent', 'Sent'), ('answer', 'Accepted'), ('forward', 'Taken forward')],
          'proforma': [('written', 'Written'), ('sent', 'Sent'), ('advance', 'Advance'), ('forward', 'Tax invoice')],
          'invoice': [('written', 'Written'), ('sent', 'Finalized'), ('paid', 'Paid')],
-         'purchase_order': [('written', 'Written'), ('sent', 'Sent'), ('confirmed', 'Confirmed'), ('received', 'Received')]}
+         'purchase_order': [('written', 'Written'), ('sent', 'Sent'), ('confirmed', 'Confirmed'), ('received', 'Received')],
+         'note': [('written', 'Written'), ('sent', 'Issued')]}
 
 
 def steps(doc: Dict, summary: Dict, advance_received: float = 0, today: Optional[date] = None) -> List[Dict]:
@@ -51,7 +53,7 @@ def steps(doc: Dict, summary: Dict, advance_received: float = 0, today: Optional
     status = doc.get('status') or 'draft'
     currency = doc.get('currency_code') or 'INR'
     money = lambda v: format_money(v, currency, decimals=False)  # noqa: E731
-    key = kind.key if kind.key in STEPS else 'invoice'
+    key = 'note' if kind.adjusts else kind.key if kind.key in STEPS else 'invoice'
     s = {k: {'key': k, 'label': label, 'state': 'todo', 'sub': ''} for k, label in STEPS[key]}
     if status == 'draft':
         s['written'].update(state='now', sub='Draft')
@@ -59,7 +61,10 @@ def steps(doc: Dict, summary: Dict, advance_received: float = 0, today: Optional
     s['written']['state'] = 'done'
     s['sent'].update(state='done', sub=_day(doc.get('issue_date')))
     later = list(s)[2:]
-    if status == 'revised':
+    if key == 'note':
+        if status == 'cancelled':
+            s['sent'].update(state='late', sub='Cancelled')
+    elif status == 'revised':
         s[later[0]].update(state='skipped', sub='Revised')
     elif key == 'purchase_order':
         if status == 'cancelled':
@@ -122,13 +127,25 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
     out = {'tone': 'action', 'text': '', 'sub': '', 'actions': []}
 
     if status == 'draft':
-        finish = 'Mark as sent' if kind.sent_status == 'sent' else 'Finalize'
+        finish = {'sent': 'Mark as sent', 'issued': 'Issue'}.get(kind.sent_status, 'Finalize')
         out.update(text=f'{kind.label} {number} is a draft.',
                    actions=[_post(finish, url('invoices_bp.finalize_invoice', invoice_id=doc_id), primary=True,
                                   confirm=f'{finish} {number}? It can\'t be edited afterwards.'),
                             _link('Edit', url('invoices_bp.edit_invoice', invoice_id=doc_id))])
     elif status == 'revised':
         out.update(tone='draft', text=f'{number} was revised.')
+    elif kind.adjusts:                                    # a credit or debit note, against its invoice
+        against = doc.get('source_number') or 'its invoice'
+        invoice = ([_link(f'Open {against}', url('invoices_bp.view_invoice', invoice_id=doc['source_invoice_id']))]
+                   if doc.get('source_invoice_id') else [])
+        if status == 'cancelled':
+            out.update(tone='draft', text='Cancelled.', sub=f'Against {against}.',
+                       actions=[status_to('Issue it again', 'issued'), *invoice])
+        else:
+            out.update(tone='done', text=f'Issued on {sent_on}, against {against}.' if sent_on else f'Issued, against {against}.',
+                       actions=[*invoice, *email('Email the customer'),
+                                status_to(f'Cancel the {kind.short.lower()}', 'cancelled',
+                                          confirm=f'Cancel {number}? It stops counting on {against}.')])
     elif kind.purchase:
         supplier = doc.get('customer_name') or 'the supplier'
         lines = (received or {}).get('lines') or []
@@ -186,8 +203,12 @@ def next_step(doc: Dict, summary: Dict, advance_received: float, open_advances: 
                                 _dialog('Revise', 'change-dialog')])
     else:                                                 # tax / export invoice
         balance = summary.get('balance') or 0
-        if status == 'paid' or balance <= 0.005:
-            out.update(tone='done', text='Paid in full.', sub='')
+        back = summary.get('in_favour') or 0
+        if back > 0.005:
+            out.update(tone='action', text=f'{money(back)} to refund.', sub='')
+        elif status == 'paid' or balance <= 0.005:
+            credited_only = (summary.get('credited') or 0) > 0.005 and (summary.get('paid') or 0) <= 0.005
+            out.update(tone='done', text='Credited in full.' if credited_only else 'Paid in full.', sub='')
         else:
             paid = summary.get('paid') or 0
             due = due_on(doc, usual_days)
@@ -212,6 +233,8 @@ def pill(doc: Dict, summary: Dict, advance_received: float = 0) -> Dict:
         return {'text': 'Draft', 'tone': 'draft'}
     if status == 'revised':
         return {'text': 'Revised', 'tone': 'draft'}
+    if kind.adjusts:
+        return {'text': 'Cancelled', 'tone': 'draft'} if status == 'cancelled' else {'text': 'Issued', 'tone': 'done'}
     if kind.purchase:
         return {'sent': {'text': 'Sent', 'tone': 'wait'}, 'confirmed': {'text': 'Confirmed', 'tone': 'wait'},
                 'received': {'text': 'Received', 'tone': 'done'}, 'cancelled': {'text': 'Cancelled', 'tone': 'draft'}
@@ -223,17 +246,22 @@ def pill(doc: Dict, summary: Dict, advance_received: float = 0) -> Dict:
         if status == 'converted':
             return {'text': 'Invoiced', 'tone': 'done'}
         return {'text': 'Advance received', 'tone': 'done'} if advance_received else {'text': 'Advance asked', 'tone': 'wait'}
+    if (summary.get('in_favour') or 0) > 0.005:
+        return {'text': 'To refund', 'tone': 'action'}
     if status == 'paid' or (summary.get('balance') or 0) <= 0.005:
         return {'text': 'Paid', 'tone': 'done'}
     return {'text': 'Part paid', 'tone': 'wait'} if (summary.get('paid') or 0) > 0 else {'text': 'Unpaid', 'tone': 'wait'}
 
 
-def money_strip(doc: Dict, summary: Dict, payments: List[Dict], advance_received: float = 0) -> Optional[List[Dict]]:
+def money_strip(doc: Dict, summary: Dict, payments: List[Dict], advance_received: float = 0,
+                notes: Optional[List[Dict]] = None) -> Optional[List[Dict]]:
     """The four amounts under the next step: for an invoice its total, the advance taken off it, what came in since,
-    and what's due; for a proforma its total, the advance asked, received and still to come. None for a quotation."""
+    and what's due; for a proforma its total, the advance asked, received and still to come. None for a quotation, a
+    purchase order or a credit / debit note. notes: an invoice's credit and debit notes (only issued ones count); with
+    some, the four are its total, the notes, what was received (its advance too) and what's due, or to refund."""
     kind = get_type(doc.get('doc_type'))
     total = float(summary.get('total') or 0)
-    if kind.key == 'quote' or kind.purchase or (doc.get('status') or 'draft') == 'draft':
+    if kind.key == 'quote' or kind.purchase or kind.adjusts or (doc.get('status') or 'draft') == 'draft':
         return None
     if kind.key == 'proforma':
         advance = summary.get('advance') or {}
@@ -247,6 +275,19 @@ def money_strip(doc: Dict, summary: Dict, payments: List[Dict], advance_received
     since = sum(float(p.get('amount') or 0) for p in payments if not p.get('advance_number'))
     balance = float(summary.get('balance') or 0)
     advance_of = next((p.get('advance_number') for p in payments if p.get('advance_number')), None)
+    issued = [n for n in notes or [] if n.get('status') == 'issued']
+    if issued:
+        credit = [n for n in issued if n.get('doc_type') == 'credit_note']
+        debit = [n for n in issued if n.get('doc_type') == 'debit_note']
+        net = sum(float(n.get('total_amount') or 0) for n in debit) - sum(float(n.get('total_amount') or 0) for n in credit)
+        back = float(summary.get('in_favour') or 0)
+        return [{'label': 'Invoice total', 'value': total, 'cap': 'incl. GST' if summary.get('tax_lines') else ''},
+                {'label': 'Credit notes' if not debit else 'Debit notes' if not credit else 'Credit and debit notes',
+                 'value': net, 'cap': ', '.join(display_number(n) for n in issued)},
+                {'label': 'Received', 'value': since + advance_in,
+                 'cap': f'Incl. advance on proforma {advance_of}' if advance_of else '' if since else 'Nothing yet'},
+                {'label': 'To refund', 'value': back, 'cap': ''} if back > 0.005 else
+                {'label': 'Due', 'value': balance, 'cap': 'Nothing due' if balance <= 0.005 else '', 'late': balance > 0.005}]
     return [{'label': 'Invoice total', 'value': total, 'cap': 'incl. GST' if summary.get('tax_lines') else ''},
             {'label': 'Less advance', 'value': -advance_in, 'cap': f'On proforma {advance_of}' if advance_of else 'No advance'},
             {'label': 'Received since', 'value': since, 'cap': '' if since else 'Nothing yet'},
@@ -278,7 +319,8 @@ def made_from(here_id, project_docs: List[Dict]) -> List[Dict]:
 def quote_strip(doc: Dict, summary: Dict, invoiced: List[Dict]) -> Optional[List[Dict]]:
     """Under an accepted quotation's next step: what it quoted, how much of it is invoiced ("Invoiced ₹X of ₹Y") and
     what's still to invoice, all before GST, since a quotation usually states GST in its terms rather than adding it.
-    invoiced: [{'taxable', 'currency'}] for the tax invoices made from it (made_from), drafts left out."""
+    invoiced: [{'taxable', 'currency', 'note'}] for the tax invoices made from it (made_from), drafts left out, and their
+    issued credit notes (taxable negative) and debit notes (note: True)."""
     if (doc.get('status') or 'draft') not in ('accepted', 'converted'):
         return None
     currency = doc.get('currency_code') or 'INR'
@@ -287,7 +329,8 @@ def quote_strip(doc: Dict, summary: Dict, invoiced: List[Dict]) -> Optional[List
     mine = [i for i in invoiced if (i.get('currency') or 'INR') == currency]
     done = sum(float(i['taxable'] or 0) for i in mine)
     left = quoted - done
-    on = f'on {len(mine)} tax invoice{"" if len(mine) == 1 else "s"}'
+    bills = len([i for i in mine if not i.get('note')])
+    on = f'on {bills} tax invoice{"" if bills == 1 else "s"}'
     return [{'label': 'Quoted', 'value': quoted, 'cap': 'Before GST'},
             {'label': 'Invoiced', 'value': done,
              # rounded down: 99.6% isn't "100%" while something's still to invoice
@@ -298,16 +341,17 @@ def quote_strip(doc: Dict, summary: Dict, invoiced: List[Dict]) -> Optional[List
 
 def chain(project_docs: List[Dict], here_id, url: Callable) -> List[Dict]:
     """The project's documents, quotation to tax invoice, for the side of a document's page."""
-    from documents import balance_of
-    order = {'quote': 0, 'proforma': 1, 'invoice': 2, 'export_invoice': 2}
+    from documents import balance_of, credit_of
+    order = {'quote': 0, 'proforma': 1, 'invoice': 2, 'export_invoice': 2, 'credit_note': 3, 'debit_note': 3}
     out = []
     sales = [d for d in project_docs if not get_type(d.get('doc_type')).purchase]
     for d in sorted(sales, key=lambda d: (order.get(d.get('doc_type'), 3), str(d.get('issue_date') or ''))):
         kind = get_type(d.get('doc_type'))
         paid = float(d.get('paid_amount') or 0)
-        summary = {'balance': balance_of(d) if kind.takes_payments else 0, 'paid': paid}
+        summary = {'balance': balance_of(d) if kind.takes_payments else 0, 'paid': paid,
+                   'in_favour': credit_of(d) if kind.takes_payments else 0}
         out.append({'kind': kind.label, 'number': display_number(d), 'pill': pill(d, summary, paid if kind.key == 'proforma' else 0),
-                    'total': float(d.get('total_amount') or 0), 'currency': d.get('currency_code') or 'INR',
+                    'total': float(d.get('total_amount') or 0) * (-1 if kind.adjusts < 0 else 1), 'currency': d.get('currency_code') or 'INR',
                     'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id']),
                     'here': str(d['invoice_id']) == str(here_id) or any(str(v.get('invoice_id')) == str(here_id) for v in d.get('versions') or []),
                     'paid': kind.takes_payments and summary['balance'] <= 0.005 or (kind.key == 'proforma' and paid > 0)})

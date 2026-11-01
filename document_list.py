@@ -1,7 +1,8 @@
 """
 The quotation, proforma and invoice lists (the React screen in frontend/src/islands/documents/), as the prototype
 draws them: one row per document (a revised one once, as its latest version) with where it stands in a word and a
-short note under it, and the tabs that filter them.
+short note under it, and the tabs that filter them. Credit and debit notes are in the invoices list, each kind under
+a tab of its own (alone: not under All).
 """
 
 import re
@@ -10,7 +11,7 @@ from typing import Callable, Dict, List, Optional
 
 from app_helpers import to_date
 from document_view import FOLLOW_UP_AFTER, pill
-from documents import balance_of, display_number, get_type
+from documents import DOC_TYPES, balance_of, credit_of, display_number, get_type
 from payment_terms import due_on
 import revisions
 
@@ -20,8 +21,10 @@ GROUPS = {
                         ('declined', 'Declined'), ('converted', 'Converted')]},
     'proformas': {'title': 'Proforma invoices', 'types': ('proforma',), 'new_type': 'proforma', 'until': None,
                   'tabs': [('all', 'All'), ('draft', 'Draft'), ('sent', 'Sent'), ('converted', 'Invoiced')]},
-    'invoices': {'title': 'Invoices', 'types': ('invoice', 'export_invoice'), 'new_type': 'invoice', 'until': 'Due',
-                 'tabs': [('all', 'All'), ('draft', 'Draft'), ('pending', 'Unpaid'), ('overdue', 'Overdue'), ('paid', 'Paid')]},
+    'invoices': {'title': 'Invoices', 'types': ('invoice', 'export_invoice', 'credit_note', 'debit_note'), 'new_type': 'invoice',
+                 'until': 'Due',
+                 'tabs': [('all', 'All'), ('draft', 'Draft'), ('pending', 'Unpaid'), ('overdue', 'Overdue'), ('paid', 'Paid'),
+                          ('credit_note', 'Credit notes'), ('debit_note', 'Debit notes')]},
     'purchase-orders': {'title': 'Purchase orders', 'types': ('purchase_order',), 'new_type': 'purchase_order', 'until': None,
                         'tabs': [('all', 'All'), ('draft', 'Draft'), ('open', 'Open'), ('received', 'Received'),
                                  ('cancelled', 'Cancelled')]},
@@ -47,8 +50,12 @@ def state(doc: Dict, today: date, usual_days: Optional[int] = None) -> Dict:
     kind = get_type(doc.get('doc_type'))
     status = doc.get('status') or 'draft'
     paid, balance = float(doc.get('paid_amount') or 0), balance_of(doc)
-    tag = pill(doc, {'balance': balance, 'paid': paid}, advance_received=paid if kind.key == 'proforma' else 0)
+    tag = pill(doc, {'balance': balance, 'paid': paid, 'in_favour': credit_of(doc) if kind.takes_payments else 0},
+               advance_received=paid if kind.key == 'proforma' else 0)
     issued = to_date(doc.get('issue_date'))
+    if kind.adjusts:                                      # under its own tab, drafts too
+        against = doc.get('source_number')
+        return {'tab': kind.key, 'tag': tag, 'note': f'Against {against}' if against else ''}
     if status in ('draft', 'revised'):
         return {'tab': 'draft', 'tag': tag, 'note': ''}
     if kind.purchase:                                     # sent or confirmed: still to arrive
@@ -91,7 +98,8 @@ def rows(docs: List[Dict], url: Callable, today: Optional[date] = None, usual_da
             'date': d.get('issue_date'),
             'until': due_on(d, usual_days) if kind.takes_payments else d.get('due_date') if kind.key == 'quote' else None,
             **state(d, today, usual_days),
-            'currency': d.get('currency_code') or 'INR', 'total': float(d.get('total_amount') or 0),
+            'currency': d.get('currency_code') or 'INR',
+            'total': float(d.get('total_amount') or 0) * (-1 if kind.adjusts < 0 else 1),
             'balance': balance_of(d) if kind.takes_payments and (d.get('status') or 'draft') not in ('draft', 'paid') else None,
             'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id']),
             'pdf': url('invoices_bp.export_pdf', invoice_id=d['invoice_id']),
@@ -109,8 +117,12 @@ def build(group: str, docs: List[Dict], url: Callable, can_create: bool, today: 
     mine = [d for d in docs if (d.get('doc_type') or 'invoice') in info['types']]
     if group != 'invoices':
         mine = revisions.collapse(mine)
+    numbers = {str(d['invoice_id']): display_number(d) for d in docs}
+    mine = [{**d, 'source_number': numbers.get(str(d.get('source_invoice_id') or ''))} if get_type(d.get('doc_type')).adjusts else d
+            for d in mine]
     return project_view._plain({'group': group, 'title': info['title'], 'until': info['until'],
-            'tabs': [{'key': k, 'label': label} for k, label in info['tabs']],
+            'tabs': [{'key': k, 'label': label, **({'alone': True} if get_type(k).adjusts and k in DOC_TYPES else {})}
+                     for k, label in info['tabs']],
             'rows': rows(mine, url, today, usual_days),
             'new_url': url('invoices_bp.create_invoice', doc_type=info['new_type']) if can_create else None,
             # several at once: their PDFs in a ZIP, or a CSV (exports.py)

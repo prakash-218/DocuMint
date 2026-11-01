@@ -39,7 +39,8 @@ export interface DocList {
   group: 'quotes' | 'proformas' | 'invoices' | 'purchase-orders';
   title: string;
   until: string | null;
-  tabs: { key: string; label: string }[];
+  /** alone: its rows aren't under All (an invoice list's credit and debit notes) */
+  tabs: { key: string; label: string; alone?: boolean }[];
   rows: DocRow[];
   new_url: string | null;
   new_label: string;
@@ -63,7 +64,8 @@ export function fiscalYear(iso: string | null): string {
   return `${String(start % 100).padStart(2, '0')}-${String((start + 1) % 100).padStart(2, '0')}`;
 }
 
-/** What a tab adds up: what's still due for unpaid and overdue invoices, otherwise the documents' totals. */
+/** What a tab adds up: what's still due for unpaid and overdue invoices, otherwise the documents' totals (a credit
+ *  note's comes as less than nothing, so it takes off). */
 function tabSum(rows: DocRow[], tab: string): Record<string, number> {
   const due = tab === 'pending' || tab === 'overdue';
   const sums: Record<string, number> = {};
@@ -126,7 +128,8 @@ function ListScreen({ group, tab: firstTab = 'all', query: firstQuery = '' }: { 
 
   if (!data) return error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="list" label="Loading the list…" />;
 
-  const inTab = (key: string) => filtered.filter((r) => key === 'all' || r.tab === key);
+  const alone = new Set(data.tabs.filter((t) => t.alone).map((t) => t.key));
+  const inTab = (key: string) => filtered.filter((r) => (key === 'all' ? !alone.has(r.tab) : r.tab === key));
   const shown = inTab(tab);
   const what = data.title.toLowerCase();
 

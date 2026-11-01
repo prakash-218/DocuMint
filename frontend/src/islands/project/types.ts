@@ -19,9 +19,15 @@ export type Action =
 
 export interface Doc {
   invoice_id: string;
-  doc_type: 'quote' | 'proforma' | 'invoice' | 'export_invoice' | 'purchase_order';
+  doc_type: 'quote' | 'proforma' | 'invoice' | 'export_invoice' | 'purchase_order' | 'credit_note' | 'debit_note';
   /** Who it's to: the customer, or a purchase order's supplier. */
   party?: string | null;
+  /** A note against an invoice: -1 a credit note (takes its total off), 1 a debit note; 0 otherwise. */
+  adjusts?: number;
+  /** A note's invoice number. */
+  against?: string | null;
+  /** Money paid back on a credit note. */
+  refunded?: number;
   site?: string | null;
   kind: string;
   number: string;

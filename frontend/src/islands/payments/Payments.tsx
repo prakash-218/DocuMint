@@ -20,7 +20,8 @@ export interface PaymentRow {
   credited: { amount: number; currency: string } | null;
   method: string;
   reference: string;
-  tab: 'advance' | 'invoice';
+  /** refund: money paid back on a credit note, a negative amount */
+  tab: 'advance' | 'invoice' | 'refund';
   note: string;
   document: { number: string; kind: string; url: string };
   customer: { id: string; name: string; site: string | null };

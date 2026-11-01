@@ -251,7 +251,8 @@ const DOC_GRID = { gridTemplateColumns: 'minmax(0, 1.6fr) minmax(0, 1fr) 72px mi
 
 function Documents({ data }: { data: CustomerData }) {
   const [only, setOnly] = useState('');
-  const kind = (t: string) => (t === 'export_invoice' ? 'invoice' : t);
+  // export invoices, and credit and debit notes, go with the invoices
+  const kind = (t: string) => (['export_invoice', 'credit_note', 'debit_note'].includes(t) ? 'invoice' : t);
   const docs = data.documents.filter((d) => !only || kind(d.doc_type) === only);
   const projects = Object.fromEntries(data.projects.map((p) => [p.id, p]));
   if (!data.documents.length) return <div className="rows"><p className="empty-rows" style={{ borderTop: 0 }}>No documents yet.</p></div>;
@@ -278,12 +279,13 @@ function Documents({ data }: { data: CustomerData }) {
             <a key={d.invoice_id} className="rr" href={d.url} style={DOC_GRID}>
               <div className="c-main">
                 <div className="c-title mono">{d.number}</div>
-                <div className="c-sub">{[d.kind, data.sites.length > 0 && d.site, d.versions.length > 0 && `${d.versions.length + 1} versions`].filter(Boolean).join(' · ')}</div>
+                <div className="c-sub">{[d.kind, d.against && `against ${d.against}`, data.sites.length > 0 && d.site,
+                  d.versions.length > 0 && `${d.versions.length + 1} versions`].filter(Boolean).join(' · ')}</div>
               </div>
               <div className="c-sub c-hide">{p ? <><span className="mono">{p.label}</span> {p.title}</> : '—'}</div>
               <div className="c-date">{day(d.issue_date) || '—'}</div>
               <div><span className={`tag tone-${s.tone}`}>{s.text}</span>{d.balance ? <div className="c-sub">{money(d.balance, d.currency)} due</div> : null}</div>
-              <div className="c-num">{money(d.total, d.currency)}</div>
+              <div className="c-num">{d.adjusts === -1 ? '−' : ''}{money(d.total, d.currency)}</div>
             </a>
           );
         })}

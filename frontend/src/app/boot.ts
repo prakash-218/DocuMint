@@ -8,6 +8,7 @@ export interface NavItem {
   icon: string;          // a Lucide name, as the server pages use: 'layout-dashboard'
   href: string;
   prefix: string;        // the addresses it's for: the longest prefix of the path wins
+  also?: string[];       // other prefixes it's for: Invoices also lights up for /credit-notes/ and /debit-notes/
   badge: number;
 }
 

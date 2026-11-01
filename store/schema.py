@@ -272,7 +272,7 @@ project_contact = Table(
     CheckConstraint(f"gets IN {CONTACT_GETS}", name='gets'),
 )
 
-DOC_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice', 'purchase_order')
+DOC_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice', 'purchase_order', 'credit_note', 'debit_note')
 TAX_MODES = ('none', 'cgst_sgst', 'igst', 'lut')
 
 invoice = Table(
@@ -365,6 +365,21 @@ po_receipt = Table(
     Column('lines', JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     _ref('created_by', 'users.user_id', 'SET NULL', nullable=True, index=False),
     _created(),
+)
+
+# Money paid back on a credit note, when the invoice it's against had been paid more than it now comes to. Never a
+# payment row: it isn't money received.
+note_refund = Table(
+    'note_refund', metadata,
+    _id('refund_id'),
+    _ref('org_id', 'organization.org_id', 'CASCADE'),
+    _ref('invoice_id', 'invoice.invoice_id', 'CASCADE'),         # the credit note
+    Column('amount', MONEY, nullable=False),
+    Column('refunded_on', Date, nullable=False),
+    Column('reference', String(100)),
+    _ref('created_by', 'users.user_id', 'SET NULL', nullable=True, index=False),
+    _created(),
+    CheckConstraint('amount > 0', name='amount_positive'),
 )
 
 # Working out a quote's prices before making it: internal, owners and admins only.

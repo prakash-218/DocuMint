@@ -9,10 +9,8 @@ from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from app_helpers import to_date
-from documents import balance_of, display_number, fy_start_month, get_type
+from documents import INVOICE_TYPES, balance_of, display_number, fy_start_month, get_type
 from payment_terms import due_on, usual_days
-
-INVOICE_TYPES = ('invoice', 'export_invoice')
 
 
 def period(fy: str, start_month: int = 4) -> Tuple[date, date]:
@@ -70,8 +68,9 @@ def gather(org_id, customer: Dict, url, fy: Optional[str] = None, currency: Opti
     docs = revisions.collapse([d for d in db.execute_proc('sp_list_invoices', (org_id, None, 100000, 0)) or []
                                if str(d.get('customer_id')) in family])
     payments = db.execute_proc('sp_list_customer_payments', (org_id, family)) or []
+    refunds = db.execute_proc('sp_list_customer_refunds', (org_id, family)) or []
     start_month = fy_start_month(profile)
-    account = pick(statement(docs, payments, url, start_month, sites=bool(sites)), fy, currency)
+    account = pick(statement(docs, payments, url, start_month, sites=bool(sites), refunds=refunds), fy, currency)
     cur = account['currency'] if account else (currency or 'INR')
     owing = unpaid(docs, cur, today, usual_days(profile))
     return {'org': org or {}, 'profile': profile, 'customer': customer, 'sites': bool(sites), 'today': today,
