@@ -296,6 +296,9 @@ invoice = Table(
     Column('advance_percent', Numeric(6, 3)),
     Column('advance_basis', String(10), nullable=False, server_default='pre_tax'),
     Column('details', JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    # a purchase order made from a costing's lines: the costing, and what those lines were costed at
+    Column('costing_id', UUID(as_uuid=False), ForeignKey('costing.costing_id', ondelete='SET NULL')),
+    Column('costed_amount', MONEY),
     _created(),
     ForeignKeyConstraint(['template_id', 'template_version'], ['template.template_id', 'template.version'],
                          ondelete='RESTRICT', name='fk_invoice_template'),
