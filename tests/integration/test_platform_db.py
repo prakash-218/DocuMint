@@ -168,7 +168,7 @@ def _admin_checks(client, org_id, viewer, owner):
     owner_notes = db.execute_proc('sp_list_notifications', (owner['user_id'], org_id, 20, True)) or []
     assert not any(n['title'] == f'Quotation {number} created' for n in owner_notes)
     timeline = client.get(f'/api/projects/{project_id}').get_json()['timeline']                     # activity
-    assert f'Quotation {number} created' in [t['title'] for t in timeline]
+    assert f'Quotation {number} created' in [h['title'] for t in timeline if t['type'] == 'document' for h in t['history']]   # in its document's history
 
     # As the admin: sees the badge, can open settings pages, can't make or change owners
     login(client, VIEWER)

@@ -87,6 +87,8 @@ def stage(docs: List[Dict], project_status: str = 'open', today: Optional[date] 
         s['advance'].update(state='done', sub='On the invoice')
     elif f['all_invoices'] and not f['proformas']:
         s['advance'].update(state='skipped', sub='No advance')
+    elif f['invoices']:
+        s['advance'].update(state='skipped', sub='Invoiced instead')
     elif f['accepted']:
         s['advance'].update(state='now', sub='Requested' if f['sent_proformas'] else 'Draft' if f['proformas'] else 'Not requested')
 
@@ -299,6 +301,7 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
     import revisions
     from db import db
     from document_service import get_org_profile
+    from payment_terms import usual_days
     project_id = project['project_id']
     sales, reads_mail = permissions.quotations_only(perms), permissions.can('emails.read', perms=perms)
     costings = permissions.can('costings.read', perms=perms)
@@ -320,10 +323,12 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
     st = stage(docs, project.get('status') or 'open', today)
     if sales:                                       # how far it went after the quotation isn't theirs to see
         st['steps'] = st['steps'][:2]
+    profile = get_org_profile(org_id)[1]
     people = contacts.for_project(org_id, project_id)
-    found = contacts.project_suggestions(org_id, project, people, get_org_profile(org_id)[1].get('phone') or '') \
+    found = contacts.project_suggestions(org_id, project, people, profile.get('phone') or '') \
         if reads_mail else {'people': [], 'phones': []}
     po = projects.latest_purchase_order(org_id, project_id)
+    rows, sold, ours = money(docs, files, quoted_only=sales), documents(docs, url), documents(bought, url)
     addable = projects.unassigned_documents(org_id, project['customer_id']) if can['edit'] else []
     if sales:
         addable = [d for d in addable if d.get('doc_type') == 'quote']
@@ -340,14 +345,15 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
                            'currency': po.get('currency')} if po else None},
         'can': can,
         'stage': st,
+        'progress': statuses(facts(docs), rows, ours, sales, today or date.today(), usual_days(profile)),
         'next': next_step(docs, st, project, can, url, today),
-        'money': money(docs, files, quoted_only=sales),
-        'documents': documents(docs, url),
-        'purchases': documents(bought, url),
+        'money': rows,
+        'documents': sold,
+        'purchases': ours,
         'new_document': {t: url('invoices_bp.create_invoice', doc_type=t, project_id=project_id)
                          for t in (('quote',) if sales else ('quote', 'proforma', 'invoice', 'purchase_order'))
                          if permissions.can_doc('write', t, perms)},
-        'timeline': timeline(events, messages, reads_mail, (project.get('customer_name'), project.get('customer_site'))),
+        'timeline': thread(timeline(events, messages, reads_mail, (project.get('customer_name'), project.get('customer_site'))), sold, ours),
         'people': [{'contact_id': p['contact_id'], 'customer_id': p['customer_id'], 'name': p['name'], 'email': p.get('email'),
                     'phone': p.get('phone'), 'role': p.get('role'), 'gets': p['project_gets'], 'usually': p['gets'],
                     'initials': p['initials'], 'at_parent': p['customer_id'] != project['customer_id']} for p in people],
@@ -480,6 +486,125 @@ def _plain(value):
 EMAIL_EVENTS = ('email_received', 'email_sent')
 
 
+def statuses(f: Dict, rows: List[Dict], bought: List[Dict], sales: bool, today: date, usual: Optional[int] = None) -> List[Dict]:
+    """Where the job stands on each count, apart from the others (the Job hub's statuses): the quotation, the advance,
+    the material bought for it, how much is invoiced and how much has come in. Each {key, label, text, sub, bar (0–1),
+    tone}: tone is 'done', 'now' (to do or waiting), 'late', 'todo' (not reached yet) or 'none' (not taken on this job).
+    f: facts(); rows: money()'s, per currency; bought: documents()'s rows for its purchase orders."""
+    from payment_terms import due_on
+    one = len(rows) <= 1
+    m = rows[0] if rows else {'currency': 'INR', 'quoted': 0.0, 'invoiced': 0.0, 'received': 0.0, 'due': 0.0}
+    fm = lambda v, c=None: format_money(v or 0, c or m['currency'], decimals=False)  # noqa: E731
+
+    def each(field):
+        """An amount in every currency the job has it in: '₹5,90,000' or '₹2,00,000 + $1,200'."""
+        return ' + '.join(fm(r.get(field), r['currency']) for r in rows if r.get(field)) or fm(0)
+
+    def share(part, whole):
+        """'60% · ' of the quotation; nothing when there's no one figure to measure against, or it's gone past it."""
+        return f'{round(part / whole * 100)}% · ' if one and whole and part <= whole * 1.005 else ''
+
+    def chip(key, label, text, sub='', bar=0.0, tone='todo'):
+        return {'key': key, 'label': label, 'text': text, 'sub': sub, 'bar': max(0.0, min(1.0, bar)), 'tone': tone}
+
+    # the quotation the job goes by: the accepted one, else the latest that wasn't turned down
+    q = f['accepted_quote'] or next((d for d in reversed(f['quotes']) if d.get('status') != 'declined'), None) or f['quote']
+    if not q:
+        quote = chip('quotation', 'Quotation', 'None on this job' if f['invoices'] else 'No quotation yet',
+                     tone='none' if f['invoices'] else 'now')
+    else:
+        no, total = display_number(q) or 'draft', format_money(q.get('total_amount') or 0, q.get('currency_code') or 'INR', decimals=False)
+        waited = _days_since(q.get('issue_date'), today)
+        quote = (chip('quotation', 'Quotation', f'Accepted · {no}', total, 1, 'done') if f['accepted'] else
+                 chip('quotation', 'Quotation', f'Declined · {no}', total, 1, 'late') if f['declined'] else
+                 chip('quotation', 'Quotation', f'Sent · {no}', f'No answer for {waited} day{"" if waited == 1 else "s"}' if waited else total, 0.5, 'now')
+                 if f['sent_quotes'] else chip('quotation', 'Quotation', f'Draft · {no}', total, 0.2, 'now'))
+    if sales:
+        return [quote]
+
+    asked = [d for d in f['sent_proformas'] if d.get('status') not in ('cancelled', 'converted')]
+    paid_in = sum(float(d.get('paid_amount') or 0) for d in asked)
+    asked_total = sum(float(d.get('total_amount') or 0) for d in asked)
+    if f['proforma_invoiced'] and not asked:
+        advance = chip('advance', 'Advance', 'On the tax invoice', ', '.join(display_number(d) for d in f['proforma_invoiced']), 1, 'done')
+    elif asked:
+        settled = paid_in >= asked_total - 0.5
+        advance = chip('advance', 'Advance', f'{fm(paid_in)} of {fm(asked_total)} in',
+                       ', '.join(display_number(d) for d in asked) + (' · invoiced instead' if f['invoices'] and not settled else ''),
+                       paid_in / asked_total if asked_total else 0, 'done' if settled else 'none' if f['invoices'] else 'now')
+    elif f['proformas']:
+        advance = chip('advance', 'Advance', f"Draft · {display_number(f['proforma']) or 'proforma'}", bar=0.2, tone='now')
+    else:
+        advance = chip('advance', 'Advance', 'None on this job' if f['invoices'] else 'Not asked yet' if f['accepted'] else '—',
+                       tone='none' if f['invoices'] else 'now' if f['accepted'] else 'todo')
+
+    pos = [d for d in bought if d['status'] not in ('cancelled', 'revised')]
+    placed = [d for d in pos if d['status'] != 'draft']
+    got = [d for d in placed if d['status'] == 'received']
+    if not pos:
+        material = chip('material', 'Material', 'No purchase orders', tone='none')
+    elif not placed:
+        material = chip('material', 'Material', f'{len(pos)} draft PO{"" if len(pos) == 1 else "s"}', tone='now')
+    else:
+        ordered: Dict[str, float] = {}
+        for d in placed:
+            ordered[d['currency'] or 'INR'] = ordered.get(d['currency'] or 'INR', 0) + d['total']
+        material = chip('material', 'Material', f'{len(got)} of {len(placed)} PO{"" if len(placed) == 1 else "s"} received',
+                        ' + '.join(fm(v, c) for c, v in ordered.items()) + ' ordered', len(got) / len(placed),
+                        'done' if len(got) == len(placed) else 'now')
+
+    inv = float(m.get('invoiced') or 0)
+    quoted = float(q.get('total_amount') or 0) if q and one and (q.get('currency_code') or 'INR') == m['currency'] else float(m.get('quoted') or 0)
+    drafts = [d for d in f['all_invoices'] if d.get('status') == 'draft']
+    if inv <= 0:
+        invoiced = chip('invoiced', 'Invoiced', 'Not yet', f"{display_number(drafts[0]) or 'A tax invoice'} is a draft" if drafts else '',
+                        tone='now' if f['accepted'] else 'todo')
+    else:
+        invoiced = chip('invoiced', 'Invoiced', share(inv, quoted) + each('invoiced'),
+                        f'{fm(quoted - inv)} left to invoice' if one and quoted and inv < quoted - 0.5 else
+                        f'{fm(inv - quoted)} more than {display_number(q)}' if one and q and inv > quoted * 1.005 else '',
+                        inv / quoted if quoted else 1, 'done' if not quoted or inv >= quoted - 0.5 else 'now')
+
+    received, due = float(m.get('received') or 0), float(m.get('due') or 0)
+    late = [(today - d).days for d in (due_on(x, usual) for x in f['unpaid']) if d and d < today]
+    if received <= 0 and inv <= 0:
+        paid = chip('paid', 'Paid', 'Nothing yet', tone='todo')
+    else:
+        base = max(quoted, inv)
+        paid = chip('paid', 'Paid', share(received, base) + each('received'),
+                    (f'{each("due")} due' + (f', {max(late)} day{"" if max(late) == 1 else "s"} late' if late else '')) if due > 0.005 else '',
+                    received / base if base else 0, 'late' if late else 'done' if f['paid'] and (not quoted or inv >= quoted - 0.5) else 'now')
+    return [quote, advance, material, invoiced, paid]
+
+
+# the thread: a payment points at its document but is an entry of its own, the money in
+THREAD_OWN = ('payment',)
+
+
+def thread(items: List[Dict], docs: List[Dict], bought: List[Dict]) -> List[Dict]:
+    """Everything on the job in one thread, newest first: each document, sold or bought, once, where its latest event
+    is, with the events about it folded in as its history; payments, emails, notes and the rest as entries of their
+    own. items: timeline()'s; docs, bought: documents()'s rows (the page has them; a document entry names its id)."""
+    rows = [*docs, *bought]
+    history: Dict[str, List[Dict]] = {str(d['invoice_id']): [] for d in rows}
+    out = []
+    for i in items:
+        owner = next((str(d['invoice_id']) for d in rows if str(d['invoice_id']) in (i.get('link') or '')), None) \
+            if i['type'] == 'event' and i.get('kind') not in THREAD_OWN else None
+        if owner:
+            history[owner].append({'title': i['title'], 'when': i['when'], 'who': i.get('who')})
+        else:
+            out.append(i)
+    purchases = {str(d['invoice_id']) for d in bought}
+    for d in rows:
+        h = history[str(d['invoice_id'])]
+        when = max([str(x['when'] or '') for x in h] + [str(d.get('issue_date') or '')])
+        out.append({'id': f"d-{d['invoice_id']}", 'type': 'document', 'kind': d['doc_type'], 'invoice_id': d['invoice_id'],
+                    'purchase': str(d['invoice_id']) in purchases, 'when': when or None, 'history': h})
+    out.sort(key=lambda i: str(i['when'] or ''), reverse=True)
+    return out
+
+
 def timeline(events: List[Dict], messages: List[Dict], reads_mail: bool, customer_names=()) -> List[Dict]:
     """Activity, notes and (for those who read mail) the emails themselves, newest first. The emails stand
     in for the 'email received/sent' events when they're shown; an event's body that only names the
@@ -491,7 +616,7 @@ def timeline(events: List[Dict], messages: List[Dict], reads_mail: bool, custome
         note = e.get('kind') == 'note'
         body = None if note or e.get('body') in names else e.get('body')
         items.append({'id': f"e-{e['event_id']}", 'type': 'note' if note else 'event', 'kind': e.get('kind'),
-                      'title': e.get('body') if note else e.get('title'), 'body': body,
+                      'title': (e.get('body') or e.get('title')) if note else e.get('title'), 'body': body,
                       'when': e.get('created_at'), 'who': (e.get('actor_email') or '').split('@')[0] or None, 'link': e.get('link')})
     for m in messages if reads_mail else []:
         out = m.get('direction') == 'out'

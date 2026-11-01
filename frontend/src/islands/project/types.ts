@@ -42,6 +42,32 @@ export interface Doc {
   versions: { invoice_id: string; number: string; issue_date: string | null; total: number; url: string }[];
 }
 
+/** Where the job stands on one count, apart from the others (project_view.statuses). */
+export interface Progress {
+  key: 'quotation' | 'advance' | 'material' | 'invoiced' | 'paid';
+  label: string;
+  text: string;
+  sub: string;
+  /** How far along, 0 to 1. */
+  bar: number;
+  /** none: not taken on this job; todo: not reached yet. */
+  tone: 'done' | 'now' | 'late' | 'todo' | 'none';
+}
+
+/** A document in the thread (project_view.thread): the document itself is in documents or purchases. */
+export interface DocEntry {
+  id: string;
+  type: 'document';
+  kind: Doc['doc_type'];
+  invoice_id: string;
+  purchase: boolean;
+  when: string | null;
+  /** What happened to it, newest first. */
+  history: { title: string; when: string | null; who: string | null }[];
+}
+
+export type ThreadItem = TimelineItem | DocEntry;
+
 export interface TimelineItem {
   id: string;
   type: 'event' | 'note' | 'email';
@@ -108,13 +134,16 @@ export interface Page {
   };
   can: { edit: boolean; manage: boolean; read_mail: boolean; sales: boolean };
   stage: { steps: Step[]; current: string | null; pill: { text: string; tone: Tone } };
+  /** Quotation, advance, material, invoiced, paid; Sales get the quotation only. */
+  progress: Progress[];
   next: { tone: Tone; text: string; sub: string; actions: Action[] };
   money: MoneyRow[];
   documents: Doc[];
   /** What's bought for it: purchase orders to suppliers. */
   purchases?: Doc[];
   new_document: Partial<Record<'quote' | 'proforma' | 'invoice' | 'purchase_order', string>>;
-  timeline: TimelineItem[];
+  /** Everything on the job, newest first: documents (with their history), payments, emails, notes, the rest. */
+  timeline: ThreadItem[];
   people: Person[];
   found: {
     people: { name: string; email: string; phone: string | null; seen: string }[];

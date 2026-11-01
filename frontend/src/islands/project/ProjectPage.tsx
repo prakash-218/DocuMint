@@ -3,16 +3,14 @@ import { api, ApiError } from '../../api';
 import { Skeleton } from '../../Skeleton';
 import { PageHeader } from '../../app/PageHeader';
 import { Composer } from '../EmailComposer';
-import { Documents } from './Documents';
-import { Purchases } from './Purchases';
-import { MoneyStrip, NextStep, Tracker } from './Overview';
+import { NextStep, ProgressChips } from './Overview';
 import { People, type ContactFields } from './People';
 import { Costings, Details, Files, type DetailFields } from './Side';
-import { Timeline } from './Timeline';
+import { Thread } from './Thread';
 import type { Page } from './types';
 
-// The new project page: where the job is (worked out from its documents), what to do next, the money, the
-// documents from quotation to payment, one timeline, and the people, files and details beside them.
+// The project page, the Job hub: where the job stands on each count (quotation, advance, material, invoiced, paid),
+// what to do next, everything on the job in one thread, and the people, files and details beside it.
 
 export default function ProjectPage({ projectId }: { projectId: string }) {
   const [page, setPage] = useState<Page | null>(null);
@@ -56,7 +54,7 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
     );
   }
 
-  const { can, project } = page;
+  const { project } = page;
   return (
     <div className="ui">
       <PageHeader title={`${project.title} · ${project.label}`}
@@ -82,21 +80,16 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
         <div className="head-right"><span className={`pill tone-${page.stage.pill.tone}`}>{page.stage.pill.text}</span></div>
       </header>
 
-      <Tracker steps={page.stage.steps} />
+      <ProgressChips items={page.progress} />
       <NextStep next={page.next} onEmail={(invoiceId) => setCompose({ invoiceId })}
                 onStatus={(status) => void change(() => api.patch(base, { status }), `Project marked ${page.statuses[status]?.toLowerCase()}`)} />
-      <MoneyStrip rows={page.money} quotedOnly={can.sales} />
 
       <div className="cols">
         <div className="col-main">
-          <Documents docs={page.documents} newDocument={page.new_document} canEdit={can.edit} sales={can.sales} current={page.stage.current}
-                     addable={page.addable} documentsUrl={page.links?.documents}
-                     onEmail={(invoiceId) => setCompose({ invoiceId })} />
-          {!can.sales && <Purchases docs={page.purchases ?? []} newUrl={page.new_document.purchase_order} />}
-          <Timeline items={page.timeline} canEdit={can.edit} readMail={can.read_mail}
-                    onNote={(text) => change(() => api.post(`${base}/notes`, { text }), 'Note added')}
-                    onReply={(threadId) => setCompose({ threadId })}
-                    onEmail={can.edit ? () => setCompose({}) : undefined} />
+          <Thread page={page}
+                  onNote={(text) => change(() => api.post(`${base}/notes`, { text }), 'Note added')}
+                  onReply={(threadId) => setCompose({ threadId })}
+                  onEmail={(invoiceId) => setCompose(invoiceId ? { invoiceId } : {})} />
         </div>
         <aside className="col-side" aria-label="People, files and details">
           <People page={page}

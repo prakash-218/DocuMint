@@ -1,6 +1,5 @@
-import { money } from '../../format';
 import { Icon, type IconName } from '../../icons';
-import type { Action, MoneyRow, Page, Step } from './types';
+import type { Action, Page, Progress, Step } from './types';
 
 const STEP_ICON: Partial<Record<Step['state'], IconName>> = { done: 'check', late: 'alert' };
 const TONE_ICON: Record<string, IconName> = { action: 'flag', wait: 'clock', late: 'alert', done: 'done', draft: 'info' };
@@ -67,44 +66,19 @@ export function ActionButton({ action: a, onEmail, onStatus }: { action: Action 
   }
 }
 
-/** The four amounts that matter, per currency, and how much of it has come in. Sales see what was quoted only. */
-export function MoneyStrip({ rows, quotedOnly }: { rows: MoneyRow[]; quotedOnly: boolean }) {
+/** Where the job stands on each count, apart from the others: the quotation, the advance, the material bought for
+ *  it, how much is invoiced and how much has come in (project_view.statuses). */
+export function ProgressChips({ items }: { items: Progress[] }) {
   return (
-    <>
-      {rows.map((r) => {
-        const base = r.quoted || r.invoiced || 0;
-        const received = r.received ?? 0;
-        return (
-          <section className="money" key={r.currency} aria-label={`Amounts in ${r.currency}`}>
-            <div>
-              <small>Quoted</small><b>{r.quoted ? money(r.quoted, r.currency) : '—'}</b>
-              <span className="cap">{r.quoted ? 'The latest quotation' : 'No quotation'}</span>
-            </div>
-            {!quotedOnly && (
-              <>
-                <div><small>Billed</small><b>{money(r.invoiced, r.currency)}</b><span className="cap">{r.invoiced ? 'On tax invoices' : 'Nothing yet'}</span></div>
-                <div>
-                  <small>Received</small><b>{money(received, r.currency)}</b>
-                  <span className="cap">{r.advance_held ? `incl. ${money(r.advance_held, r.currency)} advance` : received ? 'Payments in' : 'Nothing yet'}</span>
-                </div>
-                <div className={r.due ? 'due-late' : ''}>
-                  <small>Due</small><b>{money(r.due, r.currency)}</b>
-                  <span className="cap">{r.due ? 'Still to come in' : 'Nothing due'}</span>
-                </div>
-                {base > 0 && (
-                  <div className="paidbar">
-                    <span>{money(received, r.currency)} of {money(base, r.currency)} received</span>
-                    <span className="track" aria-hidden="true">
-                      <i className="rec" style={{ width: `${Math.min(100, (received / base) * 100)}%` }} />
-                      {(r.invoiced ?? 0) > received && <i className="bil" style={{ width: `${Math.min(100, (((r.invoiced ?? 0) - received) / base) * 100)}%` }} />}
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
-        );
-      })}
-    </>
+    <ul className="progress" aria-label="Where the job stands" style={{ ['--n' as string]: items.length }}>
+      {items.map((p) => (
+        <li key={p.key} className={`pg pg-${p.tone}`}>
+          <small>{p.label}</small>
+          <b>{p.text}</b>
+          <span className="pg-bar" aria-hidden="true"><i style={{ width: `${Math.round(p.bar * 100)}%` }} /></span>
+          {p.sub && <span className="pg-sub">{p.sub}</span>}
+        </li>
+      ))}
+    </ul>
   );
 }
