@@ -158,6 +158,17 @@
 .ui .ev-history summary { cursor: pointer; width: fit-content; }
 .ui .ev-history ul { list-style: none; margin: 4px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: grid; gap: 3px; }
 .ui .ev-history li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; }
+.ui .profit-wrap { overflow-x: auto; }
+.ui .profit-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ui .profit-table th { font-weight: 500; color: var(--ink-3); text-align: right; padding: 0 0 6px 10px; font-size: 12px; }
+.ui .profit-table tbody th { text-align: left; color: var(--ink); padding: 5px 6px 5px 0; border-top: 1px solid var(--line); font-weight: 400; }
+.ui .profit-table td { padding: 5px 0 5px 10px; border-top: 1px solid var(--line); text-align: right; font-family: var(--mono); white-space: nowrap; vertical-align: top; }
+.ui .profit-table td small { display: block; color: var(--ink-3); font-size: 11.5px; }
+.ui .profit-table .pt-margin th, .ui .profit-table .pt-margin td { border-top: 2px solid var(--ink); font-weight: 600; }
+.ui .profit-table td.late { color: var(--red); }
+.ui .profit-note { margin: 8px 0 0; font-size: 12.5px; border-radius: 8px; padding: 7px 10px; background: var(--surface-2); color: var(--ink-2); }
+.ui .profit-note.tone-late { background: var(--amber-soft); color: var(--amber); }
+.ui .profit-note.tone-done { background: var(--mint-soft); color: var(--mint); }
 .ui .empty-feed { color: var(--ink-3); padding: 12px 0; margin: 0; }
 
 /* People, files, facts */

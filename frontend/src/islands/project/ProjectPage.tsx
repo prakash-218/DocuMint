@@ -5,6 +5,7 @@ import { PageHeader } from '../../app/PageHeader';
 import { Composer } from '../EmailComposer';
 import { NextStep, ProgressChips } from './Overview';
 import { People, type ContactFields } from './People';
+import { ProfitCard } from './Profit';
 import { Costings, Details, Files, type DetailFields } from './Side';
 import { Thread } from './Thread';
 import type { Page } from './types';
@@ -92,6 +93,7 @@ export default function ProjectPage({ projectId }: { projectId: string }) {
                   onEmail={(invoiceId) => setCompose(invoiceId ? { invoiceId } : {})} />
         </div>
         <aside className="col-side" aria-label="People, files and details">
+          {page.profit && <ProfitCard profit={page.profit} costings={page.costings} />}
           <People page={page}
                   onGets={(contactId, gets) => void change(() => api.post(`${base}/people`, { contact_id: contactId, gets }), 'Saved')}
                   onSave={(fields: ContactFields) => change(() => api.post(`${base}/contacts`, fields),

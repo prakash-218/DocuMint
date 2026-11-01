@@ -993,7 +993,7 @@ DOC_LIST = f"""SELECT i.invoice_id, i.doc_type, i.doc_number, i.source_invoice_i
                      {CUSTOMER_SITE} AS customer_site,
                       i.template_id, t.name AS template_name, {CURRENCY} AS currency_code, i.issue_date, i.due_date,
                       i.status, {PAID} AS paid_amount, {CREDITED} AS credited_amount, {REFUNDED} AS refunded_amount,
-                      i.total_amount, i.project_id,
+                      i.total_amount, i.project_id, i.tax_mode, i.tax_rate, i.costing_id, i.costed_amount,
                       i.details->>'subject' AS subject, i.details->>'buyer_order_no' AS buyer_order_no,
                       p.project_no, p.title AS project_title,
                       {PAYMENT_DAYS} AS payment_days
@@ -1172,6 +1172,15 @@ def add_po_receipt(conn, org_id, invoice_id, received_on, challan_no, note, line
           r=rid, o=org_id, i=invoice_id, d=received_on, c=challan_no or None, n=note or None, l=_json(lines or []), u=user_id)
     _audit(conn, org_id, 'invoice', invoice_id, 'UPDATE', 'received', None, received_on, f'Received: challan {challan_no or "-"}')
     return [[{'receipt_id': rid}]]
+
+
+@proc('sp_set_invoice_costing')
+def set_invoice_costing(conn, invoice_id, org_id, costing_id, costed_amount):
+    """A purchase order made from a costing's lines: the costing, and what those lines were costed at."""
+    _exec(conn, """UPDATE invoice SET costing_id = :k, costed_amount = :a
+                     WHERE invoice_id = :i AND org_id = :o AND doc_type = 'purchase_order'""",
+          k=costing_id, a=costed_amount, i=invoice_id, o=org_id)
+    return []
 
 
 @proc('sp_list_po_receipts')

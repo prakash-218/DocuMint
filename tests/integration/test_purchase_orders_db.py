@@ -164,6 +164,23 @@ def test_a_purchase_order_of_a_costings_lines(app, client, gst_org):
             for r in table['rows']]
     assert rows == [('Hydraulic cylinder (Test Make)', '6', 'nos', '4200'), ('Paint', '8', 'l', '350')]   # × 2 presses
     assert page['customer']['label'] == 'Supplier'                                       # still picked in the editor
+    assert (page['hidden']['from_costing'], page['hidden']['lines']) == (costing_id, f'{key}:0,{key}:2')
+
+    # made, with the cylinders dearer than costed: the order keeps its costing and what its lines were costed at
+    from db import db
+    form = {**page['hidden'], 'customer_id': _supplier(client, f'Cylinder Co {tag}'), 'issue_date': '2026-11-01',
+            'doc_number': page['hidden']['suggested_number'], 'tax_mode': 'none', 'tax_rate': '0'}
+    for r in table['rows']:
+        form.update({f"line_item_{table['id']}_{r['row']}_field_{f}": v for f, v in r['values'].items() if v not in (None, '')})
+    form[f"line_item_{table['id']}_{table['rows'][0]['row']}_field_{by_name['rate']}"] = '4500'
+    response = client.post('/purchase-orders/create', data=form)
+    po = re.search(r'/purchase-orders/([0-9a-f-]{36})', response.headers['Location']).group(1)
+    row = next(d for d in db.execute_proc('sp_list_invoices', (gst_org, None, 100000, 0)) if d['invoice_id'] == po)
+    assert (str(row['costing_id']), float(row['costed_amount'])) == (costing_id, 28000.0)    # 6 × 4,200 + 8 × 350
+    assert client.post(f'/purchase-orders/{po}/finalize').status_code == 302
+    profit = client.get(f'/api/projects/{project_id}').get_json()['profit']
+    assert [(r['key'], r['costed'], r['committed']) for r in profit['rows'][1:3]] == [('bought', 28000.0, 29800.0), ('own', 1800.0, 1800.0)]
+    assert profit['notes'][0] == {'text': '1 PO from the costing: ₹1,800 over what those lines were costed at', 'tone': 'late'}
     other = projects.create_project(gst_org, customer, 'Another job')
     stray = editor(client, url.replace(project_id, other) + f'&lines={key}:0')
     if stray.get('step') == 'template':

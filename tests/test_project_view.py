@@ -263,3 +263,39 @@ def test_each_count_goes_by_the_quotation_the_job_took_and_never_past_100_percen
     assert got['advance'] == ('₹0 of ₹54,280 in', 'PI-002 · invoiced instead', 'none')
     assert got['invoiced'] == ('₹4,00,000', '₹43,900 more than Q/004', 'done')            # more than quoted: no percentage
     assert got['paid'] == ('100% · ₹4,00,000', '', 'done')                                # of what was invoiced
+
+
+def _po(id, status, total, costing=None, costed=None):
+    return {'invoice_id': id, 'doc_type': 'purchase_order', 'status': status, 'total_amount': total, 'tax_mode': 'none', 'tax_rate': 0,
+            'currency_code': 'INR', 'costing_id': costing, 'costed_amount': costed}
+
+
+def test_profit_on_a_job_sets_what_is_bought_against_the_costing():
+    quote = dict(doc('quote', 'accepted', total=590000, number='Q/031'), tax_mode='cgst_sgst', tax_rate=18)       # ₹5,00,000 + GST
+    invoice = dict(doc('invoice', 'pending', total=354000, number='034'), tax_mode='cgst_sgst', tax_rate=18)      # 60%
+    costing = {'costing_id': 'K-1', 'quote_id': quote['invoice_id'], 'title': 'C-031', 'currency': 'INR', 'total_cost': 315000, 'total_price': 500000}
+    bought = [_po('P-1', 'received', 92000, 'K-1', 80000), _po('P-2', 'confirmed', 76000, 'K-1', 70000),
+              _po('P-3', 'confirmed', 48000), _po('P-4', 'draft', 9000, 'K-1', 9000)]                            # the draft isn't placed
+    got = V.profit(V.facts([quote, invoice]), [quote, invoice], bought, [costing], {'P-1': 92000.0, 'P-2': 38000.0, 'P-3': 0.0})
+    assert got['costing'] == {'id': 'K-1', 'title': 'C-031'}
+    assert [(r['key'], r['costed'], r['committed'], r['actual']) for r in got['rows']] == [
+        ('revenue', 500000, 500000.0, 300000.0),
+        ('bought', 150000.0, 216000.0, 130000.0),                  # what those lines were costed at; ordered; arrived
+        ('own', 165000.0, 165000.0, 165000.0),                     # the costing's other lines: the job's own work
+        ('margin', 185000, 119000.0, None)]                        # nothing actual until it's all invoiced and in
+    assert got['notes'] == [{'text': '2 POs from the costing: ₹18,000 over what those lines were costed at', 'tone': 'late'},
+                            {'text': '₹48,000 on 1 PO not made from the costing', 'tone': ''}]
+
+
+def test_profit_without_a_costing_and_when_its_all_done():
+    quote = dict(doc('quote', 'accepted', total=100000, number='Q/1'), tax_mode='none', tax_rate=0)
+    got = V.profit(V.facts([quote]), [quote], [_po('P-1', 'received', 30000)], [], {'P-1': 30000.0})
+    assert [(r['key'], r['costed'], r['committed']) for r in got['rows']] == [('revenue', None, 100000.0), ('bought', None, 30000.0),
+                                                                             ('margin', None, 70000.0)]
+    assert got['notes'] == [{'text': 'No costing for this job', 'tone': ''}]
+    assert V.profit(V.facts([quote]), [quote], [_po('P-1', 'draft', 30000)], [], {}) is None                 # nothing to go by
+    invoice = dict(doc('invoice', 'paid', total=100000, paid=100000), tax_mode='none', tax_rate=0)
+    costing = {'costing_id': 'K-1', 'quote_id': quote['invoice_id'], 'currency': 'INR', 'total_cost': 60000, 'total_price': 100000}
+    got = V.profit(V.facts([quote, invoice]), [quote, invoice], [_po('P-1', 'received', 30000, 'K-1', 25000)], [costing], {'P-1': 30000.0})
+    assert got['rows'][-1] == {'key': 'margin', 'label': 'Margin', 'costed': 40000, 'committed': 35000.0, 'actual': 35000.0}
+
