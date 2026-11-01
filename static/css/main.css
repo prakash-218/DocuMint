@@ -808,6 +808,7 @@ input[type="date"].form-input { padding-right: 8px; }
 /* The editor with its preview beside it (frontend/src/islands/editor/Preview.tsx): the editor in one column on the left,
    the preview on the right, staying in view; under the form on a narrower screen */
 .editor-split { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: var(--spacing-lg); align-items: start; }
+.editor-split > .alert { grid-column: 1 / -1; margin: 0; }                /* the correction banner, over both */
 .editor-split .editor-layout { grid-template-columns: minmax(0, 1fr); }
 .editor-split .editor-layout > aside { position: static; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important; align-items: start; }
 .editor-split .editor-layout > aside > .btn-block { grid-column: 1 / -1; justify-self: end; width: auto; min-width: 200px; }
