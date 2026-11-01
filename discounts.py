@@ -235,6 +235,67 @@ def spread(header: Dict, fields: List[Dict], values: List[Dict]) -> Tuple[List[D
     return out, left
 
 
+# ---------------------------------------------------------------- Part of a document: every price at a share of it
+
+DESCRIPTION_NAMES = ('description', 'item', 'item_details', 'item_description', 'particulars', 'description_of_goods')
+
+
+def scale(header: Dict, fields: List[Dict], values: List[Dict], share: float, label: str = '') -> Tuple[List[Dict], float]:
+    """The document's values for a part of it (a tax invoice for 60% of a quotation): its discounts taken into the
+    prices first (spread), then each line's price at that share, and its description followed by "(label)". A
+    rounding difference goes on a line of quantity 1, as spread does; what's left of it comes back, 0.0 when none.
+    Raises DiscountError when the lines have no price, or when the total holds more than its lines (charges typed
+    beside them), which a part would bill again."""
+    from calculations import amount_field
+    from invoice_service import build_sections, invoice_summary, is_breakup_section
+    values, _ = spread(header, fields, values)
+    plain = {**header, 'details': {k: v for k, v in _details(header).items() if k != 'discounts'}}
+    target = round(invoice_summary(plain, build_sections(plain, values), [])['taxable'] * share, 2)
+    by_section: Dict[str, List[Dict]] = {}
+    for f in fields:
+        if (f.get('section_type') or 'normal') == 'line_item':
+            by_section.setdefault(normalize_name(f.get('section_name')), []).append(f)
+    out = [dict(v) for v in values]
+    cell = {(v.get('field_id'), v.get('value_ordinal') or 0): v for v in out}
+    plans = []
+    for section, sfields in by_section.items():
+        if is_breakup_section(section):
+            continue
+        amount = next((f for f in sfields if f['field_id'] == amount_field(sfields)), None)
+        price = _price_field(amount, sfields) if amount else None
+        ids = {f['field_id'] for f in sfields}
+        rows = sorted({v.get('value_ordinal') or 0 for v in out if v.get('field_id') in ids})
+        if not price:
+            if any((cell.get((amount['field_id'], o)) or {}).get('val_number') for o in rows) if amount else False:
+                raise DiscountError("These lines have no price column to invoice part of.")
+            continue
+        qty = next((f for f in sfields if normalize_name(f.get('field_name')) in QTY_NAMES), None)
+        text = next((f for f in sfields if normalize_name(f.get('field_name')) in DESCRIPTION_NAMES), None)
+        plans.append((price, qty, rows))
+        for o in rows:
+            v = cell.get((price['field_id'], o))
+            if v is not None and v.get('val_number') is not None:
+                v['val_number'] = round(float(v['val_number']) * share, 2)
+            t = cell.get((text['field_id'], o)) if text else None
+            if label and t is not None and (t.get('val_string') or '').strip():
+                t['val_string'] = f"{t['val_string'].rstrip()} ({label})"
+
+    left = round(target - invoice_summary(plain, build_sections(plain, out), [])['taxable'], 2)
+    if abs(left) > 0.01 * (sum(len(rows) for _, _, rows in plans) + 1):
+        raise DiscountError("This document's total holds more than its lines, so part of it can't be worked out from them. "
+                            "Invoice it in full instead.")
+    if abs(left) >= 0.005:
+        for price, qty, rows in plans:
+            one = next((o for o in rows if qty and float((cell.get((qty['field_id'], o)) or {}).get('val_number') or 0) == 1
+                        and cell.get((price['field_id'], o))), None)
+            if one is not None:
+                v = cell[(price['field_id'], one)]
+                v['val_number'] = round(float(v['val_number']) + left, 2)
+                left = 0.0
+                break
+    return out, left
+
+
 def _details(header: Dict) -> Dict:
     from documents import load_json
     return load_json(header.get('details'))

@@ -347,6 +347,8 @@ def build(org_id, project: Dict, perms, url: Callable, today: Optional[date] = N
         'can': can,
         'stage': st,
         'progress': statuses(facts(docs), rows, ours, sales, today or date.today(), usual_days(profile)),
+        # invoicing part of the quotation, for those who make tax invoices
+        'part': part_invoice(facts(docs), docs, url) if not sales and permissions.can_doc('write', 'invoice', perms) else None,
         # what the job makes, for those who see costings
         'profit': profit(facts(docs), docs, bought, ks, {str(d['invoice_id']): received_value(org_id, d) for d in bought
                                                           if d.get('status') not in ('draft', 'cancelled', 'revised')})
@@ -496,6 +498,45 @@ def pre_tax(d: Dict) -> float:
     total = float(d.get('total_amount') or 0)
     rate = float(d.get('tax_rate') or 0) if d.get('tax_mode') in ('cgst_sgst', 'igst') else 0.0
     return total / (1 + rate / 100) if rate else total
+
+
+def invoiced(docs: List[Dict], currency: str) -> float:
+    """How much the job's tax invoices bill before GST, drafts included, less its issued credit notes (plus debit
+    notes): what a part invoice can't go past. docs: the job's sales documents."""
+    total = 0.0
+    for d in docs:
+        t = get_type(d.get('doc_type'))
+        if (d.get('currency_code') or 'INR') != currency or d.get('status') in ('cancelled', 'revised'):
+            continue
+        if t.key in INVOICE_TYPES:
+            total += pre_tax(d)
+        elif t.adjusts and d.get('status') == 'issued':
+            total += pre_tax(d) * t.adjusts
+    return total
+
+
+def part_invoice(f: Dict, docs: List[Dict], url: Callable) -> Optional[Dict]:
+    """Invoicing part of the quotation the job took (the Job hub's card): from its proforma when it has one (its
+    advance goes with the parts that can hold it) or else the quotation; what it's worth before GST, its GST, how much
+    is invoiced already and the advances waiting on the proforma, each payment in the order a part takes them
+    (advances.carry_over); the form posts to invoices_bp.convert. None without an
+    accepted quotation, or once all of it is invoiced."""
+    import advances
+    q = f['accepted_quote']
+    if not q:
+        return None
+    pi = next((d for d in reversed(f['sent_proformas']) if d.get('status') not in ('cancelled', 'revised')), None)
+    src = pi or q
+    cur = src.get('currency_code') or 'INR'
+    base, done = pre_tax(src), invoiced(docs, cur)
+    if base <= 0 or done >= base - 0.5:
+        return None
+    mode = src.get('tax_mode') or 'none'
+    waiting = [float(a['amount'] or 0) for a in advances.on_proforma(pi['invoice_id']) if not a.get('applied')] if pi else []
+    return {'source': {'number': display_number(src), 'kind': get_type(src.get('doc_type')).label}, 'quote': display_number(q),
+            'action': url('invoices_bp.convert', invoice_id=src['invoice_id']), 'currency': cur, 'base': base,
+            'tax': {'mode': mode, 'rate': float(src.get('tax_rate') or 0) if mode in ('cgst_sgst', 'igst') else 0.0},
+            'invoiced': done, 'advances': waiting}
 
 
 def received_value(org_id, d: Dict) -> float:

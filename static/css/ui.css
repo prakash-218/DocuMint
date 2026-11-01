@@ -169,6 +169,18 @@
 .ui .profit-note { margin: 8px 0 0; font-size: 12.5px; border-radius: 8px; padding: 7px 10px; background: var(--surface-2); color: var(--ink-2); }
 .ui .profit-note.tone-late { background: var(--amber-soft); color: var(--amber); }
 .ui .profit-note.tone-done { background: var(--mint-soft); color: var(--mint); }
+.ui .part-form { display: grid; gap: 10px; }
+.ui .part-slide { display: flex; align-items: center; gap: 10px; }
+.ui .part-slide input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.ui .part-slide output { font-family: var(--mono); font-weight: 500; min-width: 6ch; text-align: right; }
+.ui .part-amount { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-3); }
+.ui .part-amount input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; background: var(--surface); color: var(--ink); font: inherit; font-family: var(--mono); }
+.ui .part-rows { margin: 0; display: grid; gap: 4px; font-size: 13px; }
+.ui .part-rows > div { display: flex; justify-content: space-between; gap: 10px; }
+.ui .part-rows dt { margin: 0; }
+.ui .part-rows dd { margin: 0; font-family: var(--mono); text-align: right; white-space: nowrap; }
+.ui .part-rows .pr-sub { color: var(--ink-3); font-size: 12.5px; }
+.ui .part-rows .pr-this { border-top: 1px solid var(--line); padding-top: 5px; font-weight: 600; }
 .ui .empty-feed { color: var(--ink-3); padding: 12px 0; margin: 0; }
 
 /* People, files, facts */
