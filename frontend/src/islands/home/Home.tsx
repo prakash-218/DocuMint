@@ -6,15 +6,17 @@ import { Skeleton } from '../../Skeleton';
 import { NewMenu, useBoot } from '../../app/Layout';
 import { PageHeader } from '../../app/PageHeader';
 import type { Tone } from '../project/types';
+import { MoneyBar, Pipeline, type Work } from './Pipeline';
 
-// Home, as the prototype draws it: a greeting and the three numbers that matter, what needs doing (one row a
-// kind, each opening to its projects), the money to come in by how old it is, and what happened lately.
+// Home, the Work home of the prototype: a greeting, the money bar over the pipeline of open jobs, then what needs
+// doing today (one row a kind, each opening to its projects), the money to come in by how old it is, and what
+// happened lately.
 
 type Totals = Record<string, number>;
 
 export interface HomeData {
   hello?: { name: string; today: string; fy: string; greeting: string };
-  open_quotes?: { count: number; total: Totals };
+  work: Work;
   attention: {
     key: string;
     title: string;
@@ -81,6 +83,7 @@ export default function Home() {
 function HomeScreen() {
   const [data, setData] = useState<HomeData | null>(null);
   const [error, setError] = useState('');
+  const [picked, setPicked] = useState<string | null>(null);   // the money bar's tile whose columns stand out
 
   useEffect(() => {
     api.get<HomeData>('/api/home').then(setData)
@@ -90,7 +93,6 @@ function HomeScreen() {
   if (!data) return error ? <div className="ui"><p className="error" role="alert">{error}</p></div> : <Skeleton kind="home" label="Loading the home page…" />;
 
   const r = data.to_receive;
-  const old = r.ages[r.ages.length - 1];
   const hello = data.hello;
   const today = hello ? new Date(`${hello.today}T00:00:00`) : new Date();
   const ageWidth = r.ages.map((a) => primary(a.total));
@@ -107,23 +109,12 @@ function HomeScreen() {
         <div className="head-right"><a className="btn btn-secondary" href={data.links.projects}>All projects</a></div>
       </header>
 
-      <div className="stats">
-        <div className="stat"><small>To receive</small><b>{r.count ? totals(r.total) : money(0)}</b>
-          <span className="cap">{plural(r.count, 'invoice', 'invoices')}</span></div>
-        {r.aged_by === 'due' ? (
-          <div className={`stat${r.overdue.count ? ' late' : ''}`}><small>Overdue</small><b>{r.overdue.count ? totals(r.overdue.total) : money(0)}</b>
-            <span className="cap">{plural(r.overdue.count, 'invoice', 'invoices')} past the due date</span></div>
-        ) : (
-          <div className={`stat${old?.count ? ' late' : ''}`}><small>Over 90 days old</small><b>{old?.count ? totals(old.total) : money(0)}</b>
-            <span className="cap">{plural(old?.count ?? 0, 'invoice', 'invoices')}</span></div>
-        )}
-        <div className="stat"><small>Open quotations</small><b>{data.open_quotes?.count ? totals(data.open_quotes.total) : money(0)}</b>
-          <span className="cap">{plural(data.open_quotes?.count ?? 0, 'quotation', 'quotations')} not answered yet</span></div>
-      </div>
+      <MoneyBar work={data.work} picked={picked} onPick={setPicked} />
+      <Pipeline work={data.work} picked={picked} />
 
       <div className="home-cols">
         <section className="card" aria-labelledby="hm-attention">
-          <div className="card-h"><h2 id="hm-attention">Needs attention</h2></div>
+          <div className="card-h"><h2 id="hm-attention">Today</h2></div>
           <div className="card-b">
             {data.attention.length === 0 && !data.unfiled_emails && (
               <p className="empty-feed">Nothing waiting on you.</p>

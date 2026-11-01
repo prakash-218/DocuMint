@@ -69,12 +69,15 @@ def test_after_two_weeks_without_an_answer_the_next_step_is_to_chase_it():
     st, nxt = look([q])
     assert nxt['tone'] == 'action' and nxt['sub'] == 'No answer for 19 days.'
     assert labels(nxt) == ['Mark accepted', 'Send a follow-up*', 'Mark declined', 'Revise']
+    assert nxt['move']['label'] == 'Mark accepted'                  # the follow-up doesn't move it on; the answer does
+    assert look([q], can={'edit': False, 'sales': False})[1]['move'] is None
 
 
 def test_a_declined_quotation():
     st, nxt = look([doc('quote', 'declined')])
     assert states(st)[1] == ('accepted', 'late', 'Declined') and st['pill'] == {'text': 'Declined', 'tone': 'late'}
     assert nxt['tone'] == 'late' and labels(nxt) == ['Revise*', 'Cancel the project']
+    assert nxt['move'] is None                                       # nothing takes a declined quotation on to the advance
 
 
 def test_once_accepted_the_advance_is_asked_for():
@@ -182,3 +185,16 @@ def test_lists_tag_a_project_with_the_step_it_has_reached():
     assert tagged([doc('quote', 'converted'), doc('proforma', 'sent')]) == 'Advance'
     assert tagged([doc('quote', 'converted'), doc('invoice', 'pending', paid=0)]) == 'Invoiced'
     assert tagged([doc('quote', 'converted'), doc('invoice', 'paid', paid=1000)]) == 'Paid'
+
+
+def test_how_long_a_job_has_been_where_it_is():
+    today = date(2026, 11, 1)
+    quote = doc('quote', 'sent', total=480000, issue='2026-10-20')
+    got = V.in_stage('accepted', V.facts([quote]), None, today)
+    assert (got['days'], got['late'], got['amount']) == (12, None, 480000)        # since the quotation went
+    pi = doc('proforma', 'sent', total=240000, issue='2026-10-23')
+    got = V.in_stage('advance', V.facts([doc('quote', 'accepted', total=480000, issue='2026-10-20'), pi]), None, today)
+    assert (got['days'], got['amount']) == (9, 240000)                            # since the advance was asked for
+    invoice = dict(doc('invoice', 'pending', total=590000, paid=200000, issue='2026-08-15'), due_date='2026-09-14')
+    got = V.in_stage('paid', V.facts([invoice]), None, today)
+    assert (got['days'], got['late'], got['amount']) == (78, 48, 390000)          # since it was invoiced; 48 days late

@@ -271,6 +271,44 @@
 .ui .pcard .pc-sub { color: var(--ink-3); font-size: 12px; overflow-wrap: anywhere; }
 .ui .pcard .pc-amt { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
 .ui .pcard .pc-next { font-size: 12px; color: var(--ink-2); }
+
+/* The Work home (Home): the money bar, each tile picking out its columns of the pipeline under it, a stage a column
+   (its colour the tile's), each job a card to drag on to the next one */
+.ui .moneybar { margin-top: 14px; display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 1px; background: var(--line);
+                border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.ui .moneybar > * { border: 0; background: var(--surface); padding: 10px 14px 12px; text-align: left; cursor: pointer; display: grid; gap: 1px;
+                    align-content: start; position: relative; color: inherit; text-decoration: none; font: inherit; min-width: 0; }
+.ui .moneybar > *::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--seg); opacity: .85; }
+.ui .moneybar > :hover, .ui .moneybar > [aria-pressed="true"] { background: var(--surface-2); text-decoration: none; }
+.ui .moneybar span { font-size: 12px; color: var(--ink-3); }
+.ui .moneybar b { font-family: var(--mono); font-weight: 500; font-size: 18px; overflow-wrap: anywhere; }
+.ui .moneybar small { font-size: 11.5px; color: var(--ink-2); }
+.ui .moneybar small.late { color: var(--red); }
+.ui .pipeline { grid-template-columns: repeat(var(--cols, 5), minmax(168px, 1fr)); gap: 8px; overflow: auto; padding-bottom: 4px;
+                max-height: clamp(420px, 64vh, 760px); scroll-snap-type: x proximity; }   /* long columns scroll in the board */
+.ui .pcol { display: flex; flex-direction: column; gap: 8px; border-radius: 10px; padding: 4px; min-height: 120px; min-width: 0;
+            scroll-snap-align: start; transition: background .12s, opacity .12s; }
+.ui .pcol.dim { opacity: .38; }
+.ui .pcol.over { background: var(--accent-soft); }
+.ui .pcol h3 { margin: 0; display: flex; align-items: baseline; gap: 6px; padding: 2px 4px 6px; border-bottom: 2px solid var(--seg); font-size: 13px;
+               position: sticky; top: 0; z-index: 1; background: var(--page); }
+.ui .pcol h3 b { font-weight: 600; }
+.ui .pcol h3 .n { color: var(--ink-3); font-size: 12px; }
+.ui .pcol h3 .t { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.ui .jcard { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; display: grid; gap: 5px; cursor: grab; }
+.ui .jcard:active { cursor: grabbing; }
+.ui .jcard.dragging { opacity: .45; }
+.ui .jcard:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ui .jcard .t1 { font-weight: 600; font-size: 13px; color: inherit; overflow-wrap: anywhere; }
+.ui .jcard .t2 { color: var(--ink-3); font-size: 11.5px; overflow-wrap: anywhere; }
+.ui .jcard .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
+.ui .jcard .pill { font-size: 11.5px; padding: 2px 8px; }
+.ui .jcard .amt { font-family: var(--mono); font-size: 12.5px; }
+.ui .jcard .jnext { font-size: 12px; color: var(--ink-2); text-align: left; overflow-wrap: anywhere; }
+.ui .jcard button.jnext { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--ink-2); cursor: pointer; }
+.ui .jcard button.jnext:hover { color: var(--accent-ink); text-decoration: underline; }
+.wh-dialog { width: min(440px, calc(100vw - 32px)); }
+@media (prefers-reduced-motion: reduce) { .ui .pcol { transition: none; } }
 .ui .bempty { color: var(--ink-3); font-size: 12.5px; padding: 6px 2px; margin: 0; }
 
 /* Customer */
@@ -327,6 +365,8 @@
 @container ui (max-width: 760px) {
   .ui .cols, .ui .home-cols { grid-template-columns: 1fr; }
   .ui .board { --cols: 2; }
+  .ui .moneybar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ui .moneybar > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .ui .rh { display: none; }
   .ui .rr { grid-template-columns: minmax(0, 1fr) auto !important; gap: 4px 12px; }
   .ui .rr > * { grid-column: 1; }

@@ -1,10 +1,36 @@
-import { render, screen, within } from '../../test/render';
+import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen, within } from '../../test/render';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Home, { totals, type HomeData } from './Home';
 
 const DATA: HomeData = {
   hello: { name: 'Ravi', today: '2026-10-28', fy: '26-27', greeting: 'Good morning' },
-  open_quotes: { count: 3, total: { INR: 1454940 } },
+  work: {
+    bar: [
+      { key: 'answer', label: 'Quotes awaiting an answer', total: { INR: 1454940 }, count: 3, columns: ['accepted'] },
+      { key: 'bill', label: 'Accepted, to bill', total: {}, count: 0, columns: ['advance', 'invoiced'] },
+      { key: 'advance', label: 'Advances asked', total: { INR: 198240 }, count: 1, columns: ['advance'] },
+      { key: 'unpaid', label: 'Unpaid invoices', total: { INR: 2200000 }, count: 3, columns: ['paid'], late: { INR: 60000 } },
+      { key: 'received', label: 'Received in October', total: {}, count: null, columns: [], url: '/payments/' },
+    ],
+    columns: [
+      { key: 'quoted', label: 'Quoting', count: 1, total: { INR: 90000 }, cards: [
+        { id: 'P-44', label: 'PRJ-044', title: 'Locating pins', url: '/projects/P-44', customer: { name: 'Axle Works', site: null },
+          tone: 'action', next: 'Quotation Q/044 is a draft.', action: 'Edit quotation',
+          move: { kind: 'link', label: 'Edit quotation', href: '/invoices/Q-44/edit', primary: true }, days: 2, late: null, amount: 90000, currency: 'INR' }] },
+      { key: 'accepted', label: 'Waiting for an answer', count: 1, total: { INR: 495600 }, cards: [
+        { id: 'P-41', label: 'PRJ-041', title: 'Hob arbor set', url: '/projects/P-41', customer: { name: 'Gear Cutters Ltd', site: 'Hosur plant' },
+          tone: 'action', next: 'Quotation Q/041 sent on 9 Oct.', action: 'Send a follow-up',
+          move: { kind: 'post', label: 'Mark accepted', action: '/invoices/Q-41/status', fields: { status: 'accepted' }, primary: false, confirm: null },
+          days: 19, late: null, amount: 495600, currency: 'INR' }] },
+      { key: 'advance', label: 'Advance', count: 0, total: {}, cards: [] },
+      { key: 'invoiced', label: 'To invoice', count: 0, total: {}, cards: [] },
+      { key: 'paid', label: 'Waiting for payment', count: 1, total: { INR: 60000 }, cards: [
+        { id: 'P-30', label: 'PRJ-030', title: 'Drill jig', url: '/projects/P-30', customer: { name: 'Axle Works', site: null },
+          tone: 'wait', next: 'Tax invoice 058: ₹60,000 due.', action: 'Record payment',
+          move: { kind: 'link', label: 'Record payment', href: '/invoices/I-58#payment', primary: true }, days: 40, late: 12, amount: 60000, currency: 'INR' }] },
+    ],
+  },
   attention: [
     { key: 'follow_up', title: 'Quotations with no answer for over two weeks', label: '2 quotations with no answer after 14 days',
       names: 'Hob arbor set · Programming charges', count: 2, total: { INR: 595600, USD: 1200 },
@@ -42,7 +68,6 @@ describe('Home', () => {
     serve();
     render(<Home />);
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(/^Good (morning|afternoon|evening), Ravi$/);
-    expect(screen.getByText('Over 90 days old').closest('.stat')).not.toHaveClass('late');        // nothing that old
     const followUps = screen.getByText('2 quotations with no answer after 14 days').closest('details')!;
     expect(followUps).not.toHaveAttribute('open');
     expect(within(followUps).getByText('Hob arbor set · Programming charges')).toBeInTheDocument();
@@ -85,10 +110,75 @@ describe('Home', () => {
     expect(late.querySelector('.ai')).toHaveClass('tone-late');
     expect(within(late).getByRole('link', { name: /Tax Invoice 058/ })).toHaveTextContent('Send a reminder →');
     expect(within(late).getByRole('link', { name: 'and 2 more on the invoices list' })).toHaveAttribute('href', '/invoices/?status=overdue');
-    expect(screen.getByText('Overdue').closest('.stat')).toHaveClass('late');
-    expect(screen.getByText('Overdue').closest('.stat')).toHaveTextContent('₹12,00,000');
-    expect(screen.queryByText('Over 90 days old')).toBeNull();
     expect(screen.getByRole('list', { name: 'By how late each invoice is' })).toHaveTextContent('1–30 days late₹12,00,0003 invoices');
+  });
+
+  it('shows the money bar over the pipeline, each tile picking out its columns', async () => {
+    serve();
+    render(<Home />);
+    const bar = await screen.findByRole('group', { name: 'Money' });
+    expect(within(bar).getByRole('button', { name: /Quotes awaiting an answer/ })).toHaveTextContent('₹14,54,9403 jobs');
+    expect(within(bar).getByRole('button', { name: /Unpaid invoices/ })).toHaveTextContent('₹22,00,000₹60,000 late');
+    expect(within(bar).getByRole('button', { name: /Advances asked/ })).toHaveTextContent('₹1,98,2401 job');
+    expect(within(bar).getByRole('link', { name: /Received in October/ })).toHaveAttribute('href', '/payments/');
+    const col = (name: string) => screen.getByRole('heading', { name: new RegExp(`^${name}`) }).closest('section')!;
+    expect(col('Waiting for an answer')).toHaveTextContent('Waiting for an answer1₹4,95,600');
+
+    const tile = within(bar).getByRole('button', { name: /Quotes awaiting an answer/ });
+    await userEvent.click(tile);
+    expect(tile).toHaveAttribute('aria-pressed', 'true');
+    expect(col('Waiting for an answer')).not.toHaveClass('dim');
+    expect(col('Quoting')).toHaveClass('dim');
+    await userEvent.click(tile);
+    expect(col('Quoting')).not.toHaveClass('dim');
+  });
+
+  it('shows each job with how long it has sat there, and how late its invoice is', async () => {
+    serve();
+    render(<Home />);
+    const waiting = await screen.findByRole('article', { name: 'Hob arbor set, Hosur plant' });
+    expect(within(waiting).getByText('19 days here')).toHaveClass('tone-late');
+    expect(within(waiting).getByRole('link', { name: 'Hob arbor set' })).toHaveAttribute('href', '/projects/P-41');
+    expect(within(screen.getByRole('article', { name: 'Locating pins, Axle Works' })).getByText('2 days')).toHaveClass('tone-done');
+    const paying = screen.getByRole('article', { name: 'Drill jig, Axle Works' });
+    expect(within(paying).getByText('12 days late')).toHaveClass('tone-late');
+    expect(within(paying).queryByRole('button')).toBeNull();                 // nothing after the last column
+    expect(paying).toHaveTextContent('Next: Record payment');
+  });
+
+  it('offers the step that moves a job on when it is dropped on the next column, and its project anywhere else', async () => {
+    serve();
+    render(<Home />);
+    const card = await screen.findByRole('article', { name: 'Hob arbor set, Hosur plant' });
+    const col = (name: string) => screen.getByRole('heading', { name: new RegExp(`^${name}`) }).closest('section')!;
+    const drag = (to: HTMLElement) => {
+      const dataTransfer = { effectAllowed: '', setData: () => undefined };
+      fireEvent.dragStart(card, { dataTransfer });
+      fireEvent.dragOver(to, { dataTransfer });
+      fireEvent.drop(to, { dataTransfer });
+    };
+
+    drag(col('Advance'));
+    let dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Mark accepted' })).toBeInTheDocument();
+    const form = within(dialog).getByRole('button', { name: 'Mark accepted' }).closest('form')!;
+    expect(form).toHaveAttribute('action', '/invoices/Q-41/status');
+    expect(form.querySelector('input[name="status"]')).toHaveValue('accepted');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    drag(col('Waiting for payment'));
+    dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('link', { name: 'Open the project' })).toHaveAttribute('href', '/projects/P-41');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+
+    card.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Mark accepted' })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Next: Mark accepted' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('PRJ-041 · Hosur plant · ₹4,95,600');
   });
 
   it("says why when it can't load", async () => {
