@@ -234,11 +234,14 @@ def project_money(docs: List[Dict], files: Optional[List[Dict]] = None) -> Dict:
         live_quotes = [{'total_amount': f['amount'], 'currency_code': f.get('currency')} for f in reversed(files or [])
                        if f.get('kind') == 'our_quote' and f.get('amount')]
     invoices = [d for d in docs if d.get('doc_type') in ('invoice', 'export_invoice') and d.get('status') != 'draft']
+    notes = [d for d in docs if d.get('doc_type') in ('credit_note', 'debit_note') and d.get('status') == 'issued']
     proformas = [d for d in docs if d.get('doc_type') == 'proforma']
     return {
         'quoted': sum_by_currency(live_quotes[-1:], lambda d: d.get('total_amount')),
-        'invoiced': sum_by_currency(invoices, lambda d: d.get('total_amount')),
-        'received': sum_by_currency(invoices, lambda d: d.get('paid_amount')),
+        # invoiced: less its credit notes, plus its debit notes; received: less what was paid back on credit notes
+        'invoiced': sum_by_currency(invoices + notes, lambda d: float(d.get('total_amount') or 0)
+                                    * (-1 if d.get('doc_type') == 'credit_note' else 1)),
+        'received': sum_by_currency(invoices + notes, lambda d: float(d.get('paid_amount') or 0) - float(d.get('refunded_amount') or 0)),
         'due': sum_by_currency(invoices, balance_of),
         'advances': sum_by_currency(proformas, lambda d: d.get('paid_amount')),   # not applied to an invoice yet
     }

@@ -274,18 +274,21 @@ def view_invoice(invoice_id):
 
 def _quote_strip(invoice, summary, project_docs):
     """An accepted quotation's "Invoiced ₹X of ₹Y" (document_view.quote_strip), for those who may see invoices: the tax
-    invoices made from it, each before GST."""
+    invoices made from it, each before GST, less their issued credit notes and with their debit notes."""
     import document_view
     from access import fetch_invoice
     if not project_docs or permissions.quotations_only() or not permissions.can_doc('read', 'invoice'):
         return None
     invoiced = []
     for d in document_view.made_from(invoice['invoice_id'], project_docs):
-        if d.get('doc_type') in ('invoice', 'export_invoice') and (d.get('status') or 'draft') != 'draft':
+        sign = get_type(d.get('doc_type')).adjusts
+        if (d.get('doc_type') in ('invoice', 'export_invoice') and (d.get('status') or 'draft') != 'draft'
+                or sign and d.get('status') == 'issued'):
             header, values = fetch_invoice(d['invoice_id'])
             if header:
-                invoiced.append({'taxable': invoice_summary(header, build_sections(header, values), [])['taxable'],
-                                 'currency': header.get('currency_code') or 'INR'})
+                taxable = invoice_summary(header, build_sections(header, values), [])['taxable']
+                invoiced.append({'taxable': taxable * (sign or 1), 'currency': header.get('currency_code') or 'INR',
+                                 'note': bool(sign)})
     return document_view.quote_strip(invoice, summary, invoiced)
 
 
@@ -355,6 +358,9 @@ def _view_context(invoice_id):
     source = None
     if invoice_header.get('source_invoice_id'):
         source, _ = get_org_invoice(invoice_header['source_invoice_id'], g.current_org_id)
+    notes = _notes_of(invoice_id) if get_type(invoice_header.get('doc_type')).takes_payments else []
+    refunds = (db.execute_proc('sp_list_note_refunds', (invoice_id, g.current_org_id)) or []
+               if invoice_header.get('doc_type') == 'credit_note' else [])
     templates = [t for t in (db.execute_proc('sp_list_templates', (g.current_org_id, False)) or [])
                  if t.get('version') == t.get('latest_version')]
     # Template each conversion starts with: the export one when this document is for export
@@ -383,7 +389,8 @@ def _view_context(invoice_id):
     return dict(convert_defaults=convert_defaults, revise_templates=revise_templates,
                 can_revise=(invoice_header.get('status') or 'draft') in REVISABLE.get(invoice_header.get('doc_type'), ()),
                 revision_number=next_revision_number(invoice_header)[0],
-                reopen_blocker=reopen_blocker(invoice_header, payments),
+                reopen_blocker=reopen_blocker(invoice_header, payments, notes, refunds),
+                notes=notes, refunds=refunds,
                 project=project,
                 project_docs=revisions.collapse(projects.project_documents(project['project_id'], g.current_org_id))
                 if project else [],
@@ -501,15 +508,21 @@ def finalize_invoice(invoice_id):
         flash(f'This {doc_type.short.lower()} is already {invoice_header.get("status")}.', 'error')
         return redirect(_back(invoice_id))
 
+    blocked = _over_credit(invoice_header) if doc_type.adjusts else ''
+    if blocked:
+        flash(f"Can't issue it. {blocked}", 'error')
+        return redirect(_back(invoice_id))
     try:
         db.execute_proc('sp_update_invoice_status', (invoice_id, doc_type.sent_status), fetch=False)
         db.execute_proc('sp_settle_invoice', (invoice_id,), fetch=False)       # advances may cover it already
+        if doc_type.adjusts:
+            _settle_source(invoice_header)
     except DatabaseError:
         logger.exception("Failed to finalize %s", invoice_id)
         flash('Error finalizing document', 'error')
     else:
-        activity.document_event('document_sent', invoice_header, 'marked as sent' if doc_type.sent_status == 'sent' else 'finalized')
-        flash(f'{doc_type.label} finalized. The customer can now see it in their portal.', 'success')
+        activity.document_event('document_sent', invoice_header, {'sent': 'marked as sent', 'issued': 'issued'}.get(doc_type.sent_status, 'finalized'))
+        flash(f"{doc_type.label} {'issued' if doc_type.adjusts else 'finalized'}. The customer can now see it in their portal.", 'success')
     return redirect(_back(invoice_id))
 
 
@@ -598,6 +611,23 @@ def set_status(invoice_id):
         db.execute_proc('sp_update_invoice_status', (invoice_id, status), fetch=False)
         activity.document_event(f'po_{status}', invoice_header, PO_STEPS[status])
         flash(f'Purchase order {PO_STEPS[status]}', 'success')
+        return redirect(_back(invoice_id))
+    if invoice_header and get_type(invoice_header.get('doc_type')).adjusts:
+        now = invoice_header.get('status') or 'draft'
+        if (now, status) not in (('issued', 'cancelled'), ('cancelled', 'issued')):
+            flash("That status change isn't allowed", 'error')
+            return redirect(_back(invoice_id))
+        if status == 'cancelled' and db.execute_proc('sp_list_note_refunds', (invoice_id, g.current_org_id)):
+            flash("Can't cancel it: refunds are recorded on it. Take them off first.", 'error')
+            return redirect(_back(invoice_id))
+        blocked = _over_credit(invoice_header) if status == 'issued' else ''
+        if blocked:
+            flash(f"Can't issue it again. {blocked}", 'error')
+            return redirect(_back(invoice_id))
+        db.execute_proc('sp_update_invoice_status', (invoice_id, status), fetch=False)
+        _settle_source(invoice_header)
+        activity.document_event(f'note_{status}', invoice_header, 'cancelled' if status == 'cancelled' else 'issued again')
+        flash(f"{get_type(invoice_header.get('doc_type')).label} {'cancelled' if status == 'cancelled' else 'issued again'}", 'success')
         return redirect(_back(invoice_id))
     if not invoice_header or invoice_header.get('doc_type') != 'quote' or status not in QUOTE_OUTCOMES:
         flash("That status change isn't allowed", 'error')
@@ -1006,8 +1036,14 @@ def _corrected(header, total_before):
     the project's activity say what happened."""
     from money import format_money
     invoice_id = header['invoice_id']
-    total_after = (get_org_invoice(invoice_id, g.current_org_id)[0] or header).get('total_amount')
+    after = get_org_invoice(invoice_id, g.current_org_id)[0] or header
+    total_after = after.get('total_amount')
     db.execute_proc('sp_settle_invoice', (invoice_id,), fetch=False)
+    if get_type(header.get('doc_type')).adjusts:
+        _settle_source(header)
+        over = _over_credit(after)
+        if over:
+            flash(f'{over} Its invoice now shows nothing due.', 'warning')
     db.execute_proc('sp_log_document_change', (invoice_id, 'corrected', total_before, total_after,
                                                 f"Corrected after it was sent, by {(g.get('current_user') or {}).get('email') or 'a user'}"),
                     fetch=False)
@@ -1020,8 +1056,9 @@ def _corrected(header, total_before):
 REOPENABLE = ('sent', 'accepted', 'declined', 'pending', 'confirmed', 'cancelled')
 
 
-def reopen_blocker(header, payments) -> str:
-    """Why a sent document can't go back to draft, or '' when it can."""
+def reopen_blocker(header, payments, notes=(), refunds=()) -> str:
+    """Why a sent document can't go back to draft, or '' when it can. notes: the credit and debit notes against an
+    invoice; refunds: a credit note's."""
     status = header.get('status') or 'draft'
     label = get_type(header.get('doc_type')).short.lower()
     if status == 'draft':
@@ -1032,6 +1069,10 @@ def reopen_blocker(header, payments) -> str:
         return 'A newer revision replaced it.'
     if payments:
         return f'Payments are recorded on this {label}. Remove them first, or correct it instead.'
+    if any(n.get('status') == 'issued' for n in notes or []):
+        return 'Credit or debit notes are issued against it. Cancel them first, or correct it instead.'
+    if refunds:
+        return 'Refunds are recorded on it. Take them off first.'
     if status not in REOPENABLE:
         return f"A {status} {label} can't go back to draft."
     return ''
@@ -1046,7 +1087,8 @@ def reopen(invoice_id):
     if not header:
         flash('Document not found', 'error')
         return redirect(url_for('invoices_bp.list_invoices'))
-    blocker = reopen_blocker(header, db.execute_proc('sp_get_invoice_payments', (invoice_id,)) or [])
+    blocker = reopen_blocker(header, db.execute_proc('sp_get_invoice_payments', (invoice_id,)) or [], _notes_of(invoice_id),
+                             db.execute_proc('sp_list_note_refunds', (invoice_id, g.current_org_id)) or [])
     if blocker:
         flash(f"Can't move it back to draft. {blocker}", 'error')
         return back
@@ -1056,6 +1098,7 @@ def reopen(invoice_id):
         logger.exception("Failed to reopen %s", invoice_id)
         flash('Could not move it back to draft', 'error')
         return back
+    _settle_source(header)
     activity.document_event('document_reopened', header, 'moved back to draft')
     flash('Back to draft. Edit it, then send it again; it keeps its number.', 'success')
     return back
@@ -1077,14 +1120,114 @@ def delete_invoice(invoice_id):
         if not permissions.may_delete(invoice_header):
             flash("Your role doesn't delete documents that were sent.", 'error')
             return redirect(_back(invoice_id))
-
+        if _notes_of(invoice_id):
+            flash('Credit or debit notes are made against it. Delete them first.', 'error')
+            return redirect(_back(invoice_id))
 
         db.execute_proc('sp_delete_invoice', (invoice_id,), fetch=False)
-        flash('Invoice deleted successfully', 'success')
+        _settle_source(invoice_header)
+        flash(f"{get_type(invoice_header.get('doc_type')).label} deleted", 'success')
     except DatabaseError as e:
         flash(f'Error deleting invoice: {str(e)}', 'error')
 
     return redirect(url_for('invoices_bp.list_invoices', type=(invoice_header or {}).get('doc_type')))
+
+
+# ---------------------------------------------------------------- Credit and debit notes
+
+def _notes_of(invoice_id):
+    return db.execute_proc('sp_list_invoice_notes', (invoice_id, g.current_org_id)) or []
+
+
+def _settle_source(header):
+    """A note was issued, cancelled, changed, sent back to draft or deleted: its invoice's paid / pending follows."""
+    if header and header.get('source_invoice_id'):
+        db.execute_proc('sp_settle_invoice', (header['source_invoice_id'],), fetch=False)
+
+
+def _over_credit(header):
+    """Why this credit note can't count (it would credit more than is left on its invoice), or ''."""
+    from document_service import creditable
+    from money import format_money
+    if header.get('doc_type') != 'credit_note':
+        return ''
+    source, _ = get_org_invoice(header.get('source_invoice_id'), g.current_org_id)
+    if not source or (source.get('status') or 'draft') not in ('pending', 'paid'):
+        return 'Its invoice is no longer sent.'
+    left = creditable(source, _notes_of(source['invoice_id']), leaving_out=header['invoice_id'])
+    if float(header.get('total_amount') or 0) > left + 0.004:
+        return (f"It's more than is left to credit on {source.get('doc_number') or 'its invoice'}: "
+                f"{format_money(left, header.get('currency_code') or 'INR')}.")
+    return ''
+
+
+@invoices_bp.route('/<invoice_id>/notes', methods=['POST'])
+@require_org
+def make_note(invoice_id):
+    """A credit or debit note against this sent invoice (kind=credit|debit): a draft with its lines, in its project,
+    opened in the editor to change them."""
+    from document_service import NOTE_KINDS, make_note as make
+    org_id = g.current_org_id
+    source, values = get_org_invoice(invoice_id, org_id)
+    if not source:
+        flash('Document not found', 'error')
+        return redirect(url_for('invoices_bp.list_invoices'))
+    kind = request.form.get('kind')
+    if not permissions.can_doc('write', NOTE_KINDS.get(kind)):
+        flash("Your role doesn't make credit or debit notes", 'error')
+        return redirect(_back(invoice_id))
+    _, profile = get_org_profile(org_id)
+    try:
+        new_id = make(source, values, kind, org_id, profile)
+    except DocumentError as e:
+        flash(str(e), 'error')
+        return redirect(_back(invoice_id))
+    _into_project(source, new_id, org_id)
+    note, _ = get_org_invoice(new_id, org_id)
+    activity.document_event('document_created', note, f"made against {source.get('doc_number') or 'the invoice'}",
+                            project_id=projects.project_of(new_id, org_id))
+    flash(f"{get_type(note.get('doc_type')).label} {note.get('doc_number') or ''} made from {source.get('doc_number') or 'the invoice'}", 'success')
+    return redirect(_editor(new_id, invoice_id))
+
+
+@invoices_bp.route('/<invoice_id>/refunds', methods=['POST'])
+@require_org
+def add_refund(invoice_id):
+    """Money paid back on a credit note, up to what the customer is owed back on its invoice."""
+    from documents import credit_of
+    from money import format_money
+    header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    if not header or header.get('doc_type') != 'credit_note' or header.get('status') != 'issued':
+        flash('Refunds are recorded on an issued credit note', 'error')
+        return redirect(_back(invoice_id))
+    try:
+        amount = round(float(request.form.get('amount') or 0), 2)
+    except ValueError:
+        amount = 0
+    source, _ = get_org_invoice(header.get('source_invoice_id'), g.current_org_id)
+    owed = credit_of(source) if source else 0
+    if amount <= 0:
+        flash('Enter the amount refunded', 'error')
+        return redirect(_back(invoice_id))
+    if amount > owed + 0.004:
+        flash(f"That's more than they're owed back on {(source or {}).get('doc_number') or 'the invoice'}: "
+              f"{format_money(owed, header.get('currency_code') or 'INR')}", 'error')
+        return redirect(_back(invoice_id))
+    db.execute_proc('sp_add_note_refund', (g.current_org_id, invoice_id, amount, request.form.get('refunded_on') or date.today().isoformat(),
+                                           (request.form.get('reference') or '').strip(), g.current_user['user_id']))
+    activity.document_event('note_refunded', header, f"refund of {format_money(amount, header.get('currency_code') or 'INR')} recorded")
+    flash('Refund recorded', 'success')
+    return redirect(_back(invoice_id))
+
+
+@invoices_bp.route('/<invoice_id>/refunds/<refund_id>/delete', methods=['POST'])
+@require_org
+def delete_refund(invoice_id, refund_id):
+    header, _ = get_org_invoice(invoice_id, g.current_org_id)
+    if header and header.get('doc_type') == 'credit_note':
+        db.execute_proc('sp_delete_note_refund', (refund_id, invoice_id, g.current_org_id))
+        flash('That refund is taken off', 'info')
+    return redirect(_back(invoice_id))
 
 
 @invoices_bp.route('/<invoice_id>/payment', methods=['POST'])

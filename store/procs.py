@@ -71,6 +71,16 @@ def _audit(conn, org_id, table, record_id, action, field=None, old=None, new=Non
 CURRENCY = "COALESCE(i.details->>'currency', t.currency_code)"
 TEMPLATE_JOIN = "LEFT JOIN template t ON i.template_id = t.template_id AND i.template_version = t.version"
 PAID = "(SELECT COALESCE(SUM(amount), 0) FROM payment WHERE payment.invoice_id = i.invoice_id)"
+# Money paid back on a credit note (note_refund)
+REFUNDED = "(SELECT COALESCE(SUM(r.amount), 0) FROM note_refund r WHERE r.invoice_id = i.invoice_id)"
+# What an invoice's issued notes take off it: its credit notes, less its debit notes, less what was paid back on those
+# credit notes. Never payments: a credit isn't money received. 0 for anything with no notes against it.
+CREDITED = """(SELECT COALESCE(SUM(CASE n.doc_type WHEN 'credit_note' THEN n.total_amount ELSE -n.total_amount END), 0)
+                    - COALESCE(SUM(CASE n.doc_type WHEN 'credit_note' THEN
+                                   (SELECT COALESCE(SUM(r.amount), 0) FROM note_refund r WHERE r.invoice_id = n.invoice_id)
+                               ELSE 0 END), 0)
+              FROM invoice n WHERE n.source_invoice_id = i.invoice_id AND n.doc_type IN ('credit_note', 'debit_note')
+                AND n.status = 'issued')"""
 
 # ================================================================ Users and organizations
 
@@ -590,7 +600,8 @@ def get_customer_user_by_email(conn, email):
 def get_customer_invoices(conn, customer_id):
     return [_rows(conn, f"""SELECT i.invoice_id, i.doc_type, i.doc_number, i.template_id, t.name AS template_name,
                                    {CURRENCY} AS currency_code, i.issue_date, i.due_date, i.status,
-                                   {PAID} AS paid_amount, i.total_amount
+                                   {PAID} AS paid_amount, {CREDITED} AS credited_amount, {REFUNDED} AS refunded_amount,
+                                   i.total_amount, i.source_invoice_id
                             FROM invoice i {TEMPLATE_JOIN}
                             WHERE i.customer_id = :c AND i.status <> 'draft'
                             ORDER BY i.issue_date DESC NULLS LAST, i.invoice_id DESC""", c=customer_id)]
@@ -807,7 +818,7 @@ def create_invoice(conn, org_id, customer_id, template_id, _out1=None, _out2=Non
 
 @proc('sp_init_document')
 def init_document(conn, invoice_id, org_id, doc_type, doc_number, fiscal_year, source_invoice_id):
-    if doc_type not in ('quote', 'proforma', 'invoice', 'export_invoice', 'purchase_order'):
+    if doc_type not in ('quote', 'proforma', 'invoice', 'export_invoice', 'purchase_order', 'credit_note', 'debit_note'):
         raise ProcError('Unknown document type')
     _require(conn, "SELECT 1 FROM invoice WHERE invoice_id = :i AND org_id = :o", 'Document does not exist',
              i=invoice_id, o=org_id)
@@ -943,9 +954,12 @@ def get_invoice_details(conn, invoice_id):
                                     c.city AS customer_city, c.state AS customer_state, c.zip_code AS customer_zip_code,
                                     c.country AS customer_country, {PAYMENT_DAYS} AS payment_days,
                                     i.template_id, i.template_version, t.name AS template_name,
-                                    {CURRENCY} AS currency_code, i.issue_date, i.due_date, i.status
+                                    {CURRENCY} AS currency_code, i.issue_date, i.due_date, i.status,
+                                    {PAID} AS paid_amount, {CREDITED} AS credited_amount, {REFUNDED} AS refunded_amount,
+                                    s.doc_type AS source_type, s.doc_number AS source_number, s.issue_date AS source_date
                              FROM invoice i JOIN organization o ON i.org_id = o.org_id
                              JOIN customer c ON i.customer_id = c.customer_id {TEMPLATE_JOIN}
+                             LEFT JOIN invoice s ON s.invoice_id = i.source_invoice_id
                              WHERE i.invoice_id = CAST(:i AS uuid)""", i=_as_uuid(invoice_id))
     if not header:
         return []
@@ -978,7 +992,8 @@ def get_document_type(conn, invoice_id):
 DOC_LIST = f"""SELECT i.invoice_id, i.doc_type, i.doc_number, i.source_invoice_id, i.customer_id, c.name AS customer_name,
                      {CUSTOMER_SITE} AS customer_site,
                       i.template_id, t.name AS template_name, {CURRENCY} AS currency_code, i.issue_date, i.due_date,
-                      i.status, {PAID} AS paid_amount, i.total_amount, i.project_id,
+                      i.status, {PAID} AS paid_amount, {CREDITED} AS credited_amount, {REFUNDED} AS refunded_amount,
+                      i.total_amount, i.project_id,
                       i.details->>'subject' AS subject, i.details->>'buyer_order_no' AS buyer_order_no,
                       p.project_no, p.title AS project_title,
                       {PAYMENT_DAYS} AS payment_days
@@ -1019,8 +1034,9 @@ INVOICE_TYPES = ('invoice', 'export_invoice')
 
 
 def _settle(conn, invoice_id):
-    """A finalized invoice is paid once its payments reach its total, and pending again if they don't."""
-    row = _one(conn, f"""SELECT i.doc_type, i.status, {PAID} >= i.total_amount AS paid_up FROM invoice i
+    """A finalized invoice is paid once its payments and the credit its issued notes give (credit notes, less debit
+    notes, less refunds) reach its total, and pending again if they don't."""
+    row = _one(conn, f"""SELECT i.doc_type, i.status, {PAID} + {CREDITED} >= i.total_amount AS paid_up FROM invoice i
                           WHERE i.invoice_id = :i""", i=invoice_id)
     if not row or row['doc_type'] not in INVOICE_TYPES or row['status'] not in ('pending', 'paid'):
         return
@@ -1174,6 +1190,54 @@ def delete_po_receipt(conn, receipt_id, invoice_id, org_id):
     return [[{'deleted': n}]]
 
 
+# ================================================================ Credit and debit notes
+
+@proc('sp_list_invoice_notes')
+def list_invoice_notes(conn, invoice_id, org_id):
+    """The credit and debit notes against an invoice, every status, oldest first, with what was refunded on each."""
+    return [_rows(conn, f"""SELECT i.invoice_id, i.doc_type, i.doc_number, i.issue_date, i.status, i.total_amount,
+                                   {REFUNDED} AS refunded_amount, i.details->>'reason' AS reason
+                            FROM invoice i WHERE i.source_invoice_id = :s AND i.org_id = :o
+                              AND i.doc_type IN ('credit_note', 'debit_note')
+                            ORDER BY i.issue_date, i.doc_number""", s=invoice_id, o=org_id)]
+
+
+@proc('sp_add_note_refund')
+def add_note_refund(conn, org_id, invoice_id, amount, refunded_on, reference, user_id):
+    """Money paid back on an issued credit note; the invoice it's against is settled again."""
+    note = _one(conn, """SELECT source_invoice_id FROM invoice WHERE invoice_id = :i AND org_id = :o
+                         AND doc_type = 'credit_note' AND status = 'issued'""", i=invoice_id, o=org_id)
+    if not note:
+        raise ProcError('Credit note does not exist or is not issued')
+    rid = _new_id()
+    _exec(conn, """INSERT INTO note_refund (refund_id, org_id, invoice_id, amount, refunded_on, reference, created_by)
+                   VALUES (:r, :o, :i, :a, CAST(:d AS date), :ref, :u)""",
+          r=rid, o=org_id, i=invoice_id, a=amount, d=refunded_on, ref=reference or None, u=user_id)
+    _audit(conn, org_id, 'invoice', invoice_id, 'UPDATE', 'refunded', None, str(amount), f'Refunded {amount} on {refunded_on}')
+    if note['source_invoice_id']:
+        _settle(conn, note['source_invoice_id'])
+    return [[{'refund_id': rid}]]
+
+
+@proc('sp_list_note_refunds')
+def list_note_refunds(conn, invoice_id, org_id):
+    """A credit note's refunds, oldest first."""
+    return [_rows(conn, """SELECT r.refund_id, r.amount, r.refunded_on, r.reference, r.created_at, u.email AS created_by
+                           FROM note_refund r LEFT JOIN users u ON u.user_id = r.created_by
+                           WHERE r.invoice_id = :i AND r.org_id = :o ORDER BY r.refunded_on, r.created_at""", i=invoice_id, o=org_id)]
+
+
+@proc('sp_delete_note_refund')
+def delete_note_refund(conn, refund_id, invoice_id, org_id):
+    n = _exec(conn, "DELETE FROM note_refund WHERE refund_id = :r AND invoice_id = :i AND org_id = :o", r=refund_id, i=invoice_id, o=org_id)
+    if n:
+        _audit(conn, org_id, 'invoice', invoice_id, 'UPDATE', 'refunded', 'a refund', None, 'A refund was taken off')
+        source = _one(conn, "SELECT source_invoice_id FROM invoice WHERE invoice_id = :i", i=invoice_id)
+        if source and source['source_invoice_id']:
+            _settle(conn, source['source_invoice_id'])
+    return [[{'deleted': n}]]
+
+
 # ================================================================ Share links
 
 SHARE_LINK = "link_id, invoice_id, token, created_at, opens, last_opened_at"
@@ -1249,6 +1313,27 @@ def list_customer_payments(conn, org_id, customer_ids):
                             LEFT JOIN invoice a ON a.invoice_id = p.advance_of AND p.advance_of <> p.invoice_id
                             WHERE i.org_id = :o AND i.customer_id = ANY(CAST(:c AS uuid[]))
                             ORDER BY p.payment_date, p.payment_id""", o=org_id, c=[str(i) for i in customer_ids])]
+
+
+REFUND_ROW = f"""SELECT r.refund_id, r.amount, r.refunded_on, r.reference, i.invoice_id, i.doc_type, i.doc_number, i.status,
+                        s.doc_number AS source_number, i.customer_id, c.name AS customer_name, {CURRENCY} AS currency_code
+                 FROM note_refund r JOIN invoice i ON i.invoice_id = r.invoice_id
+                 JOIN customer c ON i.customer_id = c.customer_id {TEMPLATE_JOIN}
+                 LEFT JOIN invoice s ON s.invoice_id = i.source_invoice_id"""
+
+
+@proc('sp_list_org_refunds')
+def list_org_refunds(conn, org_id, since):
+    """Money paid back on the organization's credit notes since a date (None: all), newest first."""
+    return [_rows(conn, f"""{REFUND_ROW} WHERE r.org_id = :o AND (CAST(:s AS date) IS NULL OR r.refunded_on >= CAST(:s AS date))
+                            ORDER BY r.refunded_on DESC, r.created_at DESC""", o=org_id, s=since)]
+
+
+@proc('sp_list_customer_refunds')
+def list_customer_refunds(conn, org_id, customer_ids):
+    """Money paid back to these customers on their credit notes, oldest first."""
+    return [_rows(conn, f"""{REFUND_ROW} WHERE r.org_id = :o AND i.customer_id = ANY(CAST(:c AS uuid[]))
+                            ORDER BY r.refunded_on, r.created_at""", o=org_id, c=[str(i) for i in customer_ids])]
 
 
 @proc('sp_get_revenue_timeseries')

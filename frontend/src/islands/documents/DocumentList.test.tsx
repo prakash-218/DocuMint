@@ -125,3 +125,31 @@ describe('matching and years', () => {
     expect(fiscalYear(null)).toBe('');
   });
 });
+
+describe('credit and debit notes in the invoices list', () => {
+  const NOTES: DocList = {
+    ...INVOICES,
+    tabs: [...INVOICES.tabs, { key: 'credit_note', label: 'Credit notes', alone: true }, { key: 'debit_note', label: 'Debit notes', alone: true }],
+    rows: [
+      ...INVOICES.rows,
+      row('71', 'CN/001/26-27', { kind: 'Credit Note', tab: 'credit_note', tag: { text: 'Issued', tone: 'done' }, note: 'Against 057',
+                                  total: -25000, balance: null, url: '/credit-notes/D-71' }),
+      row('72', 'DN/001/26-27', { kind: 'Debit Note', tab: 'debit_note', tag: { text: 'Draft', tone: 'draft' }, note: 'Against 056',
+                                  total: 4000, balance: null, url: '/debit-notes/D-72' }),
+    ],
+  };
+
+  it('has each kind under its own tab, not under All, a credit note taking off', async () => {
+    serve(NOTES);
+    render(<DocumentList group="invoices" />);
+    expect(await screen.findByRole('tab', { name: /^All\s*3/ })).toHaveTextContent('₹3,00,000');       // the invoices only
+    await userEvent.click(screen.getByRole('tab', { name: /^Credit notes\s*1/ }));
+    expect(numbers()).toEqual(['CN/001/26-27']);
+    expect(screen.getByRole('tab', { name: /^Credit notes/ })).toHaveTextContent('-₹25,000');
+    const note = screen.getByText('CN/001/26-27').closest('a')!;
+    expect(note).toHaveAttribute('href', '/credit-notes/D-71');
+    expect(note).toHaveTextContent('Against 057');
+    await userEvent.click(screen.getByRole('tab', { name: /^Debit notes\s*1/ }));
+    expect(numbers()).toEqual(['DN/001/26-27']);
+  });
+});

@@ -41,9 +41,11 @@ def _csv(columns: List[str], rows: List[List]) -> bytes:
 
 def documents_csv(items: List[Tuple[Dict, Dict, Dict]], usual_days: Optional[int] = None, today: Optional[date] = None) -> bytes:
     """A row per document: items are (its list row, its header, its invoice_summary) - the row says where it stands,
-    the header has the customer's GSTIN and state, the summary the taxable value and the tax."""
+    the header has the customer's GSTIN and state, the summary the taxable value and the tax. With credit or debit
+    notes among them, a last column says which invoice each note is against. An invoice's Due is after its notes."""
     import projects
     from document_list import short_subject, state
+    notes = any(get_type(d.get('doc_type')).adjusts for d, _, _ in items)
     rows = []
     for d, header, s in items:
         kind = get_type(d.get('doc_type'))
@@ -55,8 +57,9 @@ def documents_csv(items: List[Tuple[Dict, Dict, Dict]], usual_days: Optional[int
                      state(d, today or date.today(), usual_days)['tag']['text'], d.get('currency_code') or 'INR',
                      _number(s.get('taxable')), _number(tax.get('CGST')), _number(tax.get('SGST')), _number(tax.get('IGST')),
                      _number(s.get('total', d.get('total_amount'))), _number(d.get('paid_amount') or 0) if takes else '',
-                     _number(balance_of(d)) if kind.takes_payments else ''])
-    return _csv(DOC_COLUMNS, rows)
+                     _number(balance_of(d)) if kind.takes_payments else '']
+                    + ([header.get('source_number') or '' if kind.adjusts else ''] if notes else []))
+    return _csv(DOC_COLUMNS + (['Against invoice'] if notes else []), rows)
 
 
 def payments_csv(rows: List[Dict]) -> bytes:

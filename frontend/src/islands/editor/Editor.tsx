@@ -1,6 +1,7 @@
 import { Dropdown, choices, type Choice, type ChoiceGroup } from '../../mantine/Dropdown';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../../app/PageHeader';
+import { day } from '../../format';
 import { Icon } from '../../icons';
 import { amount, lineCells, parseDiscount, totals } from './calc';
 import type { CustomerGroup, EditorData, Field, Section, Value } from './types';
@@ -241,6 +242,7 @@ export function Editor({ data }: { data: EditorData }) {
     <>
       <PageHeader title={data.title} heading
                   description={<>
+                    {data.against && <>Against <a href={data.against.url}>{data.against.number}</a>{data.against.date && ` dated ${day(data.against.date)}`} · </>}
                     {data.project && <><a href={data.project.url}>{data.project.label} · {data.project.title}</a> · </>}
                     {data.template_name}
                     {data.change_template && <> · <a href={data.change_template}>Change</a></>}
@@ -285,10 +287,12 @@ export function Editor({ data }: { data: EditorData }) {
                     <label htmlFor="issue_date" className="form-label">Date</label>
                     <input type="date" id="issue_date" name="issue_date" className="form-input" defaultValue={data.issue_date} />
                   </div>
-                  <div className="form-group">
-                    <label htmlFor="due_date" className="form-label">{t.due_label}</label>
-                    <input type="date" id="due_date" name="due_date" className="form-input" defaultValue={data.due_date} />
-                  </div>
+                  {t.due_label && (
+                    <div className="form-group">
+                      <label htmlFor="due_date" className="form-label">{t.due_label}</label>
+                      <input type="date" id="due_date" name="due_date" className="form-input" defaultValue={data.due_date} />
+                    </div>
+                  )}
                 </div>
               </div>
             </section>

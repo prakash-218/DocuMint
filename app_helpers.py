@@ -32,8 +32,8 @@ def image_ratio(data_uri) -> float:
 
 
 def invoice_is_overdue(invoice) -> bool:
-    """Finalized, unpaid and past its due date."""
-    if not invoice or invoice.get('status') != 'pending':
+    """Finalized, unpaid and past its due date. A tax invoice only: a credit or debit note is never overdue."""
+    if not invoice or invoice.get('status') != 'pending' or invoice.get('doc_type') not in (None, 'invoice', 'export_invoice'):
         return False
     due = to_date(invoice.get('due_date'))
     return bool(due and due < date.today())

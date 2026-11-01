@@ -8,9 +8,7 @@ from datetime import date
 from typing import Callable, Dict, List, Optional
 
 from app_helpers import to_date
-from documents import display_number, fiscal_year, get_type
-
-INVOICE_TYPES = ('invoice', 'export_invoice')
+from documents import INVOICE_TYPES, NOTE_TYPES, display_number, fiscal_year, get_type
 
 
 def _payment_text(p: Dict) -> str:
@@ -21,11 +19,14 @@ def _payment_text(p: Dict) -> str:
     return f"Payment on {p.get('doc_number') or 'a draft invoice'}"
 
 
-def statement(docs: List[Dict], payments: List[Dict], url: Callable, start_month: int = 4, sites: bool = False) -> List[Dict]:
+def statement(docs: List[Dict], payments: List[Dict], url: Callable, start_month: int = 4, sites: bool = False,
+              refunds: Optional[List[Dict]] = None) -> List[Dict]:
     """Their account per currency, oldest first, with the balance after each line: every finalized tax invoice
     (owed) and every payment (paid). Quotations and proformas aren't owed, so they aren't in it; an advance is,
-    from the day it came in, as money received (sp_list_customer_payments counts each payment once). sites: the
-    customer has sites, so each invoice says whose it is."""
+    from the day it came in, as money received (sp_list_customer_payments counts each payment once). An issued credit
+    note is a credit, an issued debit note a debit, and money paid back on a credit note (refunds:
+    sp_list_customer_refunds) a debit. sites: the customer has sites, so each invoice says whose it is."""
+    numbers = {str(d['invoice_id']): display_number(d) for d in docs}
     lines = []
     for d in docs:
         if d.get('doc_type') in INVOICE_TYPES and d.get('status') in ('pending', 'paid'):
@@ -33,6 +34,20 @@ def statement(docs: List[Dict], payments: List[Dict], url: Callable, start_month
                           'text': f"{get_type(d['doc_type']).label} {display_number(d)}", 'sub': d.get('customer_site') or '' if sites else '',
                           'owed': float(d.get('total_amount') or 0), 'paid': 0.0,
                           'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id'])})
+        elif d.get('doc_type') in NOTE_TYPES and d.get('status') == 'issued':
+            against = numbers.get(str(d.get('source_invoice_id')))
+            amount = float(d.get('total_amount') or 0)
+            credit = d['doc_type'] == 'credit_note'
+            lines.append({'date': to_date(d.get('issue_date')), 'order': 0, 'currency': d.get('currency_code') or 'INR',
+                          'text': f"{get_type(d['doc_type']).label} {display_number(d)}" + (f' against {against}' if against else ''),
+                          'sub': d.get('customer_site') or '' if sites else '',
+                          'owed': 0.0 if credit else amount, 'paid': amount if credit else 0.0,
+                          'url': url('invoices_bp.view_invoice', invoice_id=d['invoice_id'])})
+    for r in refunds or []:
+        lines.append({'date': to_date(r.get('refunded_on')), 'order': 1, 'currency': r.get('currency_code') or 'INR',
+                      'text': f"Refund on {r.get('doc_number') or 'a credit note'}", 'sub': r.get('reference') or '',
+                      'owed': float(r.get('amount') or 0), 'paid': 0.0,
+                      'url': url('invoices_bp.view_invoice', invoice_id=r['invoice_id'])})
     for p in payments:
         lines.append({'date': to_date(p.get('payment_date')), 'order': 1, 'currency': p.get('currency_code') or 'INR',
                       'text': _payment_text(p), 'sub': ' · '.join(filter(None, [p.get('method'), p.get('reference_number')])),
@@ -107,6 +122,7 @@ def build(org_id, customer: Dict, perms, url: Callable, today: Optional[date] = 
     if owed:
         invoices = [d for d in docs if d.get('doc_type') in INVOICE_TYPES]
         payments = db.execute_proc('sp_list_customer_payments', (org_id, family)) or []
+        refunds = db.execute_proc('sp_list_customer_refunds', (org_id, family)) or []
         held: Dict[str, float] = {}
         for p in payments:
             if p.get('doc_type') == 'proforma':
@@ -114,7 +130,7 @@ def build(org_id, customer: Dict, perms, url: Callable, today: Optional[date] = 
                 held[cur] = round(held.get(cur, 0) + float(p.get('amount') or 0), 2)
         owed = home_view.to_receive(invoices, [r for r in rows if r.get('advance')], today)
         money = {**owed, 'advance_held': held,
-                 'statement': statement(docs, payments, url, fy_start_month(profile), sites=bool(sites))}
+                 'statement': statement(docs, payments, url, fy_start_month(profile), sites=bool(sites), refunds=refunds)}
         if not sites:
             money.pop('customers')
 

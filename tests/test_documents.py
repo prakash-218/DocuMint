@@ -155,3 +155,12 @@ def test_imported_revisions_keep_their_numbering():
     from document_service import next_revision_number
     doc = {'doc_number': 'TF/Q/029R1/26-27', 'details': json.dumps({'base_number': 'TF/Q/029/26-27', 'revision': 1})}
     assert next_revision_number(doc)[0] == 'TF/Q/029R2/26-27'
+
+
+def test_what_is_owed_back_comes_only_from_credit_notes():
+    from documents import balance_of, credit_of
+    assert credit_of({'total_amount': 100, 'paid_amount': 100.01}) == 0        # a paisa over, no credit note: nothing to refund
+    paid_then_credited = {'total_amount': 118000, 'paid_amount': 118000, 'credited_amount': 23600}
+    assert (balance_of(paid_then_credited), credit_of(paid_then_credited)) == (0, 23600)
+    part_paid = {'total_amount': 118000, 'paid_amount': 50000, 'credited_amount': 23600}
+    assert (balance_of(part_paid), credit_of(part_paid)) == (44400, 0)

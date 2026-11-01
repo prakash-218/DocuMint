@@ -5,7 +5,7 @@ import pytest
 import permissions as P
 
 ROLES = ('owner', 'admin', 'member', 'sales', 'viewer')
-DOC_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice', 'purchase_order')
+DOC_TYPES = ('quote', 'proforma', 'invoice', 'export_invoice', 'purchase_order', 'credit_note', 'debit_note')
 EVERYONE = set(ROLES)
 NOT_SALES = EVERYONE - {'sales'}
 MANAGERS = {'owner', 'admin'}

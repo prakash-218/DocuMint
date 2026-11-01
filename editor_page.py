@@ -160,9 +160,16 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
     rate = v.get('tax_rate') or doc['default_rate']
     return {
         'step': 'editor', 'title': title, 'correcting': correcting, 'editing': editing,
-        'type': {'key': t.key, 'label': t.label, 'sent_word': 'finalized' if t.sent_status == 'pending' else 'sent',
-                 'takes_payments': t.takes_payments, 'proforma': t.key == 'proforma', 'due_label': 'Valid until' if t.key == 'quote' else 'Deliver by' if t.purchase else 'Due date'},
+        'type': {'key': t.key, 'label': t.label,
+                 'sent_word': {'pending': 'finalized', 'issued': 'issued'}.get(t.sent_status, 'sent'),
+                 'takes_payments': t.takes_payments, 'proforma': t.key == 'proforma',
+                 # a note has no date to be paid or delivered by
+                 'due_label': None if t.adjusts else 'Valid until' if t.key == 'quote' else 'Deliver by' if t.purchase else 'Due date'},
         'project': _project(project, url), 'template_name': template_name,
+        # a credit or debit note: the invoice it's against
+        'against': {'number': header.get('source_number') or '', 'date': str(header.get('source_date') or ''),
+                    'url': url('invoices_bp.view_invoice', invoice_id=header['source_invoice_id'])}
+        if t.adjusts and editing and header.get('source_invoice_id') else None,
         'change_template': None if editing else url('invoices_bp.create_invoice', doc_type=t.key, project_id=project['project_id'] if project else None),
         'action': url('invoices_bp.edit_invoice', invoice_id=header['invoice_id']) if editing else url('invoices_bp.create_invoice', doc_type=t.key),
         'cancel': cancel,
@@ -180,10 +187,11 @@ def _editor(doc: Dict, sections_data: Dict, url: Callable, *, project: Optional[
                      'tax_mode': v.get('tax_mode') or 'none', 'tax_rate': ('%g' % float(rate)) if rate is not None else '',
                      'advance_percent': ('%g' % float(v['advance_percent'])) if v.get('advance_percent') else '',
                      'advance_basis': 'total' if v.get('advance_basis') == 'total' else 'pre_tax'},
-        'tax_hints': doc['customer_hints'],
+        # a note keeps its invoice's GST: no suggestion for it
+        'tax_hints': {} if t.adjusts else doc['customer_hints'],
         # a customer that can't be changed here (a draft's, or the project's): the tax it usually gets, and why
         'tax_hint': doc['customer_hints'].get(header['customer_id'] if editing else project['customer_id'])
-        if editing or (project and not t.purchase) else None,
+        if (editing or (project and not t.purchase)) and not t.adjusts else None,
     }
 
 

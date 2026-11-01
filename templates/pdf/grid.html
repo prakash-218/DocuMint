@@ -1,6 +1,6 @@
 {#
-  Boxed-grid layout for proforma, tax and export invoices (modelled on the
-  usual Indian GST invoice format). xhtml2pdf: tables only, simple CSS.
+  Boxed-grid layout for proforma, tax and export invoices, and credit and debit notes (modelled on the
+  usual Indian GST invoice format; a note says which invoice it's against, and why). xhtml2pdf: tables only, simple CSS.
   Expects: invoice, sections_data, summary, payments, profile, fonts, copy
   (the copy's label: "Original Copy"; one copy per render).
   With packing=true it prints the packing list for an export invoice instead
@@ -18,7 +18,9 @@
 {% set gst = summary.tax_mode in ('cgst_sgst', 'igst') %}
 {% set packing = packing | default(false) %}
 {% set page = page | default({}) %}
-{% set title = (page.title or 'Packing List') if packing else (page.title or t.label) %}
+{% set note = t.adjusts != 0 %}
+{# a note prints as a note, whatever its invoice's template calls the page #}
+{% set title = (page.title or 'Packing List') if packing else (t.label if note else (page.title or t.label)) %}
 {% set org_fields = org_fields | default([]) %}
 {% set customer_fields = customer_fields | default([]) %}
 {% macro money(v) %}{{ v | currency(cur) }}{% endmacro %}
@@ -69,7 +71,7 @@
 <div id="dochead">
 <table class="box">
     <tr>
-        <td rowspan="{{ 6 if packing else 5 }}" style="width: 50%;">
+        <td rowspan="{{ 6 if packing else (4 if note else 5) }}" style="width: 50%;">
             {# The small logo; else the logo, unless it already says the name printed just below #}
             {% set box_logo = profile.logo_small or (profile.logo if not profile.logo_has_name else none) %}
             {% if box_logo %}<img src="{{ box_logo }}" style="height: 28pt; width: {{ box_logo | image_width(28) }}pt;"><br>{% endif %}
@@ -96,6 +98,15 @@
         <td><span class="lbl">{{ t.label }} No.</span><br><span class="{{ 'val' if packing else 'red' }}">{{ invoice | doc_number }}</span></td>
         <td><span class="lbl">Dated</span><br><span class="{{ 'val' if packing else 'red' }}">{{ invoice.issue_date | date }}</span></td>
     </tr>
+    {% if note %}
+    <tr>
+        <td><span class="lbl">Against Invoice No.</span><br><span class="val">{{ invoice.source_number or '' }}</span></td>
+        <td><span class="lbl">Dated</span><br><span class="val">{{ invoice.source_date | date if invoice.source_date }}</span></td>
+    </tr>
+    <tr>
+        <td colspan="2"><span class="lbl">Reason</span><br><span class="val">{{ d.reason or '' }}</span></td>
+    </tr>
+    {% else %}
     <tr>
         <td><span class="lbl">Buyer's Order No.</span><br><span class="val">{{ d.buyer_order_no or '' }}</span></td>
         <td><span class="lbl">Date</span><br><span class="val">{{ d.buyer_order_date | date if d.buyer_order_date }}</span></td>
@@ -116,6 +127,7 @@
         <td><span class="lbl">Despatched Through</span><br><span class="val">{{ d.despatched_through or '' }}</span></td>
         <td><span class="lbl">Destination</span><br><span class="val">{{ d.destination or '' }}</span></td>
     </tr>
+    {% endif %}
     <tr>
         <td rowspan="2">
             <span class="lbl">Consignee's Name &amp; Address</span><br>
@@ -382,7 +394,7 @@
         <td>
             <u>Declaration</u><br>
             {% if packing %}We declare that the goods packed are as described above and that all particulars are true and correct.
-            {% else %}We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.{% endif %}
+            {% else %}We declare that this {{ t.label | lower if note else 'invoice' }} shows the actual price of the goods described and that all particulars are true and correct.{% endif %}
         </td>
         <td class="num">
             <b>For {{ invoice.organization_name | upper }}</b><br>
@@ -392,7 +404,7 @@
             <br><b>Authorised Signatory</b>
         </td>
     </tr>
-    <tr><td colspan="2" class="center small">This is a Computer Generated Invoice</td></tr>
+    <tr><td colspan="2" class="center small">This is a Computer Generated {{ t.label if note else 'Invoice' }}</td></tr>
 </table>
 </td></tr></table>
 <div id="footer" class="small center" style="color: #888;">{{ invoice.organization_name }} · {{ title }} {{ d.packing_list_no if packing and d.packing_list_no else invoice | doc_number }} · Page <pdf:pagenumber> of <pdf:pagecount></div>

@@ -19,7 +19,12 @@
         </div>
         <dl class="invoice-doc-meta">
             <dt>{{ 'Date' if t.key == 'quote' else 'Issued' }}</dt><dd>{{ invoice.issue_date | date or '—' }}</dd>
-            {% if invoice.due_date %}<dt>{{ 'Valid until' if t.key == 'quote' else 'Due' }}</dt><dd>{{ invoice.due_date | date }}</dd>{% endif %}
+            {% if invoice.due_date and not t.adjusts %}<dt>{{ 'Valid until' if t.key == 'quote' else 'Due' }}</dt><dd>{{ invoice.due_date | date }}</dd>{% endif %}
+            {% if t.adjusts %}
+            <dt>Against invoice</dt><dd>{{ invoice.source_number or '—' }}</dd>
+            {% if invoice.source_date %}<dt>Invoice date</dt><dd>{{ invoice.source_date | date }}</dd>{% endif %}
+            {% if details.reason %}<dt>Reason</dt><dd>{{ details.reason }}</dd>{% endif %}
+            {% endif %}
             {% for label, value in [("Buyer's order", details.buyer_order_no), ('Order date', details.buyer_order_date | date if details.buyer_order_date), ('Packing list', details.packing_list_no)] if value %}
             <dt>{{ label }}</dt><dd>{{ value }}</dd>
             {% endfor %}
@@ -40,7 +45,7 @@
             </p>
         </div>
         <div>
-            <p class="party-label">{{ 'To' if t.key == 'quote' or t.purchase else 'Bill to' }}</p>
+            <p class="party-label">{{ 'To' if t.key == 'quote' or t.purchase or t.adjusts else 'Bill to' }}</p>
             <p class="party-name">{{ invoice.customer_name }}</p>
             <p class="party-address">
                 {% if invoice.customer_street_address %}{{ invoice.customer_street_address }}<br>{% endif %}

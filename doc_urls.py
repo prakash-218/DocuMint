@@ -1,5 +1,6 @@
 """
-Document URLs by type: /quotes/<id>, /proformas/<id>, /invoices/<id> (tax and export).
+Document URLs by type: /quotes/<id>, /proformas/<id>, /invoices/<id> (tax and export), /purchase-orders/<id>,
+/credit-notes/<id>, /debit-notes/<id>.
 
 Routes take a <doc_path> segment; url_for() fills it in from the document's type,
 so templates keep writing url_for('invoices_bp.view_invoice', invoice_id=...).
@@ -11,11 +12,13 @@ wrong segment (old /invoices/<quote id> links) redirects to the right one.
 from flask import current_app, g, has_request_context, redirect, request, url_for
 
 DOC_PATHS = {'quote': 'quotes', 'proforma': 'proformas', 'invoice': 'invoices', 'export_invoice': 'invoices',
-             'purchase_order': 'purchase-orders'}
-PATH_TYPES = {'quotes': 'quote', 'proformas': 'proforma', 'invoices': 'invoice', 'purchase-orders': 'purchase_order'}
-SEGMENT = '<any(quotes, proformas, invoices, "purchase-orders"):doc_path>'
+             'purchase_order': 'purchase-orders', 'credit_note': 'credit-notes', 'debit_note': 'debit-notes'}
+PATH_TYPES = {'quotes': 'quote', 'proformas': 'proforma', 'invoices': 'invoice', 'purchase-orders': 'purchase_order',
+              'credit-notes': 'credit_note', 'debit-notes': 'debit_note'}
+SEGMENT = '<any(quotes, proformas, invoices, "purchase-orders", "credit-notes", "debit-notes"):doc_path>'
+# Credit and debit notes are listed inside Invoices (its tabs)
 LIST_GROUPS = {'quote': 'quotes', 'proforma': 'proformas', 'invoices': 'invoices', 'purchase_order': 'purchase-orders',
-               None: 'invoices'}
+               'credit_note': 'invoices', 'debit_note': 'invoices', None: 'invoices'}
 
 
 def path_for(doc_type) -> str:

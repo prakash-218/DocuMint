@@ -43,8 +43,11 @@ export interface EditorData {
   title: string;
   correcting: boolean;
   editing: boolean;
-  type: { key: string; label: string; sent_word: string; takes_payments: boolean; proforma: boolean; due_label: string };
+  /** due_label: null for a credit or debit note, which has no due date */
+  type: { key: string; label: string; sent_word: string; takes_payments: boolean; proforma: boolean; due_label: string | null };
   project: ProjectRef | null;
+  /** A credit or debit note: the invoice it's against. */
+  against?: { number: string; date: string; url: string } | null;
   template_name: string;
   change_template: string | null;
   action: string;

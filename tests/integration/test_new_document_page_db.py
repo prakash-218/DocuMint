@@ -78,7 +78,7 @@ def test_a_quotation_to_its_invoice_on_the_new_page(client, gst_org):
     invoice = f'/invoices/{invoice_id}'
     client.post(f'/invoices/{invoice_id}/finalize')
     props = _page(client, invoice)
-    assert _labels(props) == ['Record payment*', 'Email a reminder'] and props['next']['text'].endswith(' due.')
+    assert _labels(props) == ['Record payment*', 'Email a reminder', 'Credit note', 'Debit note'] and props['next']['text'].endswith(' due.')
     assert [(m['label'], m['value'], m['cap']) for m in _page(client, quote)['money']][1:] == [
         ('Invoiced', 20000, '100% of it, on 1 tax invoice'), ('Still to invoice', 0, 'All invoiced')]   # through its proforma
 

@@ -87,6 +87,11 @@ describe('which addresses are the app\'s', () => {
     expect(activeKey(BOOT.sidebar, `/projects/${PROJECT}`)).toBe('projects');
     expect(activeKey(BOOT.sidebar, '/quotesx')).toBeNull();
     expect(activeKey(BOOT.sidebar, '/costings/K-1')).toBeNull();
+    const notes = [{ title: 'Sales', items: [{ key: 'invoices', label: 'Invoices', icon: 'file-text', href: '/invoices/', prefix: '/invoices',
+                                                badge: 0, also: ['/credit-notes', '/debit-notes'] }] }];
+    expect(activeKey(notes, '/credit-notes/N-1')).toBe('invoices');               // a note is listed in Invoices
+    expect(appRoute(`/credit-notes/${PROJECT}`)?.label).toBe('Credit note');
+    expect(appRoute(`/debit-notes/${PROJECT}/edit`)?.label).toBe('Editor');
   });
 });
 

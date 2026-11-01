@@ -12,7 +12,7 @@ from typing import Callable, Dict, List, Optional
 
 from app_helpers import to_date
 from document_service import get_org_profile
-from documents import balance_of, display_number, fiscal_year, fy_start_month, get_type
+from documents import INVOICE_TYPES, NOTE_TYPES, balance_of, display_number, fiscal_year, fy_start_month, get_type
 from payment_terms import due_on, usual_days
 
 AGES = ((30, '0–30 days'), (60, '31–60 days'), (90, '61–90 days'), (None, 'Over 90 days'))      # since the invoice date
@@ -161,11 +161,15 @@ def build(org_id, perms, url: Callable, today: Optional[date] = None, email: Opt
                'sub': d.get('customer_site') or d.get('customer_name') or '', 'total': float(d.get('total_amount') or 0),
                'currency': d.get('currency_code') or 'INR', 'url': url('invoices_bp.edit_invoice', invoice_id=d['invoice_id'])}
               for d in live if (d.get('status') or 'draft') == 'draft' and not get_type(d.get('doc_type')).purchase]
-    invoices = [d for d in live if d.get('doc_type') in ('invoice', 'export_invoice')]
+    invoices = [d for d in live if d.get('doc_type') in INVOICE_TYPES]
     sent_quotes = [d for d in live if d.get('doc_type') == 'quote' and d.get('status') == 'sent']
     month_start = today.replace(day=1)
     payments = db.execute_proc('sp_list_org_payments', (org_id, month_start.isoformat())) or []
-    month_invoiced = [d for d in invoices if d.get('status') != 'draft' and to_date(d.get('issue_date')) and to_date(d['issue_date']) >= month_start]
+    refunds = db.execute_proc('sp_list_org_refunds', (org_id, month_start.isoformat())) or []
+    # invoiced this month: tax invoices, plus issued debit notes, less issued credit notes
+    month_invoiced = [d for d in live if to_date(d.get('issue_date')) and to_date(d['issue_date']) >= month_start
+                      and ((d.get('doc_type') in INVOICE_TYPES and d.get('status') != 'draft')
+                           or (d.get('doc_type') in NOTE_TYPES and d.get('status') == 'issued'))]
     unfiled = 0
     if permissions.can('emails.read', perms=perms):
         unfiled = (db.execute_proc_single('sp_count_email_threads', (org_id, None, None, True)) or {}).get('n') or 0
@@ -189,8 +193,11 @@ def build(org_id, perms, url: Callable, today: Optional[date] = None, email: Opt
         'hello': {'name': first_name(email), 'today': today, 'fy': fiscal_year(today, fy_start_month(get_org_profile(org_id)[1])),
                   'greeting': 'Good morning' if datetime.now().hour < 12 else 'Good afternoon' if datetime.now().hour < 17 else 'Good evening'},
         'open_quotes': {'count': len(sent_quotes), 'total': _totals(sent_quotes, lambda d: d.get('total_amount'))},
-        'month': {'label': f'{today:%B}', 'invoiced': _totals(month_invoiced, lambda d: d.get('total_amount')),
-                  'received': _totals([{'currency': p.get('currency_code'), 'amount': p.get('amount')} for p in payments],
+        'month': {'label': f'{today:%B}',
+                  'invoiced': _totals(month_invoiced, lambda d: float(d.get('total_amount') or 0) * (get_type(d.get('doc_type')).adjusts or 1)),
+                  # received, less what was paid back on credit notes
+                  'received': _totals([{'currency': p.get('currency_code'), 'amount': p.get('amount')} for p in payments]
+                                      + [{'currency': r.get('currency_code'), 'amount': -float(r.get('amount') or 0)} for r in refunds],
                                       lambda p: p['amount'])},
         'recent': [{'id': e['event_id'], 'kind': e['kind'], 'title': e['title'], 'when': e['created_at'], 'link': e.get('link'),
                     'who': (e.get('actor_email') or '').split('@')[0] or None, 'project': e.get('project_title'),

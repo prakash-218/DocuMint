@@ -85,7 +85,7 @@
         </tr>
         {% endfor %}
         <tr class="total">
-            <td>&nbsp;</td><td>{{ 'Paid ahead (an advance not on an invoice yet)' if account.closing < -0.005 else 'Balance due' }}</td>
+            <td>&nbsp;</td><td>{{ 'Paid ahead' if account.closing < -0.005 else 'Balance due' }}</td>
             <td class="num">{{ account.owed | currency(cur) }}</td><td class="num">{{ account.paid | currency(cur) }}</td>
             <td class="num">{{ account.closing | currency(cur) }}</td>
         </tr>

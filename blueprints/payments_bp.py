@@ -29,8 +29,9 @@ def export_csv():
     import payments_view
     found = db.execute_proc('sp_list_org_payments', (g.current_org_id, None)) or []
     docs = db.execute_proc('sp_list_invoices', (g.current_org_id, None, 100000, 0)) or []
+    refunds = db.execute_proc('sp_list_org_refunds', (g.current_org_id, None)) or []      # money paid back on credit notes
     wanted = set(request.form.getlist('ids'))
-    rows = [r for r in payments_view.rows(found, docs, url_for) if not wanted or r['id'] in wanted]
+    rows = [r for r in payments_view.rows(found, docs, url_for, refunds) if not wanted or r['id'] in wanted]
     response = make_response(exports.payments_csv(rows))
     response.headers['Content-Type'] = 'text/csv; charset=utf-8'
     response.headers['Content-Disposition'] = f'attachment; filename="Payments-{date.today().isoformat()}.csv"'

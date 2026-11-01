@@ -1,6 +1,7 @@
 """
 A document's page for the React app (GET /api/document/<id>, frontend/src/islands/document/DocumentPage.tsx): its
-state and what to do next (document_view), its payments or advances and the forms to record them, the document itself
+state and what to do next (document_view), its payments or advances and the forms to record them (an invoice's credit
+and debit notes, a credit note's refunds), the document itself
 and its versions (the same HTML the server pages and the customer portal draw, from invoices/_document.html and
 _versions.html), and beside it the project's documents, who gets it, what happened, converting it, its project and
 its files. The forms still post to the document routes in blueprints/invoices_bp.py, which come back to the page.
@@ -88,6 +89,35 @@ def _receiving(ctx: Dict, status: str, can_edit: bool, url: Callable) -> Dict:
             'record': {'action': url('invoices_bp.add_receipt', invoice_id=invoice_id), 'today': date.today().isoformat()} if open_ else None}
 
 
+def _notes(ctx: Dict, url: Callable) -> Dict:
+    """An invoice's credit and debit notes, every status: each with its state and amount (a credit note's taken off)."""
+    from document_view import pill
+    from documents import get_type
+    rows = []
+    for n in ctx.get('notes') or []:
+        kind = get_type(n.get('doc_type'))
+        rows.append({'id': str(n['invoice_id']), 'number': _number(n) or 'Draft', 'kind': kind.label, 'date': n.get('issue_date'),
+                     'pill': pill(n, {}), 'reason': n.get('reason') or '',
+                     'amount': float(n.get('total_amount') or 0) * (-1 if kind.adjusts < 0 else 1),
+                     'url': url('invoices_bp.view_invoice', invoice_id=n['invoice_id'])})
+    return {'rows': rows}
+
+
+def _refunds(ctx: Dict, status: str, can_record: bool, url: Callable) -> Dict:
+    """A credit note's refunds, and what its invoice still owes back (credit notes and payments past its total); the form
+    to record one while something's owed back."""
+    from documents import credit_of
+    invoice, source = ctx['invoice'], ctx.get('source') or {}
+    owed = round(credit_of(source), 2) if source else 0.0
+    rows = [{'id': str(r['refund_id']), 'date': r.get('refunded_on'), 'amount': float(r.get('amount') or 0),
+             'reference': r.get('reference') or '', 'by': r.get('created_by') or '',
+             'delete': url('invoices_bp.delete_refund', invoice_id=invoice['invoice_id'], refund_id=r['refund_id']) if can_record else None}
+            for r in ctx.get('refunds') or []]
+    return {'rows': rows, 'owed': owed, 'against': source.get('doc_number') or '', 'currency': invoice.get('currency_code') or 'INR',
+            'record': {'action': url('invoices_bp.add_refund', invoice_id=invoice['invoice_id']), 'today': date.today().isoformat(),
+                       'suggested': owed} if can_record and status == 'issued' and owed > 0.005 else None}
+
+
 def _change(ctx: Dict, t, url: Callable) -> Dict:
     invoice = ctx['invoice']
     status = invoice.get('status') or 'draft'
@@ -134,16 +164,41 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
     status = invoice.get('status') or 'draft'
     can_edit, sales = permissions.can_doc('write', invoice.get('doc_type'), perms), permissions.quotations_only(perms)
     path, list_label = LISTS.get(t.key, ('invoices', 'Invoices'))
+    # a note's list is the Invoices list, on its tab
+    list_url = (url('invoices_bp.list_invoices', doc_path=path, status=t.key) if t.adjusts
+                else url('invoices_bp.list_invoices', doc_path=path))
+    doc_next, doc_money = dict(ctx['doc_next']), ctx['doc_money']
+    makes_notes = (t.takes_payments and status in ('pending', 'paid') and can_edit
+                   and permissions.can('invoices.write', perms=perms) and not sales)
+    if makes_notes:                                       # against a sent invoice: a credit or a debit note
+        from document_view import _post
+        doc_next['actions'] = [*(doc_next.get('actions') or []),
+                               _post('Credit note', url('invoices_bp.make_note', invoice_id=invoice['invoice_id']), {'kind': 'credit'}),
+                               _post('Debit note', url('invoices_bp.make_note', invoice_id=invoice['invoice_id']), {'kind': 'debit'})]
+    if t.takes_payments and ctx.get('notes') and status != 'draft':
+        from document_view import money_strip
+        doc_money = money_strip(invoice, ctx['summary'], ctx['payments'], ctx['advance_received'], ctx['notes'])
+    refunds = (_refunds(ctx, status, can_edit and permissions.can('payments.write', perms=perms), url)
+               if t.key == 'credit_note' and status != 'draft' else None)
+    if refunds and refunds['owed'] > 0.005:
+        from money import format_money
+        from document_view import _link
+        doc_next['sub'] = f"{format_money(refunds['owed'], refunds['currency'], decimals=False)} to refund on {refunds['against']}."
+        if refunds['record']:
+            doc_next['actions'] = [_link('Record a refund', '#refunds', True),
+                                   *[{**a, 'primary': False} for a in (doc_next.get('actions') or [])]]
+    if not refunds or not (refunds['rows'] or refunds['owed'] > 0.005):
+        refunds = None
     project_url = url('projects_bp.view_project', project_id=project['project_id']) if project else None
     others = [d for d in ctx['project_docs'] if d['invoice_id'] != invoice['invoice_id'] and d.get('doc_type') in permissions.doc_types('read', perms)]
     return _plain({
         'invoice_id': invoice['invoice_id'], 'project_id': project['project_id'] if project else None,
         'number': _number(invoice), 'doc_type': t.key, 'status': status, 'currency': invoice.get('currency_code') or 'INR',
-        'list': {'label': list_label, 'url': url('invoices_bp.list_invoices', doc_path=path)},
+        'list': {'label': list_label, 'url': list_url},
         'head': {'number': _number(invoice), 'kind': t.label, 'pill': ctx['doc_pill'],
                  'customer': {'name': customers.label(invoice), 'url': url('customers_bp.view_customer', customer_id=invoice['customer_id'])},
                  'project': {'label': projects.project_label(project), 'title': project['title'], 'url': project_url} if project else None},
-        'next': ctx['doc_next'], 'money': ctx['doc_money'],
+        'next': doc_next, 'money': doc_money,
         'pdf': _pdf(ctx, t, status, can_edit, url, perms),
         # a draft opens in the editor; a sent one offers a revision or a correction (the "Revise" or "Edit" button)
         'edit': url('invoices_bp.edit_invoice', invoice_id=invoice['invoice_id']) if status == 'draft' and can_edit else None,
@@ -152,6 +207,9 @@ def build(ctx: Dict, perms, url: Callable) -> Dict:
         'change': _change(ctx, t, url) if status != 'draft' and can_edit else None,
         'payments': _payments(ctx, t, status, can_edit and permissions.can('payments.write', perms=perms), url) if (t.takes_payments or t.takes_advances) and status != 'draft' else None,
         'receiving': _receiving(ctx, status, can_edit, url) if t.purchase and status != 'draft' else None,
+        # an invoice's credit and debit notes; a credit note's refunds
+        'notes': _notes(ctx, url) if t.takes_payments and ctx.get('notes') else None,
+        'refunds': refunds,
         'versions_html': _html("{% include 'invoices/_versions.html' %}", ctx) if ctx['versions'] else None,
         'document_html': _html("{% include 'invoices/_document.html' %}", {**ctx, 'sections_data': with_discount_column(ctx['sections_data'])}),
         'chain': ctx['doc_chain'],

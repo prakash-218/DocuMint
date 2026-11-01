@@ -572,7 +572,9 @@ def invoice_summary(header: Dict, sections: Dict[str, Dict], payments: List[Dict
         total         grand total = taxable + tax
         advance       {'percent', 'basis', 'amount'} when an advance is requested
         payable_now   advance amount if there is one, else the total
-        paid/balance  from recorded payments
+        paid          from recorded payments
+        credited      what its issued credit and debit notes take off (credit notes less debit notes less refunds)
+        balance       still owed: total less paid less credited; in_favour: owed back to the customer
         words         payable_now in words, in the document's currency
         hsn           HSN/SAC-wise summary rows (GST documents)
     """
@@ -608,6 +610,7 @@ def invoice_summary(header: Dict, sections: Dict[str, Dict], payments: List[Dict
     payable_now = advance['amount'] if advance else total
 
     paid = sum(float(p.get('amount') or 0) for p in payments or [])
+    credited = float(header.get('credited_amount') or 0)
     return {
         'currency': currency,
         'subtotal': subtotal,
@@ -620,7 +623,9 @@ def invoice_summary(header: Dict, sections: Dict[str, Dict], payments: List[Dict
         'advance': advance,
         'payable_now': payable_now,
         'paid': paid,
-        'balance': max(total - paid, 0.0),
+        'credited': credited,
+        'balance': max(total - paid - credited, 0.0),
+        'in_favour': max(paid + credited - total, 0.0) if credited > 0 else 0.0,     # only from credit notes (documents.credit_of)
         'words': amount_in_words(payable_now, currency),
         'tax_words': amount_in_words(tax_total, currency) if tax_total else None,
         'hsn': (_hsn_summary(sections, tax_mode, rate, taxable / subtotal if subtotal else 1.0)

@@ -44,6 +44,7 @@ def test_links_lead_where_the_pages_are_and_the_longest_prefix_lights(app):
     assert nav.active(sections, '/quotes/Q-1') == 'quote' and nav.active(sections, '/quotesx') is None
     assert nav.active(sections, '/costings/K-1') is None and nav.active(sections, '/costings/rates') == 'rates'
     assert items['payments']['href'] == '/payments/' and nav.active(sections, '/payments/') == 'payments'
+    assert nav.active(sections, '/credit-notes/N-1') == 'invoices' == nav.active(sections, '/debit-notes/N-2/edit')   # listed in Invoices
 
 
 def test_the_new_menu_is_for_those_who_make_documents(app):
